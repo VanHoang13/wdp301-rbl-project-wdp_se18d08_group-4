@@ -189,4 +189,4 @@ Tham khảo các tài liệu chi tiết trong thư mục `docs/`:
 
 ---
 
-**UniMove** - Revolutionizing student moving services through technology 🚚📱
+**UniMove** - UniMove - Making student moving easier with technology 🚚📱
