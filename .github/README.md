@@ -175,10 +175,9 @@ Tham khảo các tài liệu chi tiết trong thư mục `docs/`:
 
 ## 🚀 Getting Started
 
-1. **Setup Environment**: Xem `setup-instructions.md`
+1. **Setup Environment**: Xem `docs/flutter-setup.md` và `docs/nodejs-api.md`
 2. **Team Workflow**: Đọc `team-workflow.md`
 3. **Development**: Follow coding standards trong `docs/`
-4. **Deployment**: Sử dụng scripts trong `scripts/`
 
 ## 📞 Support
 

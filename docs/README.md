@@ -4,38 +4,12 @@
 
 ```
 docs/
-├── api/                       # API Documentation
-│   ├── supabase-api.md
-│   ├── edge-functions.md
-│   └── webhooks.md
-├── architecture/              # System Architecture
-│   ├── overview.md
-│   ├── database-design.md
-│   ├── real-time-flow.md
-│   └── security.md
-├── development/               # Development Guides
-│   ├── setup-guide.md
-│   ├── coding-standards.md
-│   ├── git-workflow.md
-│   └── testing-guide.md
-├── deployment/                # Deployment Guides
-│   ├── mobile-deployment.md
-│   ├── web-deployment.md
-│   └── supabase-deployment.md
-├── features/                  # Feature Documentation
-│   ├── authentication.md
-│   ├── booking-system.md
-│   ├── real-time-tracking.md
-│   ├── payment-system.md
-│   └── chat-system.md
-├── ui-ux/                     # Design Documentation
-│   ├── design-system.md
-│   ├── user-flows.md
-│   └── wireframes/
-└── business/                  # Business Documentation
-    ├── requirements.md
-    ├── user-stories.md
-    └── business-rules.md
+├── database-schema.md              # Tổng quan & chi tiết database (CHÍNH)
+├── database-enums-and-functions.md # ENUM, Views, Functions chi tiết
+├── flutter-setup.md                # Hướng dẫn chạy Flutter apps
+├── nodejs-api.md                   # Node.js Express API
+├── setup-checklist.md              # Checklist setup dự án
+└── slide-presentation.md           # Slide thuyết trình
 ```
 
 ## 📋 Documentation Standards

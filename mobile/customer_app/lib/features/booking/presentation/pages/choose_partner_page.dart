@@ -1,0 +1,249 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
+
+import '../../../../core/theme/uni_move_colors.dart';
+import '../../../../core/widgets/booking_scaffold.dart';
+import '../../../../core/widgets/cached_hero_image.dart';
+import '../../domain/booking_models.dart';
+import '../cubit/booking_flow_cubit.dart';
+import '../cubit/booking_flow_state.dart';
+
+class ChoosePartnerPage extends StatefulWidget {
+  const ChoosePartnerPage({super.key});
+
+  @override
+  State<ChoosePartnerPage> createState() => _ChoosePartnerPageState();
+}
+
+class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
+  int _filterIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<BookingFlowCubit>().loadPartners();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = UniMoveColors.of(context);
+
+    return BlocBuilder<BookingFlowCubit, BookingFlowState>(
+      builder: (context, state) {
+        return BookingScaffold(
+          title: 'Chọn đối tác',
+          trailing: IconButton(icon: const Icon(Icons.tune), onPressed: () {}),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(height: 8.h),
+              _filterChips(c),
+              SizedBox(height: 12.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20.w),
+                child: Container(
+                  padding: EdgeInsets.all(14.w),
+                  decoration: BoxDecoration(
+                    color: c.chipBg,
+                    borderRadius: BorderRadius.circular(14.r),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.verified, color: c.primary, size: 22.sp),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: Text(
+                          '42 đối tác · Sẵn sàng vận chuyển ngay bây giờ',
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w600,
+                            color: c.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              Expanded(
+                child: state.loadingPartners
+                    ? ListView.builder(
+                        padding: EdgeInsets.symmetric(horizontal: 20.w),
+                        itemCount: 3,
+                        itemBuilder: (_, __) => _partnerShimmer(c),
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 24.h),
+                        itemCount: state.partners.length,
+                        itemBuilder: (context, index) {
+                          final p = state.partners[index];
+                          return _partnerCard(context, state, p, c);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _filterChips(UniMoveColors c) {
+    const labels = ['Giá rẻ nhất', 'Đánh giá cao', 'Gần nhất'];
+    return SizedBox(
+      height: 40.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        itemCount: labels.length,
+        separatorBuilder: (_, __) => SizedBox(width: 8.w),
+        itemBuilder: (context, i) {
+          final active = i == _filterIndex;
+          return GestureDetector(
+            onTap: () => setState(() => _filterIndex = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: active ? c.primary : c.surface,
+                borderRadius: BorderRadius.circular(20.r),
+                border: Border.all(color: active ? c.primary : c.border),
+              ),
+              child: Text(
+                labels[i],
+                style: TextStyle(
+                  color: active ? Colors.white : c.onSurface,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13.sp,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _partnerCard(BuildContext context, BookingFlowState state, PartnerOffer p, UniMoveColors c) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 16.h),
+      child: Material(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(20.r),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(
+              children: [
+                CachedHeroImage(url: p.imageUrl, height: 160.h, borderRadius: BorderRadius.zero),
+                Positioned(
+                  top: 12.h,
+                  right: 12.w,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.star, color: Colors.amber, size: 14.sp),
+                        SizedBox(width: 4.w),
+                        Text(
+                          '${p.rating}',
+                          style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: EdgeInsets.all(14.w),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          p.name,
+                          style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w700, color: c.onSurface),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Cách bạn ${p.distanceKm} km · ${p.vehicleLabel}',
+                          style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('GIÁ KHỞI ĐIỂM', style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted)),
+                      Text(
+                        _formatPrice(p.price),
+                        style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800, color: c.primary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 14.h),
+              child: SizedBox(
+                width: double.infinity,
+                height: 44.h,
+                child: ElevatedButton(
+                  onPressed: () {
+                    context.read<BookingFlowCubit>().selectPartner(p.id);
+                    context.push('/booking/payment');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                  ),
+                  child: Text('Chọn', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.sp)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _partnerShimmer(UniMoveColors c) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 16.h),
+      child: Shimmer.fromColors(
+        baseColor: c.surfaceTint,
+        highlightColor: c.surface,
+        child: Container(
+          height: 260.h,
+          decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(20.r)),
+        ),
+      ),
+    );
+  }
+
+  String _formatPrice(int v) {
+    final s = v.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+      buf.write(s[i]);
+    }
+    return '${buf}đ';
+  }
+}

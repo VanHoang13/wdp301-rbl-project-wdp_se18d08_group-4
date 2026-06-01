@@ -1,73 +1,87 @@
-# UniMove Backend - Supabase
+# UniMove Backend
 
-## 📁 Cấu Trúc Backend
+## Quick Start
+
+### 1. Install Dependencies
+```bash
+cd backend
+npm install
+```
+
+### 2. Chạy API server
+```bash
+npm run dev
+```
+
+API mặc định: `http://localhost:3000/api/health`
+
+### 3. Test Database Connection
+```bash
+npm test
+```
+
+## 📋 Prerequisites
+
+Đảm bảo bạn đã:
+- ✅ Tạo project Supabase
+- ✅ Import tất cả 8 migration files
+- ✅ Tạo file `.env` ở thư mục root với các thông tin:
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `DATABASE_URL`
+
+## 🧪 Test Connection
+
+Script `test-connection.js` sẽ kiểm tra:
+1. ✅ Kết nối với Supabase
+2. ✅ Query notification_templates table
+3. ✅ Query promotions table
+4. ✅ Verify 10 critical tables exist
+5. ✅ Check RLS policies are active
+
+## Structure
 
 ```
 backend/
+├── src/                     # Node.js Express API
+│   ├── server.js
+│   ├── routes/
+│   ├── controllers/
+│   ├── services/
+│   └── middleware/
 ├── supabase/
-│   ├── config.toml              # Supabase configuration
-│   ├── seed.sql                 # Initial data
-│   └── migrations/              # Database migrations
-│       ├── 20240101000000_initial_schema.sql
-│       ├── 20240102000000_auth_setup.sql
-│       ├── 20240103000000_orders_table.sql
-│       ├── 20240104000000_payments_table.sql
-│       └── 20240105000000_rls_policies.sql
-├── functions/                   # Edge Functions
-│   ├── order-matching/
-│   │   ├── index.ts
-│   │   └── package.json
-│   ├── payment-processing/
-│   │   ├── index.ts
-│   │   └── package.json
-│   ├── notification-sender/
-│   │   ├── index.ts
-│   │   └── package.json
-│   └── analytics-aggregator/
-│       ├── index.ts
-│       └── package.json
-├── storage/                     # Storage buckets config
-│   ├── avatars/
-│   ├── documents/
-│   └── chat-images/
-├── policies/                    # RLS Policies
-│   ├── users.sql
-│   ├── orders.sql
-│   ├── payments.sql
-│   └── chat.sql
-└── api-docs/                   # API Documentation
-    ├── openapi.yaml
-    └── postman-collection.json
+│   ├── migrations/          # Migration files (01–11)
+│   └── manual_fix_step*.sql # Script thủ công cho Supabase live
+├── test-connection.js
+├── package.json
+└── README.md
 ```
 
-## 🚀 Setup Backend
+## 🔧 Troubleshooting
 
-```bash
-# Install Supabase CLI
-npm install -g supabase
+### Error: "Missing environment variables"
+→ Kiểm tra file `.env` ở thư mục root (không phải trong `backend/`)
 
-# Initialize project
-supabase init
+### Error: "relation does not exist"
+→ Bạn chưa import migration files vào Supabase
 
-# Start local development
-supabase start
+### Error: "Invalid API key"
+→ Kiểm tra lại `SUPABASE_ANON_KEY` trong `.env`
 
-# Run migrations
-supabase db reset
+### Error: "Connection refused"
+→ Kiểm tra internet và `SUPABASE_URL`
 
-# Deploy functions
-supabase functions deploy
-```
+## Next Steps
 
-## 📋 Team Workflow
+Sau khi test thành công:
+1. Chạy `manual_fix_step5_auth_trigger.sql` trên Supabase (nếu chưa)
+2. Kết nối Flutter apps với Node API
+3. Hoàn thiện PayOS webhook
+4. Xem thêm: [nodejs-api.md](../docs/nodejs-api.md)
 
-### Database Changes
-1. Tạo migration file mới
-2. Test local với `supabase db reset`
-3. Commit và push
-4. Deploy production
+## 🔗 Links
 
-### Edge Functions
-1. Develop trong `functions/function-name/`
-2. Test local với `supabase functions serve`
-3. Deploy với `supabase functions deploy function-name`
+- [Supabase Documentation](https://supabase.com/docs)
+- [Supabase JS Client](https://supabase.com/docs/reference/javascript/introduction)
+- [Project Documentation](../docs/)
