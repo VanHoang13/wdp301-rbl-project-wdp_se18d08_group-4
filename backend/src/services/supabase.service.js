@@ -1,14 +1,19 @@
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 const env = require('../config/env');
+
+const realtimeOpts = { realtime: { transport: ws } };
 
 /** Admin client — bypass RLS (webhooks, admin tasks). */
 const supabaseAdmin = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
+  ...realtimeOpts,
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 /** Verify JWT và lấy user từ access token. */
 async function getUserFromToken(accessToken) {
   const client = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+    ...realtimeOpts,
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -24,6 +29,7 @@ async function getUserFromToken(accessToken) {
 /** Client scoped theo JWT user — tôn trọng RLS. */
 function createUserClient(accessToken) {
   return createClient(env.supabaseUrl, env.supabaseAnonKey, {
+    ...realtimeOpts,
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });

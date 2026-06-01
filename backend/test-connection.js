@@ -9,6 +9,7 @@ if (!globalThis.fetch) {
 }
 
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 
 // Lấy thông tin từ .env
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -29,7 +30,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 // Tạo Supabase client
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, { realtime: { transport: ws } });
 
 async function testConnection() {
   try {
