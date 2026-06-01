@@ -59,6 +59,15 @@ async function resetPassword(req, res, next) {
   }
 }
 
+async function logout(req, res, next) {
+  try {
+    const data = await authService.logout(req.accessToken);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -66,4 +75,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  logout,
 };

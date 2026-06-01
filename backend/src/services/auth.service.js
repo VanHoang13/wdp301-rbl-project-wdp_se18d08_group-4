@@ -5,6 +5,7 @@
  * DB: docs/supabase/20240113000000_node_auth.sql (chạy thủ công trên Supabase).
  */
 const { httpError } = require('./auth.helpers');
+const { supabaseAdmin } = require('./supabase.service');
 
 /** BE-001 — POST /api/auth/register */
 async function register(_body) {
@@ -36,6 +37,13 @@ async function resetPassword(_body) {
   throw httpError(501, 'BE-007: implement resetPassword() trong auth.service.js', 'not_implemented');
 }
 
+/** API-005 — POST /api/auth/logout */
+async function logout(accessToken) {
+  const { error } = await supabaseAdmin.auth.admin.signOut(accessToken);
+  if (error) throw httpError(500, error.message, 'logout_error');
+  return { message: 'Đăng xuất thành công' };
+}
+
 module.exports = {
   register,
   login,
@@ -43,4 +51,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  logout,
 };
