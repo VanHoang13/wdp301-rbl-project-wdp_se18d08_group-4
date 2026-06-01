@@ -9,6 +9,7 @@ import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/dark_glass_background.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../../core/widgets/unimove_logo.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 
 class LoginPage extends StatefulWidget {
@@ -69,11 +70,13 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await CustomerAuthRepository().signIn(email: email, password: password);
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
+      context.go('/home');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = e is AuthException ? e.message : 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
+      setState(() => _error = 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

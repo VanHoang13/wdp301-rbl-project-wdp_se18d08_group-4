@@ -1,24 +1,18 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../core/auth/auth_token_storage.dart';
 import '../../../core/config/dev_config.dart';
 import '../../../core/mock/mock_auth_session.dart';
+import '../../../core/network/api_client.dart';
 
-/// Auth customer — Supabase Auth (UI / session).
-/// SCAFFOLD: Leader không implement đăng ký/đăng nhập Node API.
-/// Team BE: `backend/src/services/auth.service.js` (BE-001→007); mobile nối ApiClient sau.
+/// Auth customer — Node.js API (`/api/auth/*`, `/api/customers/me`).
 class CustomerAuthRepository {
-  CustomerAuthRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  CustomerAuthRepository({ApiClient? api}) : _api = api ?? ApiClient.instance;
 
-  final SupabaseClient _client;
-
-  User? get currentUser => _client.auth.currentUser;
-
-  Session? get currentSession => _client.auth.currentSession;
+  final ApiClient _api;
+  final _storage = AuthTokenStorage.instance;
 
   Future<bool> get isSignedIn async {
-    if (await MockAuthSession.isSignedIn()) return true;
-    return _client.auth.currentSession != null;
+    if (DevConfig.useMockAuth && await MockAuthSession.isSignedIn()) return true;
+    return _storage.hasSession();
   }
 
   static String normalizePhone(String input) {
@@ -38,10 +32,14 @@ class CustomerAuthRepository {
       return;
     }
 
-    await _client.auth.signInWithPassword(
-      email: email.trim().toLowerCase(),
-      password: password,
+    final envelope = await _api.guard(
+      () => _api.post('/auth/login', body: {
+        'email': email.trim().toLowerCase(),
+        'password': password,
+      }),
     );
+
+    await _persistAuth(envelope);
     await _validateCustomerRole();
   }
 
@@ -51,100 +49,87 @@ class CustomerAuthRepository {
     required String fullName,
     required String phone,
   }) async {
-    final normalizedPhone = normalizePhone(phone);
-
-    final response = await _client.auth.signUp(
-      email: email.trim().toLowerCase(),
-      password: password,
-      data: {
-        'full_name': fullName.trim(),
-        'phone': normalizedPhone,
-        'role': 'customer',
-      },
-    );
-
-    if (response.user == null) {
-      throw const AuthException('Không thể tạo tài khoản. Kiểm tra email hoặc thử lại.');
+    if (password.length < 8) {
+      throw const AuthException('Mật khẩu cần ít nhất 8 ký tự.');
     }
 
-    await _ensureCustomerProfile(
-      fullName: fullName,
-      email: email.trim().toLowerCase(),
-      phone: normalizedPhone,
+    final envelope = await _api.guard(
+      () => _api.post('/auth/register', body: {
+        'email': email.trim().toLowerCase(),
+        'password': password,
+        'full_name': fullName.trim(),
+        'phone': phone.trim(),
+        'role': 'customer',
+      }),
     );
+
+    await _persistAuth(envelope);
   }
 
   Future<void> signOut() async {
     await MockAuthSession.signOut();
-    await _client.auth.signOut();
+    await _storage.clear();
+    _api.setAccessToken(null);
   }
 
   Future<CustomerProfile> fetchMe() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      throw const AuthException('Chưa đăng nhập.');
+    if (await MockAuthSession.isSignedIn()) {
+      return CustomerProfile(
+        id: 'mock',
+        email: DevConfig.demoEmail,
+        fullName: 'Demo User',
+        phone: '+84901234567',
+      );
     }
 
-    final row = await _client
-        .from('profiles')
-        .select(
-          'id, email, phone, full_name, avatar_url, role, student_id, university, loyalty_points',
-        )
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (row == null) {
-      throw const AuthException('Không tìm thấy hồ sơ.');
-    }
-
-    return CustomerProfile.fromJson(Map<String, dynamic>.from(row));
+    final envelope = await _api.guard(() => _api.get('/customers/me'));
+    final user = Map<String, dynamic>.from(envelope['data'] as Map);
+    return CustomerProfile.fromJson(user);
   }
 
   Future<void> forgotPassword({required String email}) async {
-    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
+    await _api.guard(
+      () => _api.post('/auth/forgot-password', body: {
+        'email': email.trim().toLowerCase(),
+      }),
+    );
   }
 
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
-    final user = _client.auth.currentUser;
-    final email = user?.email;
-    if (email == null) {
-      throw const AuthException('Chưa đăng nhập.');
+    if (newPassword.length < 8) {
+      throw const AuthException('Mật khẩu mới cần ít nhất 8 ký tự.');
     }
 
-    await _client.auth.signInWithPassword(email: email, password: currentPassword);
-    await _client.auth.updateUser(UserAttributes(password: newPassword));
+    await _api.guard(
+      () => _api.post('/auth/change-password', body: {
+        'old_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+  }
+
+  Future<void> _persistAuth(Map<String, dynamic> envelope) async {
+    final data = Map<String, dynamic>.from(envelope['data'] as Map);
+    final token = data['accessToken'] as String?;
+    final user = data['user'] as Map?;
+    if (token == null || user == null) {
+      throw const AuthException('Phản hồi đăng nhập không hợp lệ.');
+    }
+    final userMap = Map<String, dynamic>.from(user);
+    await _storage.save(accessToken: token, user: userMap);
+    _api.setAccessToken(token);
   }
 
   Future<void> _validateCustomerRole() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return;
-
-    final data = await _client.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    final role = data?['role'] as String?;
+    final user = await _storage.loadUser();
+    final role = user?['role'] as String?;
     if (role != null && role != 'customer') {
       await signOut();
       throw const AuthException('Tài khoản này không phải sinh viên (customer).');
     }
-  }
-
-  Future<void> _ensureCustomerProfile({
-    required String fullName,
-    required String email,
-    required String phone,
-  }) async {
-    final user = _client.auth.currentUser;
-    if (user == null) return;
-
-    await _client.from('profiles').upsert({
-      'id': user.id,
-      'email': email,
-      'full_name': fullName.trim(),
-      'phone': phone,
-      'role': 'customer',
-    });
   }
 }
 

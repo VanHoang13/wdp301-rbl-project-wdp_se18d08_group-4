@@ -145,13 +145,15 @@ mobile/customer_app/lib/
 
 ### BE-001 — Đăng ký + xác thực email
 
+**Contract Cách A (khớp `register_page.dart`):** `email`, `password` (≥8), `full_name`, `phone`. Không có MSSV/trường lúc đăng ký — xem BE-009.
+
 | Layer | Code ở đâu |
 |-------|------------|
-| UI | `register_page.dart` — sau submit hiện dialog/snackbar **"Kiểm tra email"** |
-| Flutter logic | `customer_auth_repository.dart` → `signUp()` (đã có, bổ sung xử lý `emailRedirectTo` nếu cần) |
-| Node | `POST /api/auth/register` trong `auth.controller.js` (optional nếu team chỉ dùng Flutter → Supabase) |
-| Supabase | Dashboard: **Enable confirm email**; template email tiếng Việt |
-| DB | Trigger `handle_new_user` → insert `profiles` (`role=customer`) |
+| UI | `register_page.dart` — 4 field + xác nhận MK + checkbox điều khoản |
+| Flutter logic | `customer_auth_repository.dart` → `signUp()` → **Supabase Auth** (4 field; phone `+84`) |
+| Node (Postman / sau này nối app) | `POST /api/auth/register` — cùng 4 field; `auth.service.js` `register()` |
+| Supabase | Dashboard: **Enable confirm email** (khi bật flow xác thực email) |
+| DB | `profiles`: email, full_name, phone, role=customer; `student_id`/`university` = PATCH profile (BE-009) |
 
 ---
 

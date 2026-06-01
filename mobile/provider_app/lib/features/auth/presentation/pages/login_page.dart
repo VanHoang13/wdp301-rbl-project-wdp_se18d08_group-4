@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../../core/network/api_client.dart';
 import '../../data/auth_repository.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -36,6 +35,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           );
       if (mounted) context.go('/home');
     } on AuthException catch (e) {
+      _showError(e.message);
+    } on ApiException catch (e) {
       _showError(e.message);
     } catch (_) {
       _showError('Đăng nhập thất bại.');
