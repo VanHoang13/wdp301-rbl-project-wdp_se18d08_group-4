@@ -86,6 +86,12 @@ class ApiClient {
           code: body['code'] as String?,
         );
       }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(
+          'Không kết nối ${ApiConfig.displayUrl}. Chạy npm run dev:be; máy thật: useLanHost trong api_config.dart.',
+        );
+      }
       throw ApiException(e.message ?? 'Không kết nối được API. Chạy backend: npm run dev');
     }
   }

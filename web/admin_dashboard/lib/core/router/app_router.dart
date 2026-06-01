@@ -5,19 +5,19 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
-import '../services/supabase_providers.dart';
+import '../auth/auth_token_storage.dart';
+import '../services/auth_session_notifier.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
-    refreshListenable: GoRouterRefreshStream(
-      ref.watch(supabaseClientProvider).auth.onAuthStateChange,
-    ),
+    refreshListenable: authSessionNotifier,
     redirect: (context, state) {
-      final session = ref.read(authRepositoryProvider).currentSession;
       final isLogin = state.matchedLocation == '/login';
-      if (session == null && !isLogin) return '/login';
-      if (session != null && isLogin) return '/dashboard';
+      final hasSession = AuthTokenStorage.instance.cachedToken?.isNotEmpty == true;
+
+      if (!hasSession && !isLogin) return '/login';
+      if (hasSession && isLogin) return '/dashboard';
       return null;
     },
     routes: [
@@ -26,17 +26,3 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _subscription = stream.listen((_) => notifyListeners());
-  }
-
-  late final dynamic _subscription;
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
-  }
-}

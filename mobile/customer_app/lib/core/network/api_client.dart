@@ -54,8 +54,11 @@ class ApiClient {
     return _unwrap(await dio.post<dynamic>(path, data: body));
   }
 
-  Future<Map<String, dynamic>> get(String path) async {
-    return _unwrap(await dio.get<dynamic>(path));
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    return _unwrap(await dio.get<dynamic>(path, queryParameters: queryParameters));
   }
 
   Future<Map<String, dynamic>> patch(String path, {Map<String, dynamic>? body}) async {
@@ -88,7 +91,29 @@ class ApiClient {
         code: map['code'] as String?,
       );
     }
-    throw ApiException(e.message ?? 'Không kết nối được API. Chạy backend: npm run dev');
+
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      throw ApiException(
+        'Không nhận phản hồi từ API (${ApiConfig.displayUrl}) trong 15 giây. '
+        'Kiểm tra backend: npm run dev:be. Emulator: 10.0.2.2 — máy thật: bật useLanHost trong api_config.dart.',
+      );
+    }
+
+    if (e.type == DioExceptionType.connectionError) {
+      final hint = ApiConfig.useAdbReverse
+          ? 'Chạy: adb reverse tcp:3000 tcp:3000 (bật USB debugging).'
+          : 'Điện thoại và PC phải cùng Wi-Fi. Sửa lanHost trong api_config.dart = IP PC (ipconfig).';
+      throw ApiException(
+        'Không kết nối được ${ApiConfig.displayUrl}. '
+        'Backend có đang chạy không? (npm run dev:customer). $hint',
+      );
+    }
+
+    throw ApiException(
+      e.message ?? 'Không kết nối được API. Chạy: npm run dev:be',
+    );
   }
 
   Future<T> guard<T>(Future<T> Function() fn) async {

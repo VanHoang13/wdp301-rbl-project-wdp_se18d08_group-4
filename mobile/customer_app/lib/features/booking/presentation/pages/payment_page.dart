@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/mock/mock_orders_data.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/booking_scaffold.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
@@ -20,6 +20,17 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   final _discountCtrl = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final cubit = context.read<BookingFlowCubit>();
+    final s = cubit.state;
+    if (!s.isLaborService) {
+      cubit.loadInsurancePlans();
+    }
+  }
 
   @override
   void dispose() {
@@ -83,12 +94,26 @@ class _PaymentPageState extends State<PaymentPage> {
                       spacing: 8.w,
                       runSpacing: 8.h,
                       children: [
-                        if (!state.isLaborService)
+                        if (!state.isLaborService) ...[
                           _chip(
-                            'Quy mô: ${state.selectedPackage?.label ?? 'Phòng trọ tiêu chuẩn'}',
+                            'Combo: ${state.selectedPackage?.label ?? 'Chưa chọn'}',
                             Icons.inventory_2_outlined,
                             c,
                           ),
+                          if (state.extraComboLaborCount > 0)
+                            _chip(
+                              '+${state.extraComboLaborCount} người khuân vác',
+                              Icons.groups_outlined,
+                              c,
+                            ),
+                          _chip(
+                            state.hasInsuranceCoverage
+                                ? 'BH: ${state.selectedInsurancePlan?.name ?? ''}'
+                                : 'Không bảo hiểm đồ',
+                            Icons.shield_outlined,
+                            c,
+                          ),
+                        ],
                         if (state.isLaborService)
                           _chip(
                             '${state.helperCount} người · ${state.laborHours}h',
@@ -187,12 +212,57 @@ class _PaymentPageState extends State<PaymentPage> {
                 title: 'Chi tiết thanh toán',
                 child: Column(
                   children: [
-                    if (!state.isLaborService)
+                    if (!state.isLaborService) ...[
                       _priceRow(
-                        'Báo giá nhà xe (${partner?.name ?? 'đối tác'})',
+                        'Combo ${state.selectedPackage?.label ?? 'chuyển trọ'}',
                         _formatPrice(state.movePackagePrice),
                         c,
                       ),
+                      if (state.extraComboLaborCount > 0) ...[
+                        _priceRow(
+                          '+${state.extraComboLaborCount} người khuân vác (giá combo)',
+                          _formatPrice(state.comboExtraLaborFee),
+                          c,
+                        ),
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 8.h),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Tiết kiệm ~${_formatPrice(_comboLaborSavings(state))} so với thuê khuân vác riêng',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: c.success,
+                                fontWeight: FontWeight.w600,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (partner != null)
+                        _priceRow('Nhà xe đối tác', partner.name, c),
+                      _priceRow(
+                        state.hasInsuranceCoverage
+                            ? 'Bảo hiểm đồ đạc (${state.selectedInsurancePlan?.name})'
+                            : 'Bảo hiểm đồ đạc',
+                        state.hasInsuranceCoverage
+                            ? _formatPrice(state.insuranceFee)
+                            : 'Không mua',
+                        c,
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => context.push('/booking/insurance'),
+                          icon: Icon(Icons.edit_outlined, size: 16.sp, color: c.primary),
+                          label: Text(
+                            'Đổi gói bảo hiểm',
+                            style: TextStyle(fontSize: 12.sp, color: c.primary),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (state.isLaborService) ...[
                       _priceRow(
                         labor != null
@@ -249,28 +319,14 @@ class _PaymentPageState extends State<PaymentPage> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 16.h),
               child: SmoothCtaButton(
-                label: state.isLaborService
-                    ? (state.isLaborAddon
-                        ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
-                        : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
-                    : 'Đặt cọc · ${_formatPrice(deposit)}',
-                onPressed: () {
-                  final helpers = state.helperCount;
-                  final team = labor?.name ?? 'đối tác';
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        state.isLaborAddon
-                            ? 'Đã thêm $helpers người ($team) vào đơn #${state.linkedOrderNumber}'
-                            : state.isLaborOnly
-                                ? 'Đã đặt $helpers người ($team) — UniMove ghi nhận hỗ trợ bốc xếp'
-                                : 'Đặt cọc thành công — UniMove giữ tiền hộ (mock)!',
-                      ),
-                    ),
-                  );
-                  final orderId = state.linkedOrderId ?? MockOrdersData.activeOrderId;
-                  context.go('/orders/$orderId/tracking');
-                },
+                label: _submitting
+                    ? 'Đang xử lý...'
+                    : state.isLaborService
+                        ? (state.isLaborAddon
+                            ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
+                            : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
+                        : 'Đặt cọc · ${_formatPrice(deposit)}',
+                onPressed: _submitting ? null : () => _confirmDeposit(context, state, labor?.name),
               ),
             ),
           ),
@@ -280,6 +336,53 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   int _depositAmount(int total) => (total * 0.3).round();
+
+  Future<void> _confirmDeposit(BuildContext context, BookingFlowState state, String? teamName) async {
+    setState(() => _submitting = true);
+    try {
+      final cubit = context.read<BookingFlowCubit>();
+      final orderId = state.isLaborAddon && state.linkedOrderId != null
+          ? state.linkedOrderId!
+          : await cubit.checkout();
+
+      if (!context.mounted) return;
+
+      final helpers = state.helperCount;
+      final team = teamName ?? 'đối tác';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            state.isLaborAddon
+                ? 'Đã thêm $helpers người ($team) vào đơn #${state.linkedOrderNumber ?? orderId}'
+                : state.isLaborOnly
+                    ? 'Đã đặt $helpers người ($team) — đơn đã ghi nhận'
+                    : 'Đặt cọc thành công — đơn đã tạo trên hệ thống',
+          ),
+        ),
+      );
+      context.go('/orders/$orderId/tracking');
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không tạo được đơn. Kiểm tra backend và đăng nhập.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  int _comboLaborSavings(BookingFlowState state) {
+    final pkg = state.selectedPackage;
+    if (pkg == null || state.extraComboLaborCount <= 0) return 0;
+    return state.extraComboLaborCount * pkg.laborSavingsPerPerson;
+  }
 
   Widget _marketplaceNote(UniMoveColors c, {required String partnerName}) {
     return Container(

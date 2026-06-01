@@ -5,9 +5,7 @@ const { supabaseAdmin } = require('./supabase.service');
 async function getProfile(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select(
-      'id, email, phone, full_name, avatar_url, role, status, student_id, university, loyalty_points, total_orders, rating',
-    )
+    .select('*')
     .eq('id', userId)
     .maybeSingle();
 
@@ -22,7 +20,7 @@ async function getProfile(userId) {
 
 /** BE-009 — PATCH /api/customers/me */
 async function updateProfile(userId, body) {
-  const allowed = ['full_name', 'phone', 'student_id', 'university', 'date_of_birth', 'gender'];
+  const allowed = ['full_name', 'phone', 'avatar_url', 'date_of_birth', 'gender', 'student_id', 'university'];
   const patch = {};
 
   for (const key of allowed) {
@@ -43,9 +41,7 @@ async function updateProfile(userId, body) {
     .from('profiles')
     .update(patch)
     .eq('id', userId)
-    .select(
-      'id, email, phone, full_name, avatar_url, role, status, student_id, university, loyalty_points, total_orders, rating',
-    )
+    .select('*')
     .single();
 
   if (error) {

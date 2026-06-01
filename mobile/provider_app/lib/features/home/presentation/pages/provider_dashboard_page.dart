@@ -7,6 +7,8 @@ import '../../../../core/config/api_config.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../auth/data/auth_repository.dart';
+import '../../../orders/domain/provider_order.dart';
+import '../../../orders/presentation/providers/orders_providers.dart';
 
 class ProviderDashboardPage extends ConsumerWidget {
   const ProviderDashboardPage({super.key});
@@ -14,6 +16,7 @@ class ProviderDashboardPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(providerProfileProvider);
+    final ordersAsync = ref.watch(providerOrdersListProvider);
     final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
@@ -25,7 +28,10 @@ class ProviderDashboardPage extends ConsumerWidget {
             data: (profile) {
               final verified = profile?.isVerified ?? false;
               return RefreshIndicator(
-                onRefresh: () async => ref.invalidate(providerProfileProvider),
+                onRefresh: () async {
+                  ref.invalidate(providerProfileProvider);
+                  ref.invalidate(providerOrdersListProvider);
+                },
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -88,9 +94,29 @@ class ProviderDashboardPage extends ConsumerWidget {
                       children: [
                         Expanded(child: _StatCard(label: 'Đánh giá', value: '${profile?.rating ?? 0}', icon: LucideIcons.star)),
                         const SizedBox(width: 12),
-                        Expanded(child: _StatCard(label: 'Đơn tháng', value: '—', icon: LucideIcons.package)),
+                        Expanded(
+                          child: ordersAsync.when(
+                            data: (orders) => _StatCard(
+                              label: 'Đơn tháng',
+                              value: '${_ordersThisMonth(orders)}',
+                              icon: LucideIcons.package,
+                            ),
+                            loading: () => const _StatCard(label: 'Đơn tháng', value: '…', icon: LucideIcons.package),
+                            error: (_, __) => const _StatCard(label: 'Đơn tháng', value: '—', icon: LucideIcons.package),
+                          ),
+                        ),
                         const SizedBox(width: 12),
-                        Expanded(child: _StatCard(label: 'Thu nhập', value: '—', icon: LucideIcons.wallet)),
+                        Expanded(
+                          child: ordersAsync.when(
+                            data: (orders) => _StatCard(
+                              label: 'Thu nhập',
+                              value: _formatEarnings(_completedEarnings(orders)),
+                              icon: LucideIcons.wallet,
+                            ),
+                            loading: () => const _StatCard(label: 'Thu nhập', value: '…', icon: LucideIcons.wallet),
+                            error: (_, __) => const _StatCard(label: 'Thu nhập', value: '—', icon: LucideIcons.wallet),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -169,6 +195,31 @@ class _StatCard extends StatelessWidget {
       ),
     );
   }
+}
+
+int _ordersThisMonth(List<ProviderOrder> orders) {
+  final now = DateTime.now();
+  return orders.where((o) {
+    final d = o.createdAt;
+    return d != null && d.year == now.year && d.month == now.month;
+  }).length;
+}
+
+int _completedEarnings(List<ProviderOrder> orders) {
+  return orders
+      .where((o) => o.status == 'completed')
+      .fold<int>(0, (sum, o) => sum + o.totalPrice);
+}
+
+String _formatEarnings(int amount) {
+  if (amount <= 0) return '0đ';
+  final s = amount.toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
+    buf.write(s[i]);
+  }
+  return '${buf}đ';
 }
 
 class _QuickAction extends StatelessWidget {

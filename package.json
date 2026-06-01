@@ -1,0 +1,17 @@
+{
+  "name": "unimove-monorepo",
+  "private": true,
+  "description": "Chạy backend + Flutter apps",
+  "scripts": {
+    "dev": "npm run dev:customer",
+    "dev:customer": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-customer.ps1",
+    "dev:provider": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-provider.ps1",
+    "dev:customer:all": "concurrently --handle-input --default-input-target CUSTOMER -n BE,CUSTOMER -c blue,green \"npm run dev --prefix backend\" \"npm run start --prefix mobile/customer_app\"",
+    "dev:be": "npm run dev --prefix backend",
+    "dev:customer:app": "npm run start --prefix mobile/customer_app",
+    "dev:provider:app": "npm run start --prefix mobile/provider_app"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

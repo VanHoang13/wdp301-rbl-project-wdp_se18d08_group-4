@@ -1,14 +1,11 @@
 # UniMove Provider App
 
-App dành cho nhà cung cấp dịch vụ vận chuyển.
+## Auth
 
-## Setup
+Đăng ký / đăng nhập qua **Node API** (`/api/auth/register`, `/api/auth/login`) với `role: provider`.
 
-```bash
-cd mobile/provider_app
-flutter create . --org com.unimove --project-name unimove_provider
-flutter pub get
-flutter run
-```
+Chạy backend trước: `cd backend && npm run dev`.
 
-Chạy `backend/supabase/manual_fix_step5_auth_trigger.sql` trước khi đăng ký.
+Android emulator: API base `http://10.0.2.2:3000` (xem `lib/core/config/api_config.dart`).
+
+Migration DB: `docs/supabase/20240113000000_node_auth.sql` trên Supabase SQL Editor.

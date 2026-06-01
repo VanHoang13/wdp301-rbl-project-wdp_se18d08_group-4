@@ -1,31 +1,57 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/services/supabase_providers.dart';
+import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/services/auth_session_notifier.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(ref.watch(supabaseClientProvider));
+  return AuthRepository(ref.watch(apiClientProvider));
 });
 
 class AuthRepository {
-  AuthRepository(this._client);
+  AuthRepository(this._api);
 
-  final SupabaseClient _client;
+  final ApiClient _api;
+  final _storage = AuthTokenStorage.instance;
 
-  Session? get currentSession => _client.auth.currentSession;
+  bool get isSignedIn => _storage.cachedToken?.isNotEmpty == true;
 
   Future<void> signIn({required String email, required String password}) async {
-    await _client.auth.signInWithPassword(email: email.trim(), password: password);
+    final envelope = await _api.guard(
+      () => _api.post('/auth/login', body: {
+        'email': email.trim().toLowerCase(),
+        'password': password,
+      }),
+    );
 
-    final user = _client.auth.currentUser;
-    if (user == null) throw const AuthException('Đăng nhập thất bại');
+    final data = Map<String, dynamic>.from(envelope['data'] as Map);
+    final token = data['accessToken'] as String?;
+    final user = data['user'] as Map?;
+    if (token == null || user == null) {
+      throw const AuthException('Phản hồi auth không hợp lệ.');
+    }
 
-    final profile = await _client.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (profile == null || profile['role'] != 'admin') {
-      await _client.auth.signOut();
+    if (user['role'] != 'admin') {
+      await signOut();
       throw const AuthException('Chỉ tài khoản admin mới được truy cập.');
     }
+
+    await _storage.save(accessToken: token, user: Map<String, dynamic>.from(user));
+    _api.setAccessToken(token);
+    authSessionNotifier.notifyAuthChanged();
   }
 
-  Future<void> signOut() => _client.auth.signOut();
+  Future<void> signOut() async {
+    await _storage.clear();
+    _api.setAccessToken(null);
+    authSessionNotifier.notifyAuthChanged();
+  }
+}
+
+class AuthException implements Exception {
+  const AuthException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
 }

@@ -72,6 +72,24 @@ class CustomerAuthRepository {
     _api.setAccessToken(null);
   }
 
+  Future<CustomerProfile> updateProfile({
+    String? fullName,
+    String? phone,
+    String? studentId,
+    String? university,
+  }) async {
+    final body = <String, dynamic>{};
+    if (fullName != null) body['full_name'] = fullName;
+    if (phone != null) body['phone'] = phone;
+    if (studentId != null) body['student_id'] = studentId;
+    if (university != null) body['university'] = university;
+    if (body.isEmpty) throw const AuthException('Không có thông tin cập nhật.');
+
+    final envelope = await _api.guard(() => _api.patch('/customers/me', body: body));
+    final data = Map<String, dynamic>.from(envelope['data'] as Map);
+    return CustomerProfile.fromJson(data);
+  }
+
   Future<CustomerProfile> fetchMe() async {
     if (await MockAuthSession.isSignedIn()) {
       return CustomerProfile(
@@ -82,9 +100,15 @@ class CustomerAuthRepository {
       );
     }
 
-    final envelope = await _api.guard(() => _api.get('/customers/me'));
-    final user = Map<String, dynamic>.from(envelope['data'] as Map);
-    return CustomerProfile.fromJson(user);
+    try {
+      final envelope = await _api.guard(() => _api.get('/customers/me'));
+      final user = Map<String, dynamic>.from(envelope['data'] as Map);
+      return CustomerProfile.fromJson(user);
+    } catch (_) {
+      final envelope = await _api.guard(() => _api.get('/auth/me'));
+      final user = Map<String, dynamic>.from(envelope['data'] as Map);
+      return CustomerProfile.fromJson(user);
+    }
   }
 
   Future<void> forgotPassword({required String email}) async {
