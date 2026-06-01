@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../../core/network/api_client.dart';
 import '../../data/auth_repository.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
@@ -41,6 +40,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           );
       if (mounted) context.go('/home');
     } on AuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } on ApiException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -82,7 +83,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   controller: _passwordController,
                   obscureText: true,
                   decoration: const InputDecoration(labelText: 'Mật khẩu', prefixIcon: Icon(Icons.lock)),
-                  validator: (v) => v == null || v.length < 6 ? 'Tối thiểu 6 ký tự' : null,
+                  validator: (v) => v == null || v.length < 8 ? 'Tối thiểu 8 ký tự' : null,
                 ),
                 const SizedBox(height: 24),
                 FilledButton(

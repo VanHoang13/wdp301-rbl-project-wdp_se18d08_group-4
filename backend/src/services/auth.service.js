@@ -5,30 +5,60 @@
  * DB: docs/supabase/20240113000000_node_auth.sql (chạy thủ công trên Supabase).
  */
 const crypto = require('crypto');
-const { httpError, normalizeEmail, buildAuthResponse } = require('./auth.helpers');
+const {
+  httpError,
+  normalizeEmail,
+  normalizePhone,
+  buildAuthResponse,
+  publicProfile,
+} = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
 const { supabaseAdmin } = require('./supabase.service');
 const env = require('../config/env');
 
-/** BE-001 — POST /api/auth/register */
+/**
+ * BE-001 — POST /api/auth/register
+ *
+ * Customer: email, password, full_name, phone (role mặc định customer)
+ * Provider: email, password, full_name, business_name, role=provider (phone tuỳ chọn)
+ */
 async function register(body) {
-  const { email, password, full_name, phone, role = 'customer' } = body || {};
+  const { email, password, full_name, phone, role: roleInput, business_name } = body || {};
+  const role = roleInput === 'provider' ? 'provider' : 'customer';
 
-  // Validate required fields
   if (!email || !password || !full_name) {
-    throw httpError(400, 'Email, password, and full_name are required', 'validation_error');
+    throw httpError(400, 'email, password, and full_name are required', 'validation_error');
   }
 
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail.includes('@')) {
+  if (!normalizedEmail.includes('@') || !normalizedEmail.includes('.')) {
     throw httpError(400, 'Invalid email format', 'validation_error');
   }
 
-  if (String(password).length < 6) {
-    throw httpError(400, 'Password must be at least 6 characters', 'validation_error');
+  if (String(password).length < 8) {
+    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
   }
 
-  // Check if email already exists
+  const trimmedName = String(full_name).trim();
+  if (!trimmedName) {
+    throw httpError(400, 'full_name is required', 'validation_error');
+  }
+
+  let normalizedPhone = null;
+  if (role === 'customer') {
+    if (!phone) {
+      throw httpError(400, 'phone is required for customer registration', 'validation_error');
+    }
+    normalizedPhone = normalizePhone(phone);
+  } else {
+    if (!business_name || !String(business_name).trim()) {
+      throw httpError(400, 'business_name is required for provider registration', 'validation_error');
+    }
+    if (phone) {
+      normalizedPhone = normalizePhone(phone);
+    }
+  }
+
   const { data: existing } = await supabaseAdmin
     .from('profiles')
     .select('id')
@@ -39,22 +69,20 @@ async function register(body) {
     throw httpError(409, 'Email already registered', 'email_exists');
   }
 
-  // Create profile
   const userId = crypto.randomUUID();
   const passwordHash = await hashPassword(password);
 
   try {
-    // Insert into profiles table
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert([
         {
           id: userId,
           email: normalizedEmail,
-          full_name,
-          phone: phone || null,
-          role: role || 'customer',
-          status: 'active',
+          full_name: trimmedName,
+          phone: normalizedPhone,
+          role,
+          status: role === 'provider' ? 'pending_verification' : 'active',
         },
       ])
       .select();
@@ -63,23 +91,33 @@ async function register(body) {
       throw httpError(500, `Profile creation failed: ${profileError.message}`, 'db_error');
     }
 
-    // Insert into user_credentials table
-    const { error: credError } = await supabaseAdmin
-      .from('user_credentials')
-      .insert([
-        {
-          user_id: userId,
-          password_hash: passwordHash,
-        },
-      ]);
+    const { error: credError } = await supabaseAdmin.from('user_credentials').insert([
+      { user_id: userId, password_hash: passwordHash },
+    ]);
 
     if (credError) {
       throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
     }
 
+    if (role === 'provider') {
+      const { error: ppError } = await supabaseAdmin.from('provider_profiles').insert([
+        {
+          id: userId,
+          business_name: String(business_name).trim(),
+          vehicle_type: 'small_truck',
+          base_price: 100000,
+          price_per_km: 10000,
+          price_per_floor: 15000,
+          is_verified: false,
+        },
+      ]);
+      if (ppError) {
+        throw httpError(500, `Provider profile creation failed: ${ppError.message}`, 'db_error');
+      }
+    }
+
     return buildAuthResponse(profile[0]);
   } catch (error) {
-    // Re-throw if it's already an httpError
     if (error.status) throw error;
     throw httpError(500, error.message, 'internal_error');
   }
@@ -157,7 +195,17 @@ async function getMe(userId) {
     throw httpError(404, 'User not found', 'user_not_found');
   }
 
-  return profiles[0];
+  const row = profiles[0];
+  if (row.role === 'provider') {
+    const { data: pp } = await supabaseAdmin
+      .from('provider_profiles')
+      .select('business_name, is_verified, rating')
+      .eq('id', userId)
+      .maybeSingle();
+    return publicProfile(row, pp || undefined);
+  }
+
+  return publicProfile(row);
 }
 
 /** BE-006 — POST /api/auth/change-password */
@@ -172,8 +220,8 @@ async function changePassword(userId, body) {
     throw httpError(400, 'Old password and new password are required', 'validation_error');
   }
 
-  if (String(new_password).length < 6) {
-    throw httpError(400, 'New password must be at least 6 characters', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'New password must be at least 8 characters', 'validation_error');
   }
 
   // Get current password hash
@@ -276,13 +324,12 @@ async function resetPassword(body) {
     throw httpError(400, 'Email, token, and new password are required', 'validation_error');
   }
 
-  if (String(new_password).length < 6) {
-    throw httpError(400, 'Password must be at least 6 characters', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
   }
 
   const normalizedEmail = normalizeEmail(email);
 
-  // Get user by email
   const { data: profiles, error: profileError } = await supabaseAdmin
     .from('profiles')
     .select('id')

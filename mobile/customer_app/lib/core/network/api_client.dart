@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../auth/auth_token_storage.dart';
 import '../config/api_config.dart';
 
 class ApiException implements Exception {
@@ -13,7 +14,7 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// HTTP client → Node.js API (`/api/*`). Team Flutter gắn Bearer token khi cần.
+/// HTTP client → Node.js API — Bearer JWT Node.
 class ApiClient {
   ApiClient._() {
     dio = Dio(
@@ -27,11 +28,27 @@ class ApiClient {
         },
       ),
     );
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final token = AuthTokenStorage.instance.cachedToken;
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   static final ApiClient instance = ApiClient._();
 
   late final Dio dio;
+
+  void setAccessToken(String? token) {
+    AuthTokenStorage.instance.setCachedToken(token);
+  }
 
   Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? body}) async {
     return _unwrap(await dio.post<dynamic>(path, data: body));
