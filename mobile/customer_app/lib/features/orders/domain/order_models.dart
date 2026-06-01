@@ -17,6 +17,7 @@ enum OrderStatus {
       'completed' => OrderStatus.completed,
       'cancelled' => OrderStatus.cancelled,
       'disputed' => OrderStatus.disputed,
+      'matched' => OrderStatus.accepted,
       _ => OrderStatus.pending,
     };
   }
