@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node test-connection.js",
-    "test:connection": "node test-connection.js"
+    "test:connection": "node test-connection.js",
+    "create-admin": "node create-admin.js"
   },
   "keywords": [
     "express",
