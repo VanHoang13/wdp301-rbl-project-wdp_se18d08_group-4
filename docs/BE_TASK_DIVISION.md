@@ -6,6 +6,7 @@
 
 | Cột | Nội dung |
 |-----|----------|
+| **Use Case ID** | Mã use case (ví dụ `UC-11`). Nếu 1 task phục vụ nhiều UC thì ghi `UC-11;UC-12` |
 | **Task** | Chỉ **tên việc** cần làm (ngắn) |
 | **Note** | Mô tả chi tiết: giao diện Flutter, API, bảng/cột DB, tiêu chí hoàn thành |
 | **Task Type** | Nhóm module |
@@ -19,6 +20,12 @@ Trong **Note**, các mục dùng prefix:
 - **【Backend】** — file JS hiện có cần sửa
 - **【Hoàn thành khi】** — acceptance criteria
 - **【Phụ thuộc】** — task/migration khác
+
+### Lưu ý về stack (bám DB hiện có)
+
+- **Database chính**: Supabase PostgreSQL (migrations trong `backend/supabase/migrations/`)
+- **Chat**: lưu trên PostgreSQL bảng `conversations`, `messages` (không dùng MongoDB)
+- **Cache/Queue**: hiện **chưa** dùng Redis ở scope MVP (nếu thêm sau sẽ tạo task mới)
 
 ---
 
@@ -79,3 +86,5 @@ Trong **Note**, các mục dùng prefix:
 | 10 | `service_packages`, `platform_settings`, `order_provider_responses`, `referrals` |
 
 Chi tiết từng task nằm trong cột **Note** của CSV.
+
+**Mô hình marketplace (trung gian):** [MARKETPLACE_MODEL.md](./MARKETPLACE_MODEL.md)

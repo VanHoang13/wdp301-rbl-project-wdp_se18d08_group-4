@@ -15,4 +15,6 @@ module.exports = {
   supabaseUrl: requireEnv('SUPABASE_URL'),
   supabaseAnonKey: requireEnv('SUPABASE_ANON_KEY'),
   supabaseServiceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  jwtSecret: process.env.JWT_SECRET || requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 };

@@ -4,6 +4,10 @@
 
 ```
 docs/
+├── MARKETPLACE_MODEL.md            # Mô hình trung gian (Customer ↔ Provider)
+├── AUTH_PROFILE_WHERE_TO_CODE.md   # Code auth/profile ở đâu
+├── BE_TASK_DIVISION.csv              # Chia việc backend + Use Case ID
+├── BE_TASK_DIVISION.md               # Hướng dẫn đọc CSV
 ├── database-schema.md              # Tổng quan & chi tiết database (CHÍNH)
 ├── database-enums-and-functions.md # ENUM, Views, Functions chi tiết
 ├── flutter-setup.md                # Hướng dẫn chạy Flutter apps

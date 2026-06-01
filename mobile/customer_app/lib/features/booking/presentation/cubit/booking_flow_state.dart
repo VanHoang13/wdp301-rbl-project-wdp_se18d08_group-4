@@ -26,6 +26,8 @@ class BookingFlowState {
     this.linkedOrderId,
     this.linkedOrderNumber,
     this.linkedProviderName,
+    this.quickCompareEntry = false,
+    this.extraComboLaborCount = 0,
   });
 
   final BookingServiceType serviceType;
@@ -52,6 +54,12 @@ class BookingFlowState {
   final String? linkedOrderId;
   final String? linkedOrderNumber;
   final String? linkedProviderName;
+
+  /// Vào từ "So sánh báo giá" trên Home — đã có địa điểm mẫu, bỏ qua bước chọn điểm.
+  final bool quickCompareEntry;
+
+  /// Số người khuân vác thêm (ngoài số đã có trong combo).
+  final int extraComboLaborCount;
 
   bool get isLaborOnly => serviceType == BookingServiceType.laborOnly;
 
@@ -100,7 +108,17 @@ class BookingFlowState {
 
   int get movePackagePrice => isLaborService ? 0 : (selectedPackage?.price ?? 450000);
 
-  int get subtotal => movePackagePrice + laborQuotedPrice;
+  int get comboExtraLaborFee {
+    if (isLaborService) return 0;
+    final pkg = selectedPackage;
+    if (pkg == null) return 0;
+    return extraComboLaborCount * pkg.extraLaborComboPrice;
+  }
+
+  int get subtotal {
+    if (isLaborService) return laborQuotedPrice;
+    return movePackagePrice + comboExtraLaborFee;
+  }
 
   int get discount => discountApplied ? 35000 : 0;
 
@@ -133,6 +151,8 @@ class BookingFlowState {
     String? linkedOrderId,
     String? linkedOrderNumber,
     String? linkedProviderName,
+    bool? quickCompareEntry,
+    int? extraComboLaborCount,
     bool clearLinkedOrder = false,
   }) {
     return BookingFlowState(
@@ -162,6 +182,8 @@ class BookingFlowState {
           clearLinkedOrder ? null : (linkedOrderNumber ?? this.linkedOrderNumber),
       linkedProviderName:
           clearLinkedOrder ? null : (linkedProviderName ?? this.linkedProviderName),
+      quickCompareEntry: quickCompareEntry ?? this.quickCompareEntry,
+      extraComboLaborCount: extraComboLaborCount ?? this.extraComboLaborCount,
     );
   }
 }

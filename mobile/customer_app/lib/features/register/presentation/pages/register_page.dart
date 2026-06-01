@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/dark_glass_background.dart';
@@ -99,8 +97,7 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      final auth = CustomerAuthRepository(Supabase.instance.client);
-      await auth.signUp(
+      await CustomerAuthRepository().signUp(
         email: email,
         password: password,
         fullName: name,
@@ -111,18 +108,16 @@ class _RegisterPageState extends State<RegisterPage> {
       ShadToaster.of(shadContext).show(
         const ShadToast(
           title: Text('Đăng ký thành công!'),
-          description: Text(
-            'Kiểm tra email xác nhận (nếu bật) rồi đăng nhập.',
-          ),
+          description: Text('Đã đăng nhập — không cần xác minh email.'),
         ),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
       if (!mounted) return;
-      context.go('/login');
+      context.go('/home');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Đăng ký thất bại. Kiểm tra mạng hoặc Supabase trigger.');
+    } catch (e) {
+      setState(() => _error = e is AuthException ? e.message : 'Đăng ký thất bại. Thử lại sau.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -64,7 +64,12 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
 
   void selectPlace(RecentPlace place) => emit(state.copyWith(destination: place.title));
 
-  void selectTier(ServiceTier tier) => emit(state.copyWith(selectedTier: tier));
+  void selectTier(ServiceTier tier) =>
+      emit(state.copyWith(selectedTier: tier, extraComboLaborCount: 0));
+
+  void setExtraComboLaborCount(int count) {
+    emit(state.copyWith(extraComboLaborCount: count.clamp(0, 2)));
+  }
 
   void selectPartner(String id) => emit(state.copyWith(selectedPartnerId: id));
 
@@ -115,6 +120,29 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
 
   void resetToFullMove() {
     emit(const BookingFlowState());
+  }
+
+  /// Đặt chuyến mới — bắt đầu từ chọn địa điểm.
+  void startFullMoveBooking() {
+    emit(const BookingFlowState());
+  }
+
+  /// So sánh báo giá nhanh — đã có địa điểm mẫu, vào thẳng quy mô chuyến.
+  void startCompareQuotesFlow() {
+    emit(
+      const BookingFlowState(
+        pickup: 'Ký túc xá Khu B, ĐHQG',
+        destination: '152 Nguyễn Văn Cừ, Quận 5',
+        selectedTier: ServiceTier.standard,
+        quickCompareEntry: true,
+      ),
+    );
+  }
+
+  void clearQuickCompareEntry() {
+    if (state.quickCompareEntry) {
+      emit(state.copyWith(quickCompareEntry: false));
+    }
   }
 
   void setHelperCount(int count) {

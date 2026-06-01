@@ -1,0 +1,24 @@
+/**
+ * SCAFFOLD — Implement trong customers.service.js (BE-008 → BE-010).
+ */
+const customersService = require('../services/customers.service');
+
+async function getMe(req, res, next) {
+  try {
+    const data = await customersService.getProfile(req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function patchMe(req, res, next) {
+  try {
+    const data = await customersService.updateProfile(req.user.id, req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { getMe, patchMe };

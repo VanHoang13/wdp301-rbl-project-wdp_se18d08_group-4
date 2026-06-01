@@ -56,6 +56,9 @@ Task ID tham chiếu: [BE_TASK_DIVISION_AUTH.md](./BE_TASK_DIVISION_AUTH.md), ch
 
 ### 3.1 Backend Node (Leader / BE-001–BE-010)
 
+**Leader chỉ push scaffold** (routes + controller + service stub `501`). Team implement logic trong `auth.service.js` / `customers.service.js`.  
+Chi tiết phạm vi: [AUTH_SCAFFOLD_LEADER.md](./AUTH_SCAFFOLD_LEADER.md).
+
 Tạo module mới, **không** nhét auth vào `orders.controller.js`:
 
 ```
@@ -68,16 +71,20 @@ backend/src/
 │   ├── auth.controller.js
 │   └── customers.controller.js
 └── services/
-    ├── auth.service.js          ← gọi Supabase Auth Admin / signIn
-    └── customers.service.js     ← CRUD profiles + Storage avatar
+    ├── auth.service.js          ← Node JWT + bcrypt (user_credentials) — BE-001→007
+    └── customers.service.js     ← profiles qua supabaseAdmin — BE-008→010
+├── utils/
+    ├── jwt.js                   ← signAccessToken / verifyAccessToken
+    └── password.js              ← bcrypt + OTP reset token
 ```
 
 **Đã có — chỉ dùng, không copy logic auth sang file khác:**
 
 | File | Vai trò |
 |------|---------|
-| `middleware/auth.middleware.js` | `requireAuth`, `requireRole('customer')` |
-| `services/supabase.service.js` | `getUserFromToken`, `supabaseAdmin` |
+| `middleware/auth.middleware.js` | `requireAuth` (Supabase JWT), `requireNodeAuth` (Node JWT), `requireRole` |
+| `services/supabase.service.js` | `getUserFromToken`, `supabaseAdmin`, `createUserClient` |
+| `supabase/migrations/20240113000000_node_auth.sql` | **Chạy thủ công** trên Supabase SQL Editor (xem `docs/AUTH_NODE_MODULE.md`) |
 | `routes/index.js` | Thêm `router.use('/auth', authRoutes)` và `router.use('/customers', customersRoutes)` |
 
 **Cập nhật tài liệu API:** `docs/nodejs-api.md` (BE-002, BE-016).
@@ -94,7 +101,8 @@ backend/src/
 | Migration mới (bucket `avatars`, policy Storage) | `backend/supabase/migrations/20240112xxxxxx_avatars.sql` — **file mới**, không sửa migration cũ đã chạy |
 | Bật email confirm, Google OAuth | **Supabase Dashboard** → Authentication (không commit secret vào git) |
 
-**BE-002:** Không thêm cột `password` vào `profiles`. Hash nằm `auth.users.encrypted_password`.
+**BE-002 (Node JWT):** Hash mật khẩu trong `user_credentials.password_hash` (bcrypt), **không** cột `password` trên `profiles`.  
+Nếu team vẫn dùng Supabase Auth cho Flutter: hash nằm `auth.users` — khi chuyển hết sang Node thì bỏ phụ thuộc `auth.users`.
 
 ---
 

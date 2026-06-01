@@ -34,7 +34,7 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
     return BlocBuilder<BookingFlowCubit, BookingFlowState>(
       builder: (context, state) {
         return BookingScaffold(
-          title: 'Chọn đối tác',
+          title: 'Chọn nhà xe',
           trailing: IconButton(icon: const Icon(Icons.tune), onPressed: () {}),
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -56,7 +56,7 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                       SizedBox(width: 10.w),
                       Expanded(
                         child: Text(
-                          '42 đối tác · Sẵn sàng vận chuyển ngay bây giờ',
+                          'Marketplace · Nhiều nhà xe đã xác minh · Giá do đối tác báo',
                           style: TextStyle(
                             fontSize: 13.sp,
                             fontWeight: FontWeight.w600,

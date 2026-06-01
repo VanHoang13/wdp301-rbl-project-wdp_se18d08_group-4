@@ -1,16 +1,86 @@
 import 'package:dio/dio.dart';
 
-/// HTTP client dùng chung (sẵn sàng nối API backend).
-class ApiClient {
-  ApiClient({String? baseUrl})
-      : dio = Dio(
-          BaseOptions(
-            baseUrl: baseUrl ?? 'https://api.unimove.app',
-            connectTimeout: const Duration(seconds: 12),
-            receiveTimeout: const Duration(seconds: 12),
-            headers: {'Accept': 'application/json'},
-          ),
-        );
+import '../config/api_config.dart';
 
-  final Dio dio;
+class ApiException implements Exception {
+  ApiException(this.message, {this.statusCode, this.code});
+
+  final String message;
+  final int? statusCode;
+  final String? code;
+
+  @override
+  String toString() => message;
+}
+
+/// HTTP client → Node.js API (`/api/*`). Team Flutter gắn Bearer token khi cần.
+class ApiClient {
+  ApiClient._() {
+    dio = Dio(
+      BaseOptions(
+        baseUrl: '${ApiConfig.baseUrl}${ApiConfig.apiPrefix}',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+  }
+
+  static final ApiClient instance = ApiClient._();
+
+  late final Dio dio;
+
+  Future<Map<String, dynamic>> post(String path, {Map<String, dynamic>? body}) async {
+    return _unwrap(await dio.post<dynamic>(path, data: body));
+  }
+
+  Future<Map<String, dynamic>> get(String path) async {
+    return _unwrap(await dio.get<dynamic>(path));
+  }
+
+  Future<Map<String, dynamic>> patch(String path, {Map<String, dynamic>? body}) async {
+    return _unwrap(await dio.patch<dynamic>(path, data: body));
+  }
+
+  Map<String, dynamic> _unwrap(Response<dynamic> response) {
+    final raw = response.data;
+    if (raw is! Map) {
+      throw ApiException('Phản hồi API không hợp lệ', statusCode: response.statusCode);
+    }
+    final data = Map<String, dynamic>.from(raw);
+    if (data['success'] == false) {
+      throw ApiException(
+        data['message'] as String? ?? 'Yêu cầu thất bại',
+        statusCode: response.statusCode,
+        code: data['code'] as String?,
+      );
+    }
+    return data;
+  }
+
+  Never _rethrow(DioException e) {
+    final body = e.response?.data;
+    if (body is Map) {
+      final map = Map<String, dynamic>.from(body);
+      throw ApiException(
+        map['message'] as String? ?? e.message ?? 'Lỗi mạng',
+        statusCode: e.response?.statusCode,
+        code: map['code'] as String?,
+      );
+    }
+    throw ApiException(e.message ?? 'Không kết nối được API. Chạy backend: npm run dev');
+  }
+
+  Future<T> guard<T>(Future<T> Function() fn) async {
+    try {
+      return await fn();
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _rethrow(e);
+    }
+  }
 }

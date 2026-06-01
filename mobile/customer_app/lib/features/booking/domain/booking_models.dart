@@ -24,6 +24,10 @@ class ServicePackage {
     required this.price,
     required this.features,
     required this.popular,
+    required this.laborIncluded,
+    required this.extraLaborComboPrice,
+    required this.extraLaborRetailPrice,
+    this.subtitle = '',
   });
 
   final ServiceTier tier;
@@ -32,6 +36,19 @@ class ServicePackage {
   final int price;
   final List<PackageFeature> features;
   final bool popular;
+
+  /// Số người khuân vác đã gộp trong combo.
+  final int laborIncluded;
+
+  /// Giá thêm 1 người khi đã chọn combo (ưu đãi).
+  final int extraLaborComboPrice;
+
+  /// Giá tham chiếu nếu thuê khuân vác riêng (để so sánh).
+  final int extraLaborRetailPrice;
+
+  final String subtitle;
+
+  int get laborSavingsPerPerson => extraLaborRetailPrice - extraLaborComboPrice;
 }
 
 class PackageFeature {

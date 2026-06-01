@@ -28,42 +28,58 @@ class BookingMockRepository {
     ];
   }
 
+  /// Combo chuyển trọ: xe + khuân vác gộp; thêm người rẻ hơn thuê riêng.
   Future<List<ServicePackage>> fetchPackages() async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     return const [
       ServicePackage(
         tier: ServiceTier.economy,
-        label: 'Economy',
+        label: 'Combo nhẹ',
+        subtitle: 'Ít đồ · 1 người khuân vác',
         badge: 'TIẾT KIỆM',
         price: 199000,
         popular: false,
+        laborIncluded: 1,
+        extraLaborComboPrice: 65000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 500kg', included: true),
-          PackageFeature(text: '1 nhân viên bốc xếp', included: true),
+          PackageFeature(text: 'Vali, bàn, vài thùng — chuyến ngắn', included: true),
+          PackageFeature(text: 'Xe tải ~500kg (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '1 người khuân vác trong combo', included: true),
           PackageFeature(text: 'Bảo hiểm hàng hóa', included: false),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.standard,
-        label: 'Standard',
-        badge: 'ĐỀ XUẤT',
+        label: 'Combo phòng trọ',
+        subtitle: 'Đồ vừa · 2 người khuân vác',
+        badge: 'PHỔ BIẾN',
         price: 450000,
         popular: true,
+        laborIncluded: 2,
+        extraLaborComboPrice: 75000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 1 tấn', included: true),
-          PackageFeature(text: '2 nhân viên bốc xếp', included: true),
-          PackageFeature(text: 'Bảo hiểm hàng hóa', included: true),
+          PackageFeature(text: 'Giường, tủ, bếp — đa số sinh viên', included: true),
+          PackageFeature(text: 'Xe tải ~1 tấn (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '2 người khuân vác trong combo', included: true),
+          PackageFeature(text: 'Bảo hiểm cơ bản', included: true),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.premium,
-        label: 'Premium',
-        badge: 'TRỌN GÓI',
+        label: 'Combo trọn gói',
+        subtitle: 'Nhiều đồ · 3 người + bọc đồ',
+        badge: 'TRỌN CHUYẾN',
         price: 890000,
         popular: false,
+        laborIncluded: 3,
+        extraLaborComboPrice: 70000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 1.5 tấn', included: true),
-          PackageFeature(text: '3 nhân viên + đóng gói', included: true),
+          PackageFeature(text: 'Nhiều đồ lớn, cần đóng gói', included: true),
+          PackageFeature(text: 'Xe tải ~1.5 tấn (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '3 người khuân vác + hỗ trợ bọc đồ', included: true),
           PackageFeature(text: 'Bảo hiểm toàn diện', included: true),
         ],
       ),
