@@ -24,6 +24,10 @@ class ServicePackage {
     required this.price,
     required this.features,
     required this.popular,
+    required this.laborIncluded,
+    required this.extraLaborComboPrice,
+    required this.extraLaborRetailPrice,
+    this.subtitle = '',
   });
 
   final ServiceTier tier;
@@ -32,6 +36,19 @@ class ServicePackage {
   final int price;
   final List<PackageFeature> features;
   final bool popular;
+
+  /// Số người khuân vác đã gộp trong combo.
+  final int laborIncluded;
+
+  /// Giá thêm 1 người khi đã chọn combo (ưu đãi).
+  final int extraLaborComboPrice;
+
+  /// Giá tham chiếu nếu thuê khuân vác riêng (để so sánh).
+  final int extraLaborRetailPrice;
+
+  final String subtitle;
+
+  int get laborSavingsPerPerson => extraLaborRetailPrice - extraLaborComboPrice;
 }
 
 class PackageFeature {
@@ -111,4 +128,27 @@ class LaborServiceInfo {
   final String description;
   final List<String> benefits;
   final int minPrice;
+}
+
+/// Gói bảo hiểm đồ đạc — khớp `orders.has_insurance`, `orders.insurance_value`.
+class CargoInsurancePlan {
+  const CargoInsurancePlan({
+    required this.id,
+    required this.name,
+    required this.tagline,
+    required this.coverageAmount,
+    required this.price,
+    required this.benefits,
+    this.recommended = false,
+    this.isNoCoverage = false,
+  });
+
+  final String id;
+  final String name;
+  final String tagline;
+  final int coverageAmount;
+  final int price;
+  final List<String> benefits;
+  final bool recommended;
+  final bool isNoCoverage;
 }

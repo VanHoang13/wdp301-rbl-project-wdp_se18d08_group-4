@@ -196,8 +196,8 @@ class _LaborServicePageState extends State<LaborServicePage> {
         _infoTile(
           c,
           icon: Icons.verified_user_outlined,
-          title: 'Đối tác xác minh',
-          subtitle: 'Thông tin số người hỗ trợ được ghi rõ trên đơn hàng',
+          title: 'Đội khuân vác đối tác',
+          subtitle: 'Đã xác minh · Bạn chọn báo giá trên marketplace',
         ),
       ],
     );

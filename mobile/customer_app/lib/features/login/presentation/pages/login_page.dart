@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../../../core/config/dev_config.dart';
 import '../../../../core/constants/app_images.dart';
 import '../../../../core/mock/mock_auth_session.dart';
@@ -69,14 +67,13 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final auth = CustomerAuthRepository(Supabase.instance.client);
-      await auth.signIn(email: email, password: password);
+      await CustomerAuthRepository().signIn(email: email, password: password);
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/home');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Đăng nhập thất bại. Kiểm tra mạng và thử lại.');
+    } catch (e) {
+      setState(() => _error = e is AuthException ? e.message : 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -22,6 +22,15 @@ class _PaymentPageState extends State<PaymentPage> {
   final _discountCtrl = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    final cubit = context.read<BookingFlowCubit>();
+    if (!cubit.state.isLaborService) {
+      cubit.loadInsurancePlans();
+    }
+  }
+
+  @override
   void dispose() {
     _discountCtrl.dispose();
     super.dispose();
@@ -35,6 +44,7 @@ class _PaymentPageState extends State<PaymentPage> {
       builder: (context, state) {
         final partner = state.selectedPartner;
         final labor = state.selectedLaborProvider;
+        final deposit = _depositAmount(state.total);
 
         return BookingScaffold(
           title: 'Thanh toán',
@@ -82,8 +92,26 @@ class _PaymentPageState extends State<PaymentPage> {
                       spacing: 8.w,
                       runSpacing: 8.h,
                       children: [
-                        if (!state.isLaborService)
-                          _chip('Gói ${state.selectedPackage?.label ?? 'Standard'}', Icons.inventory_2_outlined, c),
+                        if (!state.isLaborService) ...[
+                          _chip(
+                            'Combo: ${state.selectedPackage?.label ?? 'Chưa chọn'}',
+                            Icons.inventory_2_outlined,
+                            c,
+                          ),
+                          if (state.extraComboLaborCount > 0)
+                            _chip(
+                              '+${state.extraComboLaborCount} người khuân vác',
+                              Icons.groups_outlined,
+                              c,
+                            ),
+                          _chip(
+                            state.hasInsuranceCoverage
+                                ? 'BH: ${state.selectedInsurancePlan?.name ?? ''}'
+                                : 'Không bảo hiểm đồ',
+                            Icons.shield_outlined,
+                            c,
+                          ),
+                        ],
                         if (state.isLaborService)
                           _chip(
                             '${state.helperCount} người · ${state.laborHours}h',
@@ -92,8 +120,10 @@ class _PaymentPageState extends State<PaymentPage> {
                           ),
                         if (state.isLaborService && labor != null)
                           _chip(labor.name, Icons.handyman_outlined, c)
+                        else if (!state.isLaborService && partner != null)
+                          _chip('Nhà xe: ${partner.name}', Icons.local_shipping_outlined, c)
                         else if (!state.isLaborService)
-                          _chip(partner?.name ?? 'Đối tác UniMove', Icons.local_shipping_outlined, c),
+                          _chip('Chưa chọn nhà xe', Icons.local_shipping_outlined, c),
                         if (state.isLaborAddon &&
                             (state.linkedProviderName != null || partner != null))
                           _chip(
@@ -106,6 +136,16 @@ class _PaymentPageState extends State<PaymentPage> {
                   ],
                 ),
               ),
+              if (!state.isLaborService && partner != null) ...[
+                SizedBox(height: 12.h),
+                _marketplaceNote(c, partnerName: partner.name),
+              ],
+              if (!state.isLaborService) ...[
+                SizedBox(height: 12.h),
+                _laborUpsellCard(context, c),
+              ],
+              SizedBox(height: 16.h),
+              _escrowTrustCard(c, deposit: deposit),
               SizedBox(height: 16.h),
               Text(
                 'Phương thức thanh toán',
@@ -170,8 +210,41 @@ class _PaymentPageState extends State<PaymentPage> {
                 title: 'Chi tiết thanh toán',
                 child: Column(
                   children: [
-                    if (!state.isLaborService)
-                      _priceRow('Gói chuyển trọ', _formatPrice(state.movePackagePrice), c),
+                    if (!state.isLaborService) ...[
+                      _priceRow(
+                        'Combo ${state.selectedPackage?.label ?? 'chuyển trọ'}',
+                        _formatPrice(state.movePackagePrice),
+                        c,
+                      ),
+                      if (state.extraComboLaborCount > 0)
+                        _priceRow(
+                          '+${state.extraComboLaborCount} người khuân vác (giá combo)',
+                          _formatPrice(state.comboExtraLaborFee),
+                          c,
+                        ),
+                      _priceRow(
+                        state.hasInsuranceCoverage
+                            ? 'Bảo hiểm đồ đạc (${state.selectedInsurancePlan?.name})'
+                            : 'Bảo hiểm đồ đạc',
+                        state.hasInsuranceCoverage
+                            ? _formatPrice(state.insuranceFee)
+                            : 'Không mua',
+                        c,
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => context.push('/booking/insurance'),
+                          icon: Icon(Icons.edit_outlined, size: 16.sp, color: c.primary),
+                          label: Text(
+                            'Đổi gói bảo hiểm',
+                            style: TextStyle(fontSize: 12.sp, color: c.primary),
+                          ),
+                        ),
+                      ),
+                      if (partner != null)
+                        _priceRow('Nhà xe đối tác', partner.name, c),
+                    ],
                     if (state.isLaborService) ...[
                       _priceRow(
                         labor != null
@@ -191,7 +264,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Tổng thanh toán',
+                          'Tổng chuyến',
                           style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: c.onSurface),
                         ),
                         Text(
@@ -200,23 +273,24 @@ class _PaymentPageState extends State<PaymentPage> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 12.h),
-                    Container(
-                      padding: EdgeInsets.all(10.w),
-                      decoration: BoxDecoration(
-                        color: c.chipBg,
-                        borderRadius: BorderRadius.circular(10.r),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.shield_outlined, color: c.primary, size: 18.sp),
-                          SizedBox(width: 8.w),
-                          Text(
-                            'BẢO MẬT CHUẨN PCI-DSS',
-                            style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w700, color: c.onSurface),
-                          ),
-                        ],
-                      ),
+                    SizedBox(height: 8.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Đặt cọc hôm nay (30%)',
+                          style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600, color: c.onSurface),
+                        ),
+                        Text(
+                          _formatPrice(deposit),
+                          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800, color: c.success),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Phần còn lại thanh toán khi bạn xác nhận hoàn thành chuyến.',
+                      style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
                     ),
                   ],
                 ),
@@ -228,8 +302,10 @@ class _PaymentPageState extends State<PaymentPage> {
               padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 16.h),
               child: SmoothCtaButton(
                 label: state.isLaborService
-                    ? (state.isLaborAddon ? 'Xác nhận thêm khuân vác' : 'Xác nhận đặt khuân vác')
-                    : 'Xác nhận đặt xe',
+                    ? (state.isLaborAddon
+                        ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
+                        : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
+                    : 'Đặt cọc · ${_formatPrice(deposit)}',
                 onPressed: () {
                   final helpers = state.helperCount;
                   final team = labor?.name ?? 'đối tác';
@@ -240,7 +316,7 @@ class _PaymentPageState extends State<PaymentPage> {
                             ? 'Đã thêm $helpers người ($team) vào đơn #${state.linkedOrderNumber}'
                             : state.isLaborOnly
                                 ? 'Đã đặt $helpers người ($team) — UniMove ghi nhận hỗ trợ bốc xếp'
-                                : 'Đặt xe thành công (mock)!',
+                                : 'Đặt cọc thành công — UniMove giữ tiền hộ (mock)!',
                       ),
                     ),
                   );
@@ -252,6 +328,126 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
         );
       },
+    );
+  }
+
+  int _depositAmount(int total) => (total * 0.3).round();
+
+  Widget _marketplaceNote(UniMoveColors c, {required String partnerName}) {
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: c.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: c.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.storefront_outlined, color: c.primary, size: 20.sp),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              'Bạn thanh toán qua UniMove. Nhà xe $partnerName thực hiện chuyến — UniMove không trực tiếp vận chuyển.',
+              style: TextStyle(fontSize: 12.sp, height: 1.4, color: c.onSurface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _laborUpsellCard(BuildContext context, UniMoveColors c) {
+    return Material(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(14.r),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14.r),
+        onTap: () => context.push('/booking/labor'),
+        child: Container(
+          padding: EdgeInsets.all(14.w),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(color: c.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40.w,
+                height: 40.w,
+                decoration: BoxDecoration(
+                  color: c.accentGreen.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.groups_outlined, color: c.success, size: 22.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Thêm báo giá khuân vác?',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp, color: c.onSurface),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      'So sánh đội đối tác · gắn vào chuyến hoặc đặt riêng',
+                      style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: c.onSurfaceMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _escrowTrustCard(UniMoveColors c, {required int deposit}) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: c.chipBg,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.account_balance_wallet_outlined, color: c.primary, size: 22.sp),
+              SizedBox(width: 8.w),
+              Text(
+                'Cam kết UniMove (trung gian)',
+                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w800, color: c.onSurface),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          _trustLine(Icons.lock_outline, 'Cọc ${_formatPrice(deposit)} giữ an toàn — chuyển cho nhà xe khi bạn xác nhận xong', c),
+          SizedBox(height: 6.h),
+          _trustLine(Icons.replay_outlined, 'Hủy trước khi nhà xe nhận: hoàn 100% cọc', c),
+          SizedBox(height: 6.h),
+          _trustLine(Icons.info_outline, 'Hủy sau khi nhà xe nhận: hoàn 50% cọc (theo chính sách)', c),
+        ],
+      ),
+    );
+  }
+
+  Widget _trustLine(IconData icon, String text, UniMoveColors c) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16.sp, color: c.primary),
+        SizedBox(width: 8.w),
+        Expanded(
+          child: Text(text, style: TextStyle(fontSize: 12.sp, height: 1.35, color: c.onSurfaceMuted)),
+        ),
+      ],
     );
   }
 

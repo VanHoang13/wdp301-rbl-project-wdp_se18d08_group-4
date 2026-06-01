@@ -9,9 +9,9 @@ class LaborRepository {
           'UniMove là nền tảng trung gian — bạn nhận nhiều báo giá từ các đội khuân vác & có thể kết hợp với nhà xe đã chọn.',
       benefits: [
         'Đặt riêng hoặc thêm vào đơn chuyển trọ đang có',
-        'So sánh giá nhiều đối tác trên app',
+        'So sánh báo giá nhiều đội trên marketplace',
         'Minh bạch số người · giờ · phụ phí tầng',
-        'Thanh toán qua PayOS / MoMo an toàn',
+        'Cọc qua UniMove — giữ an toàn đến khi hoàn thành',
       ],
       minPrice: LaborPricing.perHelperPerHour,
     );

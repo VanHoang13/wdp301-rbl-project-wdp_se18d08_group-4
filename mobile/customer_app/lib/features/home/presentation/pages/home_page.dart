@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../../../core/constants/app_images.dart';
 import '../../../../core/mock/mock_orders_data.dart';
+import '../../../auth/data/customer_auth_repository.dart';
+import '../../../booking/presentation/cubit/booking_flow_cubit.dart';
 import '../../../chat/domain/active_chat_context.dart';
 import '../../../../core/mock/mock_auth_session.dart';
 import '../../../../core/mock/mock_customer_data.dart';
@@ -36,16 +37,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
-      final row = await Supabase.instance.client
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .maybeSingle();
-      final name = row?['full_name'] as String?;
-      if (name != null && name.trim().isNotEmpty && mounted) {
-        setState(() => _userName = name.trim().split(' ').last);
+      final profile = await CustomerAuthRepository().fetchMe();
+      if (profile.fullName.trim().isNotEmpty && mounted) {
+        setState(() => _userName = profile.fullName.trim().split(' ').last);
       }
     } catch (_) {}
   }
@@ -157,7 +151,7 @@ class _HomePageState extends State<HomePage> {
               FadeSlideIn(
                 delay: const Duration(milliseconds: 140),
                 child: Text(
-                  'Sẵn sàng chuyển đến nơi ở mới chưa?',
+                  'So sánh báo giá nhà xe · Đặt cọc an toàn qua UniMove',
                   style: TextStyle(fontSize: 16, color: c.onSurfaceMuted),
                 ),
               ),
@@ -190,7 +184,13 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 12),
               FadeSlideIn(
                 delay: const Duration(milliseconds: 320),
-                child: _MainServiceCard(colors: c),
+                child: _MainServiceCard(
+                  colors: c,
+                  onTap: () {
+                    context.read<BookingFlowCubit>().startCompareQuotesFlow();
+                    context.push('/booking/packages');
+                  },
+                ),
               ),
               const SizedBox(height: 12),
               FadeSlideIn(
@@ -200,21 +200,24 @@ class _HomePageState extends State<HomePage> {
                     Expanded(
                       child: _SmallServiceCard(
                         colors: c,
-                        icon: Icons.local_shipping_outlined,
+                        icon: Icons.route_outlined,
                         useSecondaryIconBg: true,
-                        title: 'Xe tải chuyển đồ',
-                        subtitle: 'Đa dạng kích cỡ',
-                        onTap: () => context.push('/booking/location'),
+                        title: 'Đặt chuyến chuyển trọ',
+                        subtitle: 'Bước 1: Chọn điểm đón & đến',
+                        onTap: () {
+                          context.read<BookingFlowCubit>().startFullMoveBooking();
+                          context.push('/booking/location');
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: _SmallServiceCard(
                         colors: c,
-                        icon: Icons.person_pin_circle_outlined,
+                        icon: Icons.groups_outlined,
                         useSecondaryIconBg: false,
-                        title: 'Thuê người khuân vác',
-                        subtitle: 'Nhanh chóng, uy tín',
+                        title: 'Khuân vác đối tác',
+                        subtitle: 'Thuê đội · So sánh giờ',
                         onTap: () => context.push('/booking/labor'),
                       ),
                     ),
@@ -255,7 +258,10 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.push('/booking/location'),
+      onTap: () {
+        context.read<BookingFlowCubit>().startFullMoveBooking();
+        context.push('/booking/location');
+      },
       child: AbsorbPointer(
         child: ShadInput(
           placeholder: const Text('Bạn muốn chuyển đến đâu?'),
@@ -267,16 +273,17 @@ class _SearchBar extends StatelessWidget {
 }
 
 class _MainServiceCard extends StatelessWidget {
-  _MainServiceCard({required this.colors});
+  _MainServiceCard({required this.colors, required this.onTap});
 
   final UniMoveColors colors;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PressableScale(
-      onTap: () => context.push('/booking/location'),
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -307,7 +314,7 @@ class _MainServiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Ưu đãi sinh viên',
+                    'Marketplace · Đã xác minh',
                     style: TextStyle(
                       color: isDark ? colors.onPrimaryContainer : colors.primary,
                       fontSize: 12,
@@ -316,7 +323,7 @@ class _MainServiceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Chuyển trọ gói (Tiết kiệm)',
+                    'Combo chuyển trọ',
                     style: TextStyle(
                       color: isDark ? AppColors.onPrimary : colors.onSurface,
                       fontSize: 20,
@@ -326,7 +333,7 @@ class _MainServiceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Trọn gói từ A-Z với giá cực mềm',
+                    'Xe + khuân vác gộp · Thêm người giá ưu đãi',
                     style: TextStyle(
                       color: isDark ? colors.onPrimaryContainer : colors.onSurfaceMuted,
                       fontSize: 14,
@@ -427,80 +434,115 @@ class _FlashSaleBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: () {},
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: SizedBox(
-          height: 192,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.network(
-                AppImages.flashSaleBanner,
-                fit: BoxFit.cover,
-                cacheWidth: 800,
-                errorBuilder: (_, __, ___) => ColoredBox(color: colors.primaryContainer),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [colors.onSurface.withValues(alpha: 0.72), Colors.transparent],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        // Đủ cao cho badge + 2 dòng chữ + nút (tránh overflow ~3px trên màn hẹp).
+        final height = (width / 1.55).clamp(188.0, 260.0);
+
+        return PressableScale(
+          onTap: () {},
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: height,
+              width: width,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    AppImages.flashSaleBanner,
+                    fit: BoxFit.cover,
+                    cacheWidth: 800,
+                    errorBuilder: (_, __, ___) => ColoredBox(color: colors.primaryContainer),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: colors.primary,
-                          borderRadius: BorderRadius.circular(99),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [colors.onSurface.withValues(alpha: 0.78), Colors.transparent],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    left: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: const Text(
+                        'UNIMOVE',
+                        style: TextStyle(
+                          color: AppColors.onPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
                         ),
-                        child: const Text(
-                          'FLASH SALE',
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 14,
+                    right: 14,
+                    bottom: 14,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Nhà xe báo giá — bạn chọn',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: AppColors.onPrimary,
-                            fontSize: 11,
+                            color: Colors.white,
+                            fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                            height: 1.2,
                           ),
                         ),
-                      ),
-                      const Spacer(),
-                      const Text(
-                        'Giảm 50% cho SV mới',
-                        style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
-                      ),
-                      const Text('Nhập mã: TAN_SINH_VIEN', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      const SizedBox(height: 10),
-                      Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(99),
-                        child: InkWell(
-                          onTap: () {},
+                        const SizedBox(height: 4),
+                        const Text(
+                          'UniMove giữ cọc · Cọc an toàn, hoàn tiền rõ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.25),
+                        ),
+                        const SizedBox(height: 8),
+                        Material(
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(99),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                            child: Text(
-                              'Nhận ngay',
-                              style: TextStyle(color: colors.primary, fontWeight: FontWeight.w600, fontSize: 12),
+                          child: InkWell(
+                            onTap: () {
+                              context.read<BookingFlowCubit>().startCompareQuotesFlow();
+                              context.push('/booking/packages');
+                            },
+                            borderRadius: BorderRadius.circular(99),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                              child: Text(
+                                'Nhận báo giá',
+                                style: TextStyle(
+                                  color: colors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -604,7 +646,7 @@ class _RecentOrderCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Tài xế: Minh Quân',
+                  'Nhà xe: Minh Quân Logistics',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: colors.onSurface),
                 ),
               ),

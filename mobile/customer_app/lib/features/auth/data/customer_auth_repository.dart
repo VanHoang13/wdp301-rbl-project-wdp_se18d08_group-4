@@ -1,18 +1,26 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/config/dev_config.dart';
 import '../../../core/mock/mock_auth_session.dart';
 
-/// Đăng ký / đăng nhập sinh viên — khớp `profiles` + trigger `handle_new_user`.
+/// Auth customer — Supabase Auth (UI / session).
+/// SCAFFOLD: Leader không implement đăng ký/đăng nhập Node API.
+/// Team BE: `backend/src/services/auth.service.js` (BE-001→007); mobile nối ApiClient sau.
 class CustomerAuthRepository {
-  CustomerAuthRepository(this._client);
+  CustomerAuthRepository({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
+  User? get currentUser => _client.auth.currentUser;
+
   Session? get currentSession => _client.auth.currentSession;
 
-  Future<bool> get isMockSignedIn => MockAuthSession.isSignedIn();
+  Future<bool> get isSignedIn async {
+    if (await MockAuthSession.isSignedIn()) return true;
+    return _client.auth.currentSession != null;
+  }
 
-  /// Chuẩn hóa SĐT VN → `profiles.phone` (ví dụ +84901234567).
   static String normalizePhone(String input) {
     var digits = input.replaceAll(RegExp(r'\D'), '');
     if (digits.startsWith('84')) digits = digits.substring(2);
@@ -24,7 +32,7 @@ class CustomerAuthRepository {
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    if (MockAuthSession.isEnabled &&
+    if (DevConfig.useMockAuth &&
         MockAuthSession.isDemoCredential(email: email, password: password)) {
       await MockAuthSession.signIn();
       return;
@@ -34,7 +42,7 @@ class CustomerAuthRepository {
       email: email.trim().toLowerCase(),
       password: password,
     );
-    await _ensureRole('customer');
+    await _validateCustomerRole();
   }
 
   Future<void> signUp({
@@ -50,13 +58,20 @@ class CustomerAuthRepository {
       password: password,
       data: {
         'full_name': fullName.trim(),
-        'role': 'customer',
         'phone': normalizedPhone,
+        'role': 'customer',
       },
     );
+
     if (response.user == null) {
       throw const AuthException('Không thể tạo tài khoản. Kiểm tra email hoặc thử lại.');
     }
+
+    await _ensureCustomerProfile(
+      fullName: fullName,
+      email: email.trim().toLowerCase(),
+      phone: normalizedPhone,
+    );
   }
 
   Future<void> signOut() async {
@@ -64,22 +79,114 @@ class CustomerAuthRepository {
     await _client.auth.signOut();
   }
 
-  Future<void> _ensureRole(String expected) async {
+  Future<CustomerProfile> fetchMe() async {
     final user = _client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      throw const AuthException('Chưa đăng nhập.');
+    }
 
     final row = await _client
         .from('profiles')
-        .select('role')
+        .select(
+          'id, email, phone, full_name, avatar_url, role, student_id, university, loyalty_points',
+        )
         .eq('id', user.id)
         .maybeSingle();
 
-    final role = row?['role'] as String?;
-    if (role != expected) {
+    if (row == null) {
+      throw const AuthException('Không tìm thấy hồ sơ.');
+    }
+
+    return CustomerProfile.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> forgotPassword({required String email}) async {
+    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _client.auth.currentUser;
+    final email = user?.email;
+    if (email == null) {
+      throw const AuthException('Chưa đăng nhập.');
+    }
+
+    await _client.auth.signInWithPassword(email: email, password: currentPassword);
+    await _client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
+  Future<void> _validateCustomerRole() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+
+    final data = await _client.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    final role = data?['role'] as String?;
+    if (role != null && role != 'customer') {
       await signOut();
-      throw const AuthException(
-        'Tài khoản không phải sinh viên. Nhà cung cấp dùng app UniMove Provider.',
-      );
+      throw const AuthException('Tài khoản này không phải sinh viên (customer).');
     }
   }
+
+  Future<void> _ensureCustomerProfile({
+    required String fullName,
+    required String email,
+    required String phone,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+
+    await _client.from('profiles').upsert({
+      'id': user.id,
+      'email': email,
+      'full_name': fullName.trim(),
+      'phone': phone,
+      'role': 'customer',
+    });
+  }
+}
+
+class CustomerProfile {
+  const CustomerProfile({
+    required this.id,
+    required this.email,
+    required this.fullName,
+    this.phone,
+    this.avatarUrl,
+    this.studentId,
+    this.university,
+    this.loyaltyPoints,
+  });
+
+  factory CustomerProfile.fromJson(Map<String, dynamic> json) {
+    return CustomerProfile(
+      id: json['id'] as String,
+      email: json['email'] as String? ?? '',
+      fullName: json['full_name'] as String? ?? '',
+      phone: json['phone'] as String?,
+      avatarUrl: json['avatar_url'] as String?,
+      studentId: json['student_id'] as String?,
+      university: json['university'] as String?,
+      loyaltyPoints: (json['loyalty_points'] as num?)?.toInt(),
+    );
+  }
+
+  final String id;
+  final String email;
+  final String fullName;
+  final String? phone;
+  final String? avatarUrl;
+  final String? studentId;
+  final String? university;
+  final int? loyaltyPoints;
+}
+
+class AuthException implements Exception {
+  const AuthException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
 }

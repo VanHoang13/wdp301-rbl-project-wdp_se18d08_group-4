@@ -28,43 +28,111 @@ class BookingMockRepository {
     ];
   }
 
+  /// Combo chuyển trọ: xe + khuân vác gộp; thêm người rẻ hơn thuê riêng.
   Future<List<ServicePackage>> fetchPackages() async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     return const [
       ServicePackage(
         tier: ServiceTier.economy,
-        label: 'Economy',
+        label: 'Combo nhẹ',
+        subtitle: 'Ít đồ · 1 người khuân vác',
         badge: 'TIẾT KIỆM',
         price: 199000,
         popular: false,
+        laborIncluded: 1,
+        extraLaborComboPrice: 65000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 500kg', included: true),
-          PackageFeature(text: '1 nhân viên bốc xếp', included: true),
+          PackageFeature(text: 'Vali, bàn, vài thùng — chuyến ngắn', included: true),
+          PackageFeature(text: 'Xe tải ~500kg (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '1 người khuân vác trong combo', included: true),
           PackageFeature(text: 'Bảo hiểm hàng hóa', included: false),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.standard,
-        label: 'Standard',
-        badge: 'ĐỀ XUẤT',
+        label: 'Combo phòng trọ',
+        subtitle: 'Đồ vừa · 2 người khuân vác',
+        badge: 'PHỔ BIẾN',
         price: 450000,
         popular: true,
+        laborIncluded: 2,
+        extraLaborComboPrice: 75000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 1 tấn', included: true),
-          PackageFeature(text: '2 nhân viên bốc xếp', included: true),
-          PackageFeature(text: 'Bảo hiểm hàng hóa', included: true),
+          PackageFeature(text: 'Giường, tủ, bếp — đa số sinh viên', included: true),
+          PackageFeature(text: 'Xe tải ~1 tấn (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '2 người khuân vác trong combo', included: true),
+          PackageFeature(text: 'Bảo hiểm cơ bản', included: true),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.premium,
-        label: 'Premium',
-        badge: 'TRỌN GÓI',
+        label: 'Combo trọn gói',
+        subtitle: 'Nhiều đồ · 3 người + bọc đồ',
+        badge: 'TRỌN CHUYẾN',
         price: 890000,
         popular: false,
+        laborIncluded: 3,
+        extraLaborComboPrice: 70000,
+        extraLaborRetailPrice: 120000,
         features: [
-          PackageFeature(text: 'Xe tải 1.5 tấn', included: true),
-          PackageFeature(text: '3 nhân viên + đóng gói', included: true),
+          PackageFeature(text: 'Nhiều đồ lớn, cần đóng gói', included: true),
+          PackageFeature(text: 'Xe tải ~1.5 tấn (nhà xe đối tác báo giá)', included: true),
+          PackageFeature(text: '3 người khuân vác + hỗ trợ bọc đồ', included: true),
           PackageFeature(text: 'Bảo hiểm toàn diện', included: true),
+        ],
+      ),
+    ];
+  }
+
+  Future<List<CargoInsurancePlan>> fetchInsurancePlans() async {
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    return const [
+      CargoInsurancePlan(
+        id: 'none',
+        name: 'Không mua bảo hiểm',
+        tagline: 'Tự chịu rủi ro hư hỏng, mất mát',
+        coverageAmount: 0,
+        price: 0,
+        benefits: ['Không phí thêm', 'Phù hợp đồ ít giá trị'],
+        isNoCoverage: true,
+      ),
+      CargoInsurancePlan(
+        id: 'basic',
+        name: 'Bảo hiểm cơ bản',
+        tagline: 'Đồ sinh viên thông thường',
+        coverageAmount: 10000000,
+        price: 35000,
+        benefits: [
+          'Bồi thường tối đa 10 triệu',
+          'Hư hỏng do va chạm, rơi vỡ',
+          'Xử lý qua UniMove trong 7 ngày',
+        ],
+      ),
+      CargoInsurancePlan(
+        id: 'standard',
+        name: 'Bảo hiểm tiêu chuẩn',
+        tagline: 'Phòng trọ đầy đủ đồ',
+        coverageAmount: 30000000,
+        price: 75000,
+        recommended: true,
+        benefits: [
+          'Bồi thường tối đa 30 triệu',
+          'Bao gồm thiết bị điện tử (laptop, màn hình)',
+          'Ưu tiên xử lý khiếu nại 48h',
+        ],
+      ),
+      CargoInsurancePlan(
+        id: 'premium',
+        name: 'Bảo hiểm toàn diện',
+        tagline: 'Đồ giá trị cao, chuyến xa',
+        coverageAmount: 50000000,
+        price: 120000,
+        benefits: [
+          'Bồi thường tối đa 50 triệu',
+          'Mất mát, trộm cắp trong chuyến (có biên bản)',
+          'Hỗ trợ tạm ứng chi phí sửa chữa',
         ],
       ),
     ];

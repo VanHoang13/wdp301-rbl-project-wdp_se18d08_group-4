@@ -1,4 +1,6 @@
 const express = require('express');
+const authRoutes = require('./auth.routes');
+const customersRoutes = require('./customers.routes');
 const ordersRoutes = require('./orders.routes');
 const providersRoutes = require('./providers.routes');
 const paymentsRoutes = require('./payments.routes');
@@ -15,6 +17,8 @@ router.get('/health', (_req, res) => {
   });
 });
 
+router.use('/auth', authRoutes);
+router.use('/customers', customersRoutes);
 router.use('/orders', ordersRoutes);
 router.use('/providers', providersRoutes);
 router.use('/payments', paymentsRoutes);
