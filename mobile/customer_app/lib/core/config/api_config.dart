@@ -37,4 +37,11 @@ abstract final class ApiConfig {
 
   static const apiPrefix = '/api';
   static String get displayUrl => '$baseUrl$apiPrefix';
+
+  /// Google OAuth Web Client ID — truyền qua
+  /// `--dart-define=GOOGLE_SERVER_CLIENT_ID=...` để verify id_token ở backend.
+  static const googleServerClientId =
+      String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+
+  static bool get isGoogleConfigured => googleServerClientId.isNotEmpty;
 }

@@ -21,6 +21,11 @@ import '../../features/payments/presentation/pages/financial_settings_page.dart'
 import '../../features/payments/presentation/pages/link_payment_method_page.dart';
 import '../../features/payments/presentation/pages/payment_detail_page.dart';
 import '../../features/payments/presentation/pages/payment_methods_page.dart';
+import '../../features/auth/data/customer_auth_repository.dart';
+import '../../features/auth/presentation/pages/forgot_password_page.dart';
+import '../../features/auth/presentation/pages/reset_password_page.dart';
+import '../../features/home/presentation/pages/change_password_page.dart';
+import '../../features/home/presentation/pages/edit_profile_page.dart';
 import '../../features/home/presentation/pages/home_shell_page.dart';
 import '../../features/home/presentation/pages/profile_page.dart';
 import '../../features/login/presentation/pages/login_page.dart';
@@ -42,8 +47,23 @@ abstract final class AppRouter {
       GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingPage()),
       GoRoute(path: '/login', builder: (_, __) => const LoginPage()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterPage()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (_, state) =>
+            ForgotPasswordPage(initialEmail: state.uri.queryParameters['email']),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (_, state) =>
+            ResetPasswordPage(initialEmail: state.uri.queryParameters['email']),
+      ),
       GoRoute(path: '/home', builder: (_, __) => const HomeShellPage()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfilePage()),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (_, state) => EditProfilePage(initial: state.extra as CustomerProfile?),
+      ),
+      GoRoute(path: '/change-password', builder: (_, __) => const ChangePasswordPage()),
       GoRoute(
         path: '/orders/history',
         builder: (_, __) => const OrdersHistoryPage(),

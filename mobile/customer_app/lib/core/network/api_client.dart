@@ -65,6 +65,24 @@ class ApiClient {
     return _unwrap(await dio.patch<dynamic>(path, data: body));
   }
 
+  /// Upload 1 file qua multipart/form-data (vd: avatar).
+  Future<Map<String, dynamic>> uploadFile(
+    String path, {
+    required String filePath,
+    String field = 'file',
+  }) async {
+    final formData = FormData.fromMap({
+      field: await MultipartFile.fromFile(filePath),
+    });
+    return _unwrap(
+      await dio.post<dynamic>(
+        path,
+        data: formData,
+        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+      ),
+    );
+  }
+
   Map<String, dynamic> _unwrap(Response<dynamic> response) {
     final raw = response.data;
     if (raw is! Map) {
