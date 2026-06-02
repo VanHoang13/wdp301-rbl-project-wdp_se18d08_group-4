@@ -41,6 +41,19 @@ const PASSWORD_RESET_OTP_EXPIRES_MINUTES = process.env.PASSWORD_RESET_OTP_EXPIRE
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+/** Nested SMTP — dùng bởi mail.service.js */
+const smtp = {
+  host: SMTP_HOST,
+  port: parseInt(String(SMTP_PORT), 10) || 587,
+  secure: SMTP_SECURE,
+  user: SMTP_USER,
+  pass: SMTP_PASS,
+  from: SMTP_FROM || SMTP_USER,
+  get isConfigured() {
+    return Boolean(this.host && this.user && this.pass);
+  },
+};
+
 module.exports = {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
@@ -65,4 +78,5 @@ module.exports = {
   PASSWORD_RESET_OTP_EXPIRES_MINUTES,
   JWT_SECRET,
   JWT_EXPIRES_IN,
+  smtp,
 };
