@@ -108,7 +108,14 @@ async function register(body) {
       throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
     }
 
-    if (role === 'provider') {
+    if (role === 'customer') {
+      const { error: cpError } = await supabaseAdmin.from('customer_profiles').insert([
+        { id: userId },
+      ]);
+      if (cpError) {
+        throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+      }
+    } else if (role === 'provider') {
       const { error: ppError } = await supabaseAdmin.from('provider_profiles').insert([
         {
           id: userId,
