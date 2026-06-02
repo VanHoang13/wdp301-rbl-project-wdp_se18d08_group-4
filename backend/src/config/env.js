@@ -1,35 +1,82 @@
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
+// Project URL
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://byqwsmdgyojzgyhbladx.supabase.co';
 
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${name}`);
-  }
-  return value;
-}
+// Anon public key
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXdzbWRneW9qemd5aGJsYWR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4NDQ4NzIsImV4cCI6MjA5NTQyMDg3Mn0.5N_PeOd7TtMDqOQYcTBAFOFha3nE383wp5R27tJ0WPM';
+
+// Service role secret key
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5cXdzbWRneW9qemd5aGJsYWR4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg0NDg3MiwiZXhwIjoyMDk1NDIwODcyfQ.4W-gQgmpYFDTpu9yrZC_yQ4IQq4SZJS8lIm7QQuNhjs';
+
+// Database URL
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:unimove123%40@db.byqwsmdgyojzgyhbladx.supabase.co:5432/postgres';
+
+// Cloudinary (for image uploads)
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'dbfgkvdu7';
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || '635138172262225';
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || 'VbCe8dGdXxulLTNsBHjbddSjI4Q';
+const CLOUDINARY_UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || 'unimove_preset';
+
+// PayOS
+const PAYOS_CLIENT_ID = process.env.PAYOS_CLIENT_ID || '';
+const PAYOS_API_KEY = process.env.PAYOS_API_KEY || '';
+const PAYOS_CHECKSUM_KEY = process.env.PAYOS_CHECKSUM_KEY || '';
+
+// Google Maps
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+
+// Node API
+const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// Email configuration (Gmail for password reset OTP)
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = process.env.SMTP_PORT || 587;
+const SMTP_SECURE = process.env.SMTP_SECURE === 'true' || false;
+const SMTP_USER = process.env.SMTP_USER || 'ngocquyensn204@gmail.com';
+const SMTP_PASS = process.env.SMTP_PASS || 'txovcemzargxcxeh';
+const SMTP_FROM = process.env.SMTP_FROM || 'ngocquyensn204@gmail.com';
+const PASSWORD_RESET_OTP_EXPIRES_MINUTES = process.env.PASSWORD_RESET_OTP_EXPIRES_MINUTES || 10;
+
+// JWT configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+/** Nested SMTP — dùng bởi mail.service.js */
+const smtp = {
+  host: SMTP_HOST,
+  port: parseInt(String(SMTP_PORT), 10) || 587,
+  secure: SMTP_SECURE,
+  user: SMTP_USER,
+  pass: SMTP_PASS,
+  from: SMTP_FROM || SMTP_USER,
+  get isConfigured() {
+    return Boolean(this.host && this.user && this.pass);
+  },
+};
 
 module.exports = {
-  port: parseInt(process.env.PORT || '3000', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
-  supabaseUrl: requireEnv('SUPABASE_URL'),
-  supabaseAnonKey: requireEnv('SUPABASE_ANON_KEY'),
-  supabaseServiceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
-  jwtSecret: process.env.JWT_SECRET || requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  passwordResetOtpExpiresMinutes: parseInt(
-    process.env.PASSWORD_RESET_OTP_EXPIRES_MINUTES || '10',
-    10,
-  ),
-  smtp: {
-    host: process.env.SMTP_HOST || '',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
-    get isConfigured() {
-      return Boolean(this.host && this.user && this.pass);
-    },
-  },
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY,
+  DATABASE_URL,
+  CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET,
+  CLOUDINARY_UPLOAD_PRESET,
+  PAYOS_CLIENT_ID,
+  PAYOS_API_KEY,
+  PAYOS_CHECKSUM_KEY,
+  GOOGLE_MAPS_API_KEY,
+  PORT,
+  NODE_ENV,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_FROM,
+  PASSWORD_RESET_OTP_EXPIRES_MINUTES,
+  JWT_SECRET,
+  JWT_EXPIRES_IN,
+  smtp,
 };

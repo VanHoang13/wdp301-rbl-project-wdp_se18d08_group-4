@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/config/dev_config.dart';
 import '../../../../core/constants/app_images.dart';
-import '../../../../core/mock/mock_auth_session.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/dark_glass_background.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../../core/widgets/unimove_logo.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 
 class LoginPage extends StatefulWidget {
@@ -26,21 +25,6 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscure = true;
   bool _loading = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    if (DevConfig.useMockAuth) {
-      _emailCtrl.text = DevConfig.demoEmail;
-      _passwordCtrl.text = DevConfig.demoPassword;
-    }
-  }
-
-  Future<void> _enterDemoHome() async {
-    await MockAuthSession.signIn();
-    if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed('/home');
-  }
 
   @override
   void dispose() {
@@ -69,11 +53,13 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await CustomerAuthRepository().signIn(email: email, password: password);
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
+      context.go('/home');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = e is AuthException ? e.message : 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
+      setState(() => _error = 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -313,28 +299,6 @@ class _LoginPageState extends State<LoginPage> {
                                         ),
                                       ),
                                     ),
-                                    if (DevConfig.useMockAuth) ...[
-                                      const SizedBox(height: 12),
-                                      _stagger(
-                                        6,
-                                        ShadButton.secondary(
-                                          width: double.infinity,
-                                          onPressed: _loading ? null : _enterDemoHome,
-                                          child: const Text('Vào Home (demo — không cần Supabase)'),
-                                        ),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 8),
-                                        child: Text(
-                                          'Hoặc đăng nhập: ${DevConfig.demoEmail} / ${DevConfig.demoPassword}',
-                                          textAlign: TextAlign.center,
-                                          style: theme.textTheme.small.copyWith(
-                                            color: theme.colorScheme.mutedForeground,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
                                     const SizedBox(height: 20),
                                     _stagger(
                                       7,

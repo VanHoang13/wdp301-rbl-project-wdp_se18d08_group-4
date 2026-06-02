@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/network/api_client.dart';
+import '../../../../data/admin_repository.dart';
 import '../../../auth/data/auth_repository.dart';
-import '../../../../core/services/supabase_providers.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
@@ -69,79 +69,85 @@ class DashboardPage extends ConsumerWidget {
     String table,
     String title,
   ) async {
-    final client = ref.read(supabaseClientProvider);
-    final response = await client.from(table).select('id').count(CountOption.exact);
-    if (!context.mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: Text('Số lượng: ${response.count}'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
-      ),
-    );
+    try {
+      final count = await ref.read(adminRepositoryProvider).getTableCount(table);
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: Text('Số lượng: $count'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
+        ),
+      );
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   Future<void> _showOpenDisputes(BuildContext context, WidgetRef ref) async {
-    final client = ref.read(supabaseClientProvider);
-    final rows = await client
-        .from('disputes')
-        .select('id, subject, status')
-        .inFilter('status', ['open', 'investigating'])
-        .limit(10);
-    if (!context.mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Disputes đang mở'),
-        content: rows.isEmpty
-            ? const Text('Không có dispute nào.')
-            : SizedBox(
-                width: 420,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final row in rows)
-                      ListTile(
-                        title: Text(row['subject']?.toString() ?? ''),
-                        subtitle: Text(row['status']?.toString() ?? ''),
-                      ),
-                  ],
+    try {
+      final rows = await ref.read(adminRepositoryProvider).getOpenDisputes();
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Disputes đang mở'),
+          content: rows.isEmpty
+              ? const Text('Không có dispute nào.')
+              : SizedBox(
+                  width: 420,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final row in rows)
+                        ListTile(
+                          title: Text(row['subject']?.toString() ?? ''),
+                          subtitle: Text(row['status']?.toString() ?? ''),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
-      ),
-    );
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
+        ),
+      );
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   Future<void> _loadPendingProviders(WidgetRef ref, BuildContext context) async {
-    final client = ref.read(supabaseClientProvider);
-    final rows = await client
-        .from('provider_profiles')
-        .select('id, business_name, verification_status')
-        .eq('verification_status', 'pending')
-        .limit(5);
-
-    if (!context.mounted) return;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Provider chờ duyệt'),
-        content: rows.isEmpty
-            ? const Text('Không có provider nào chờ duyệt.')
-            : SizedBox(
-                width: 400,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final row in rows)
-                      ListTile(title: Text(row['business_name']?.toString() ?? 'N/A')),
-                  ],
+    try {
+      final rows = await ref.read(adminRepositoryProvider).getPendingProviders();
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Provider chờ duyệt'),
+          content: rows.isEmpty
+              ? const Text('Không có provider nào chờ duyệt.')
+              : SizedBox(
+                  width: 400,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final row in rows)
+                        ListTile(title: Text(row['business_name']?.toString() ?? 'N/A')),
+                    ],
+                  ),
                 ),
-              ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
-      ),
-    );
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
+        ),
+      );
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 }
 

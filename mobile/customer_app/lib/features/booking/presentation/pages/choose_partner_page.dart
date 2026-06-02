@@ -205,7 +205,7 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                 child: ElevatedButton(
                   onPressed: () {
                     context.read<BookingFlowCubit>().selectPartner(p.id);
-                    context.push('/booking/payment');
+                    context.push('/booking/insurance');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: c.primary,

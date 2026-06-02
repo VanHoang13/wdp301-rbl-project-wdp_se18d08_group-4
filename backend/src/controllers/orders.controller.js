@@ -11,8 +11,7 @@ async function listOrders(req, res, next) {
 
     const orders = await ordersService.listOrdersForUser(
       req.user.id,
-      profile?.role || 'customer',
-      req.accessToken,
+      profile?.role || req.user.role || 'customer',
     );
 
     res.json({ success: true, data: orders });
@@ -23,7 +22,7 @@ async function listOrders(req, res, next) {
 
 async function createOrder(req, res, next) {
   try {
-    const order = await ordersService.createOrder(req.user.id, req.accessToken, req.body);
+    const order = await ordersService.createOrder(req.user.id, req.body);
     res.status(201).json({ success: true, data: order });
   } catch (error) {
     next(error);
@@ -32,7 +31,7 @@ async function createOrder(req, res, next) {
 
 async function getOrder(req, res, next) {
   try {
-    const order = await ordersService.getOrderById(req.params.id, req.accessToken);
+    const order = await ordersService.getOrderById(req.params.id);
     res.json({ success: true, data: order });
   } catch (error) {
     next(error);
@@ -49,7 +48,6 @@ async function respondToOrder(req, res, next) {
     const result = await ordersService.providerRespond(
       req.params.id,
       req.user.id,
-      req.accessToken,
       response,
       decline_reason,
     );
