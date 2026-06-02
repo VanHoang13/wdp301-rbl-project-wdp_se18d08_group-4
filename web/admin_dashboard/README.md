@@ -1,20 +1,17 @@
 # UniMove Admin Dashboard (Flutter Web)
 
-## Setup
+## Auth
+
+Đăng nhập qua **Node API** (`POST /api/auth/login`), JWT lưu `shared_preferences`.
+
+- Tài khoản cần `role = admin` trong bảng `profiles` + hàng `user_credentials` (xem `docs/AUTH_NODE_MODULE.md`).
+- Backend: `npm run dev` tại `backend/` (mặc định `http://localhost:3000`).
+- Dashboard gọi `GET /api/admin/*` (yêu cầu JWT admin).
+
+## Chạy
 
 ```bash
 cd web/admin_dashboard
-flutter create . --org com.unimove --project-name unimove_admin --platforms=web
 flutter pub get
 flutter run -d chrome
 ```
-
-## Admin account
-
-Tạo user trên Supabase Auth, sau đó:
-
-```sql
-UPDATE profiles SET role = 'admin' WHERE email = 'admin@unimove.com';
-```
-
-Chạy `backend/supabase/manual_fix_step5_auth_trigger.sql` nếu chưa có profile tự động.

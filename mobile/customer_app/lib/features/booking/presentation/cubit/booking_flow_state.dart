@@ -28,6 +28,9 @@ class BookingFlowState {
     this.linkedProviderName,
     this.quickCompareEntry = false,
     this.extraComboLaborCount = 0,
+    this.insurancePlans = const [],
+    this.selectedInsurancePlanId,
+    this.loadingInsurancePlans = false,
   });
 
   final BookingServiceType serviceType;
@@ -60,6 +63,10 @@ class BookingFlowState {
 
   /// Số người khuân vác thêm (ngoài số đã có trong combo).
   final int extraComboLaborCount;
+
+  final List<CargoInsurancePlan> insurancePlans;
+  final String? selectedInsurancePlanId;
+  final bool loadingInsurancePlans;
 
   bool get isLaborOnly => serviceType == BookingServiceType.laborOnly;
 
@@ -115,9 +122,29 @@ class BookingFlowState {
     return extraComboLaborCount * pkg.extraLaborComboPrice;
   }
 
+  CargoInsurancePlan? get selectedInsurancePlan {
+    if (selectedInsurancePlanId == null) return null;
+    for (final p in insurancePlans) {
+      if (p.id == selectedInsurancePlanId) return p;
+    }
+    return null;
+  }
+
+  bool get hasInsuranceCoverage {
+    final plan = selectedInsurancePlan;
+    return plan != null && !plan.isNoCoverage;
+  }
+
+  int get insuranceFee {
+    if (isLaborService) return 0;
+    final plan = selectedInsurancePlan;
+    if (plan == null || plan.isNoCoverage) return 0;
+    return plan.price;
+  }
+
   int get subtotal {
     if (isLaborService) return laborQuotedPrice;
-    return movePackagePrice + comboExtraLaborFee;
+    return movePackagePrice + comboExtraLaborFee + insuranceFee;
   }
 
   int get discount => discountApplied ? 35000 : 0;
@@ -153,6 +180,9 @@ class BookingFlowState {
     String? linkedProviderName,
     bool? quickCompareEntry,
     int? extraComboLaborCount,
+    List<CargoInsurancePlan>? insurancePlans,
+    String? selectedInsurancePlanId,
+    bool? loadingInsurancePlans,
     bool clearLinkedOrder = false,
   }) {
     return BookingFlowState(
@@ -184,6 +214,9 @@ class BookingFlowState {
           clearLinkedOrder ? null : (linkedProviderName ?? this.linkedProviderName),
       quickCompareEntry: quickCompareEntry ?? this.quickCompareEntry,
       extraComboLaborCount: extraComboLaborCount ?? this.extraComboLaborCount,
+      insurancePlans: insurancePlans ?? this.insurancePlans,
+      selectedInsurancePlanId: selectedInsurancePlanId ?? this.selectedInsurancePlanId,
+      loadingInsurancePlans: loadingInsurancePlans ?? this.loadingInsurancePlans,
     );
   }
 }

@@ -1,8 +1,7 @@
-const { supabaseAdmin, createUserClient } = require('./supabase.service');
+const { supabaseAdmin } = require('./supabase.service');
 
-async function listOrdersForUser(userId, role, accessToken) {
-  const db = createUserClient(accessToken);
-  let query = db.from('orders').select('*').order('created_at', { ascending: false });
+async function listOrdersForUser(userId, role) {
+  let query = supabaseAdmin.from('orders').select('*').order('created_at', { ascending: false });
 
   if (role === 'customer') {
     query = query.eq('customer_id', userId);
@@ -15,10 +14,8 @@ async function listOrdersForUser(userId, role, accessToken) {
   return data;
 }
 
-async function createOrder(customerId, accessToken, payload) {
-  const db = createUserClient(accessToken);
-
-  const { data, error } = await db
+async function createOrder(customerId, payload) {
+  const { data, error } = await supabaseAdmin
     .from('orders')
     .insert({
       customer_id: customerId,
@@ -50,10 +47,8 @@ async function createOrder(customerId, accessToken, payload) {
   return data;
 }
 
-async function providerRespond(orderId, providerId, accessToken, response, declineReason) {
-  const db = createUserClient(accessToken);
-
-  const { error: responseError } = await db.from('order_provider_responses').insert({
+async function providerRespond(orderId, providerId, response, declineReason) {
+  const { error: responseError } = await supabaseAdmin.from('order_provider_responses').insert({
     order_id: orderId,
     provider_id: providerId,
     response,
@@ -63,7 +58,7 @@ async function providerRespond(orderId, providerId, accessToken, response, decli
   if (responseError) throw Object.assign(new Error(responseError.message), { status: 400 });
 
   if (response === 'accepted') {
-    const { data, error } = await db
+    const { data, error } = await supabaseAdmin
       .from('orders')
       .update({
         provider_id: providerId,
@@ -81,9 +76,8 @@ async function providerRespond(orderId, providerId, accessToken, response, decli
   return { order_id: orderId, response };
 }
 
-async function getOrderById(orderId, accessToken) {
-  const db = createUserClient(accessToken);
-  const { data, error } = await db.from('orders').select('*').eq('id', orderId).single();
+async function getOrderById(orderId) {
+  const { data, error } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single();
   if (error) throw Object.assign(new Error(error.message), { status: 404 });
   return data;
 }

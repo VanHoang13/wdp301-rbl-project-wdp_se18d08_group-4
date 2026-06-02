@@ -1,15 +1,15 @@
 /**
  * Auth API — routes đã mount tại /api/auth (xem routes/index.js).
- * Mọi handler trả 501 cho đến khi team implement auth.service.js.
+ * Auth Node JWT — register, login, me, forgot/reset password.
  *
  * | Method | Path              | Task   | Middleware      |
  * |--------|-------------------|--------|-----------------|
- * | POST   | /register         | BE-001 | —               |
+ * | POST   | /register         | BE-001 | body: email, password, full_name, phone |
  * | POST   | /login            | BE-003 | —               |
  * | GET    | /me               | BE-003 | requireNodeAuth |
- * | POST   | /change-password  | BE-006 | requireNodeAuth |
- * | POST   | /forgot-password  | BE-007 | —               |
- * | POST   | /reset-password   | BE-007 | —               |
+ * | POST   | /change-password  | BE-006 | requireNodeAuth — đổi MK khi đã login |
+ * | POST   | /forgot-password  | BE-007 | gửi OTP qua email |
+ * | POST   | /reset-password   | BE-007 | email + token (OTP) + new_password |
  */
 const express = require('express');
 const authController = require('../controllers/auth.controller');

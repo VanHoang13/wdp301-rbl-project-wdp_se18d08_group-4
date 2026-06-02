@@ -9,6 +9,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/theme_toggle_tile.dart';
 import '../../../../core/widgets/uni_surface_card.dart';
+import '../../../../core/auth/auth_token_storage.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -23,8 +24,6 @@ class _ProfilePageState extends State<ProfilePage> {
   String _email = MockCustomerData.email;
   String _phone = MockCustomerData.phone;
   String _studentId = MockCustomerData.studentId;
-  int _totalOrders = MockCustomerData.totalOrders;
-  double _rating = MockCustomerData.rating;
   int _wallet = MockCustomerData.walletBalance;
   String? _avatarUrl = MockCustomerData.avatarUrl;
   bool _loadingProfile = true;
@@ -44,14 +43,22 @@ class _ProfilePageState extends State<ProfilePage> {
           _email = MockCustomerData.email;
           _phone = MockCustomerData.phone;
           _studentId = MockCustomerData.studentId;
-          _totalOrders = MockCustomerData.totalOrders;
-          _rating = MockCustomerData.rating;
           _wallet = MockCustomerData.walletBalance;
           _avatarUrl = MockCustomerData.avatarUrl;
           _loadingProfile = false;
         });
       }
       return;
+    }
+
+    final stored = await AuthTokenStorage.instance.loadUser();
+    if (stored != null && mounted) {
+      setState(() {
+        _fullName = stored['full_name'] as String? ?? _fullName;
+        _email = stored['email'] as String? ?? _email;
+        _phone = stored['phone'] as String? ?? _phone;
+        _avatarUrl = stored['avatar_url'] as String? ?? _avatarUrl;
+      });
     }
 
     try {
@@ -98,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),
                       child: Text(
                         'Hồ sơ',
-                        style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.w700, color: c.textPrimary),
+                        style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.w700, color: c.onSurface),
                       ),
                     ),
                   ),
@@ -124,12 +131,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(_fullName, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                                  Text(_fullName, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: c.onSurface)),
                                   SizedBox(height: 4.h),
-                                  Text(_email, style: TextStyle(fontSize: 13.sp, color: c.textSecondary)),
+                                  Text(_email, style: TextStyle(fontSize: 13.sp, color: c.onSurfaceMuted)),
                                   if (_phone.isNotEmpty) ...[
                                     SizedBox(height: 2.h),
-                                    Text(_phone, style: TextStyle(fontSize: 13.sp, color: c.textMuted)),
+                                    Text(_phone, style: TextStyle(fontSize: 13.sp, color: c.onSurfaceMuted)),
                                   ],
                                 ],
                               ),
@@ -139,7 +146,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-                  SliverToBoxAdapter(child: ThemeToggleTile(padding: EdgeInsets.symmetric(horizontal: 20.w))),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.w),
+                      child: const ThemeToggleTile(),
+                    ),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(20.w, 24.h, 20.w, 32.h),

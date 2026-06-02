@@ -1,124 +1,143 @@
 /**
- * SCAFFOLD — Leader đã tạo file + export; team implement từng hàm (BE-001 → BE-007).
- *
- * Password storage is handled by Supabase Auth (`auth.users.encrypted_password`).
- * Node API does not hash or persist plaintext passwords in Postgres.
+ * Auth — Node JWT (register/login/me/change-password) + quên MK qua SMTP OTP.
+ * Bổ sung: đăng nhập Google (BE-008) — verify id_token rồi phát JWT Node.
+ * DB: docs/supabase/20240113000000_node_auth.sql
  */
-const { httpError, normalizeEmail, buildAuthResponse } = require('./auth.helpers');
+const crypto = require('crypto');
+const {
+  httpError,
+  normalizeEmail,
+  normalizePhone,
+  buildAuthResponse,
+  publicProfile,
+} = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
 const { supabaseAdmin, supabaseAnon } = require('./supabase.service');
+const { sendPasswordResetOtp } = require('./mail.service');
+const env = require('../config/env');
 
-async function getProfileById(userId) {
+async function findProfileByEmail(email) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .limit(1);
-
-  if (error) {
-    throw httpError(500, `Profile lookup failed: ${error.message}`, 'db_error');
-  }
-
-  return data?.[0] || null;
-}
-
-async function getProfileByEmail(email) {
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
+    .select('id, email')
     .eq('email', email)
-    .limit(1);
+    .maybeSingle();
 
   if (error) {
-    throw httpError(500, `Profile lookup failed: ${error.message}`, 'db_error');
+    throw httpError(500, error.message, 'db_error');
   }
-
-  return data?.[0] || null;
+  return data;
 }
 
-/** BE-001 — POST /api/auth/register */
+/**
+ * BE-001 — POST /api/auth/register
+ */
 async function register(body) {
-  const { email, password, full_name, phone, role = 'customer' } = body || {};
+  const { email, password, full_name, phone, role: roleInput, business_name } = body || {};
+  const role = roleInput === 'provider' ? 'provider' : 'customer';
 
   if (!email || !password || !full_name) {
-    throw httpError(400, 'Email, password, and full_name are required', 'validation_error');
+    throw httpError(400, 'email, password, and full_name are required', 'validation_error');
   }
 
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail.includes('@')) {
+  if (!normalizedEmail.includes('@') || !normalizedEmail.includes('.')) {
     throw httpError(400, 'Invalid email format', 'validation_error');
   }
 
-  if (String(password).length < 6) {
-    throw httpError(400, 'Password must be at least 6 characters', 'validation_error');
+  if (String(password).length < 8) {
+    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
   }
 
-  const existingProfile = await getProfileByEmail(normalizedEmail);
-  if (existingProfile) {
+  const trimmedName = String(full_name).trim();
+  if (!trimmedName) {
+    throw httpError(400, 'full_name is required', 'validation_error');
+  }
+
+  let normalizedPhone = null;
+  if (role === 'customer') {
+    if (!phone) {
+      throw httpError(400, 'phone is required for customer registration', 'validation_error');
+    }
+    normalizedPhone = normalizePhone(phone);
+  } else {
+    if (!business_name || !String(business_name).trim()) {
+      throw httpError(400, 'business_name is required for provider registration', 'validation_error');
+    }
+    if (phone) {
+      normalizedPhone = normalizePhone(phone);
+    }
+  }
+
+  const { data: existing } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
     throw httpError(409, 'Email already registered', 'email_exists');
   }
 
+  const userId = crypto.randomUUID();
   const passwordHash = await hashPassword(password);
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: normalizedEmail,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      full_name,
-      phone: phone || null,
-      role,
-    },
-  });
 
-  if (authError) {
-    throw httpError(400, `Registration failed: ${authError.message}`, 'auth_error');
-  }
-
-  const user = authData?.user || authData;
-  if (!user?.id) {
-    throw httpError(500, 'Registration failed: invalid user object', 'auth_error');
-  }
-
-  let profile = await getProfileById(user.id);
-  if (!profile) {
-    const { data: profileData, error: profileError } = await supabaseAdmin
+  try {
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert([
         {
-          id: user.id,
+          id: userId,
           email: normalizedEmail,
-          full_name,
-          phone: phone || null,
+          full_name: trimmedName,
+          phone: normalizedPhone,
           role,
-          status: 'active',
+          status: role === 'provider' ? 'pending_verification' : 'active',
         },
       ])
-      .select()
-      .single();
+      .select();
 
     if (profileError) {
-      await supabaseAdmin.auth.admin.deleteUser(user.id);
       throw httpError(500, `Profile creation failed: ${profileError.message}`, 'db_error');
     }
 
-    profile = profileData;
+    const { error: credError } = await supabaseAdmin.from('user_credentials').insert([
+      { user_id: userId, password_hash: passwordHash },
+    ]);
+
+    if (credError) {
+      throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
+    }
+
+    if (role === 'customer') {
+      const { error: cpError } = await supabaseAdmin.from('customer_profiles').insert([
+        { id: userId },
+      ]);
+      if (cpError) {
+        throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+      }
+    } else if (role === 'provider') {
+      const { error: ppError } = await supabaseAdmin.from('provider_profiles').insert([
+        {
+          id: userId,
+          business_name: String(business_name).trim(),
+          vehicle_type: 'small_truck',
+          base_price: 100000,
+          price_per_km: 10000,
+          price_per_floor: 15000,
+          is_verified: false,
+        },
+      ]);
+      if (ppError) {
+        throw httpError(500, `Provider profile creation failed: ${ppError.message}`, 'db_error');
+      }
+    }
+
+    return buildAuthResponse(profile[0]);
+  } catch (error) {
+    if (error.status) throw error;
+    throw httpError(500, error.message, 'internal_error');
   }
-
-  const { error: credError } = await supabaseAdmin
-    .from('user_credentials')
-    .upsert([
-      {
-        user_id: user.id,
-        password_hash: passwordHash,
-      },
-    ], { onConflict: 'user_id' });
-
-  if (credError) {
-    await supabaseAdmin.auth.admin.deleteUser(user.id);
-    throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
-  }
-
-  return buildAuthResponse(profile);
 }
 
 /** BE-003 — POST /api/auth/login */
@@ -130,46 +149,82 @@ async function login(body) {
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const { data, error } = await supabaseAnon.auth.signInWithPassword({
-    email: normalizedEmail,
-    password,
-  });
 
-  if (error || !data) {
-    const message = error?.message || 'Invalid email or password';
-    throw httpError(401, message, 'auth_failed');
+  const { data: profiles, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (profileError) {
+    throw httpError(500, `Profile lookup failed: ${profileError.message}`, 'db_error');
   }
 
-  const user = data.user || data.session?.user;
-  if (!user?.id) {
+  if (!profiles || profiles.length === 0) {
     throw httpError(401, 'Invalid email or password', 'auth_failed');
   }
 
-  const profile = await getProfileById(user.id);
-  if (!profile) {
-    throw httpError(404, 'User profile not found', 'not_found');
+  const profile = profiles[0];
+
+  const { data: credentials, error: credError } = await supabaseAdmin
+    .from('user_credentials')
+    .select('password_hash')
+    .eq('user_id', profile.id)
+    .limit(1);
+
+  if (credError) {
+    throw httpError(500, `Credential lookup failed: ${credError.message}`, 'db_error');
+  }
+
+  if (!credentials || credentials.length === 0) {
+    throw httpError(401, 'Invalid email or password', 'auth_failed');
+  }
+
+  const passwordMatch = await verifyPassword(password, credentials[0].password_hash);
+  if (!passwordMatch) {
+    throw httpError(401, 'Invalid email or password', 'auth_failed');
   }
 
   return buildAuthResponse(profile);
 }
 
-/** BE-003 — GET /api/auth/me (requireNodeAuth) */
+/** BE-003 — GET /api/auth/me */
 async function getMe(userId) {
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
   }
 
-  const profile = await getProfileById(userId);
-  if (!profile) {
-    throw httpError(404, 'User not found', 'not_found');
+  const { data: profiles, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .limit(1);
+
+  if (error) {
+    throw httpError(500, `Profile lookup failed: ${error.message}`, 'db_error');
   }
 
-  return profile;
+  if (!profiles || profiles.length === 0) {
+    throw httpError(404, 'User not found', 'user_not_found');
+  }
+
+  const row = profiles[0];
+  if (row.role === 'provider') {
+    const { data: pp } = await supabaseAdmin
+      .from('provider_profiles')
+      .select('business_name, is_verified, rating')
+      .eq('id', userId)
+      .maybeSingle();
+    return publicProfile(row, pp || undefined);
+  }
+
+  return publicProfile(row);
 }
 
-/** BE-006 — POST /api/auth/change-password */
+/** BE-006 — POST /api/auth/change-password (Node JWT — user_credentials) */
 async function changePassword(userId, body) {
-  const { old_password, new_password } = body || {};
+  const old_password = body?.old_password ?? body?.current_password ?? body?.password;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
@@ -179,113 +234,133 @@ async function changePassword(userId, body) {
     throw httpError(400, 'Old password and new password are required', 'validation_error');
   }
 
-  if (String(new_password).length < 6) {
-    throw httpError(400, 'New password must be at least 6 characters', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'New password must be at least 8 characters', 'validation_error');
   }
 
-  const profile = await getProfileById(userId);
-  if (!profile) {
-    throw httpError(404, 'User not found', 'not_found');
+  const { data: credentials, error: credError } = await supabaseAdmin
+    .from('user_credentials')
+    .select('password_hash')
+    .eq('user_id', userId)
+    .limit(1);
+
+  if (credError) {
+    throw httpError(500, `Credential lookup failed: ${credError.message}`, 'db_error');
   }
 
-  const { error: verifyError } = await supabaseAnon.auth.signInWithPassword({
-    email: profile.email,
-    password: old_password,
-  });
+  if (!credentials || credentials.length === 0) {
+    throw httpError(404, 'User credentials not found', 'not_found');
+  }
 
-  if (verifyError) {
-    throw httpError(401, 'Old password is incorrect', 'auth_failed');
+  const passwordMatch = await verifyPassword(old_password, credentials[0].password_hash);
+  if (!passwordMatch) {
+    throw httpError(401, 'Old password is incorrect', 'invalid_password');
   }
 
   const newPasswordHash = await hashPassword(new_password);
 
-  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    password: new_password,
-  });
+  const { error: updateError } = await supabaseAdmin
+    .from('user_credentials')
+    .update({ password_hash: newPasswordHash })
+    .eq('user_id', userId);
 
   if (updateError) {
-    throw httpError(500, `Password update failed: ${updateError.message}`, 'auth_error');
-  }
-
-  const { error: credError } = await supabaseAdmin
-    .from('user_credentials')
-    .upsert([
-      {
-        user_id: userId,
-        password_hash: newPasswordHash,
-      },
-    ], { onConflict: 'user_id' });
-
-  if (credError) {
-    throw httpError(500, `Credential sync failed: ${credError.message}`, 'db_error');
+    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
   }
 
   return { success: true, message: 'Password changed successfully' };
 }
 
-/** BE-007 — POST /api/auth/forgot-password */
+/** BE-007 — POST /api/auth/forgot-password (OTP qua SMTP) */
 async function forgotPassword(email) {
-  if (!email) {
-    throw httpError(400, 'Email is required', 'validation_error');
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) {
+    throw httpError(400, 'Email không hợp lệ', 'validation_error');
   }
 
-  const normalizedEmail = normalizeEmail(email);
-  const profile = await getProfileByEmail(normalizedEmail);
-
+  const profile = await findProfileByEmail(normalized);
   if (!profile) {
-    return { success: true, message: 'If email exists, password reset token will be sent' };
+    return {
+      email: normalized,
+      message: 'Nếu email đã đăng ký, mã xác nhận đã được gửi.',
+    };
   }
 
-  const token = generateResetToken();
-  const tokenHash = hashResetToken(token);
-  const expiresAt = new Date();
-  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+  const otp = generateResetToken();
+  const tokenHash = hashResetToken(otp);
+  const expiresMinutes = parseInt(String(env.PASSWORD_RESET_OTP_EXPIRES_MINUTES || 10), 10);
+  const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString();
 
-  const { error } = await supabaseAdmin
-    .from('password_reset_tokens')
-    .insert([
-      {
-        user_id: profile.id,
-        token_hash: tokenHash,
-        expires_at: expiresAt.toISOString(),
-      },
-    ]);
+  const { error: insertError } = await supabaseAdmin.from('password_reset_tokens').insert({
+    user_id: profile.id,
+    token_hash: tokenHash,
+    expires_at: expiresAt,
+  });
 
-  if (error) {
-    throw httpError(500, `Token creation failed: ${error.message}`, 'db_error');
+  if (insertError) {
+    if (insertError.code === '42P01') {
+      throw httpError(
+        500,
+        'Bảng password_reset_tokens chưa có. Chạy migration 20240113000000_node_auth.sql trên Supabase.',
+        'db_schema_missing',
+      );
+    }
+    throw httpError(500, insertError.message, 'db_error');
+  }
+
+  try {
+    await sendPasswordResetOtp({
+      to: normalized,
+      otp,
+      expiresMinutes,
+    });
+  } catch (mailErr) {
+    throw httpError(mailErr.status || 502, mailErr.message, mailErr.code || 'smtp_error');
   }
 
   return {
-    success: true,
-    message: 'Password reset token created',
-    token,
+    email: normalized,
+    message: 'Nếu email đã đăng ký, mã xác nhận đã được gửi.',
   };
 }
 
-/** BE-007 — POST /api/auth/reset-password */
+/** BE-007 — POST /api/auth/reset-password (email + OTP — Node JWT) */
 async function resetPassword(body) {
-  const { email, token, new_password } = body || {};
+  const email = body?.email;
+  const token = body?.token ?? body?.otp ?? body?.OTP;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!email || !token || !new_password) {
     throw httpError(400, 'Email, token, and new password are required', 'validation_error');
   }
 
-  if (String(new_password).length < 6) {
-    throw httpError(400, 'Password must be at least 6 characters', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const profile = await getProfileByEmail(normalizedEmail);
 
-  if (!profile) {
-    throw httpError(401, 'Invalid email or token', 'auth_failed');
+  const { data: profiles, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (profileError) {
+    throw httpError(500, `Profile lookup failed: ${profileError.message}`, 'db_error');
   }
 
-  const tokenHash = hashResetToken(token);
+  if (!profiles || profiles.length === 0) {
+    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
+  }
+
+  const userId = profiles[0].id;
+  const tokenHash = hashResetToken(String(token).trim());
+
   const { data: tokens, error: tokenError } = await supabaseAdmin
     .from('password_reset_tokens')
     .select('*')
-    .eq('user_id', profile.id)
+    .eq('user_id', userId)
     .eq('token_hash', tokenHash)
     .is('used_at', null)
     .gt('expires_at', new Date().toISOString())
@@ -296,30 +371,18 @@ async function resetPassword(body) {
   }
 
   if (!tokens || tokens.length === 0) {
-    throw httpError(401, 'Invalid or expired token', 'invalid_token');
+    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
   }
 
   const newPasswordHash = await hashPassword(new_password);
 
-  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(profile.id, {
-    password: new_password,
-  });
+  const { error: updateError } = await supabaseAdmin
+    .from('user_credentials')
+    .update({ password_hash: newPasswordHash })
+    .eq('user_id', userId);
 
   if (updateError) {
-    throw httpError(500, `Password update failed: ${updateError.message}`, 'auth_error');
-  }
-
-  const { error: credError } = await supabaseAdmin
-    .from('user_credentials')
-    .upsert([
-      {
-        user_id: profile.id,
-        password_hash: newPasswordHash,
-      },
-    ], { onConflict: 'user_id' });
-
-  if (credError) {
-    throw httpError(500, `Credential sync failed: ${credError.message}`, 'db_error');
+    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
   }
 
   const { error: markError } = await supabaseAdmin
@@ -331,10 +394,14 @@ async function resetPassword(body) {
     throw httpError(500, `Token update failed: ${markError.message}`, 'db_error');
   }
 
-  return { success: true, message: 'Password reset successfully' };
+  return { message: 'Đặt lại mật khẩu thành công.' };
 }
 
-/** BE-008 — POST /api/auth/google — Google OAuth sign-in */
+/**
+ * BE-008 — POST /api/auth/google
+ * Nhận id_token Google, verify qua Supabase Auth, đảm bảo có row trong
+ * `profiles`, rồi trả JWT Node (cùng format như login email).
+ */
 async function googleAuth(body) {
   const { id_token } = body || {};
 
@@ -342,8 +409,7 @@ async function googleAuth(body) {
     throw httpError(400, 'id_token is required', 'validation_error');
   }
 
-  // Verify id_token with Supabase Auth
-  const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithIdToken({
+  const { data: sessionData, error: sessionError } = await supabaseAnon.auth.signInWithIdToken({
     provider: 'google',
     token: id_token,
   });
@@ -352,47 +418,66 @@ async function googleAuth(body) {
     throw httpError(401, `Google sign-in failed: ${sessionError?.message || 'Unknown error'}`, 'auth_error');
   }
 
-  const user = sessionData.user || sessionData.session?.user;
-  if (!user?.id) {
+  const googleUser = sessionData.user || sessionData.session?.user;
+  if (!googleUser?.id || !googleUser?.email) {
     throw httpError(401, 'Invalid Google token', 'auth_failed');
   }
 
-  // Profile will be auto-created by trigger if user is new
-  // For existing users, just fetch the profile
-  let profile = await getProfileById(user.id);
+  const normalizedEmail = normalizeEmail(googleUser.email);
+  const avatarUrl = googleUser.user_metadata?.avatar_url || null;
+  const fullName =
+    googleUser.user_metadata?.full_name ||
+    googleUser.user_metadata?.name ||
+    normalizedEmail.split('@')[0];
+
+  // Tìm profile theo email (nguồn dữ liệu chính của Node API).
+  const { data: existingProfiles, error: lookupError } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (lookupError) {
+    throw httpError(500, `Profile lookup failed: ${lookupError.message}`, 'db_error');
+  }
+
+  let profile = existingProfiles?.[0] || null;
 
   if (!profile) {
-    // Trigger should have created it, but fallback in case
-    const { data: createdProfile, error: createError } = await supabaseAdmin
+    const userId = googleUser.id;
+
+    const { data: created, error: createError } = await supabaseAdmin
       .from('profiles')
       .insert([
         {
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || user.email.split('@')[0],
-          avatar_url: user.user_metadata?.avatar_url,
+          id: userId,
+          email: normalizedEmail,
+          full_name: fullName,
+          avatar_url: avatarUrl,
           role: 'customer',
           status: 'active',
         },
       ])
-      .select()
-      .single();
+      .select();
 
     if (createError) {
       throw httpError(500, `Profile creation failed: ${createError.message}`, 'db_error');
     }
 
-    profile = createdProfile;
-  }
+    profile = created[0];
 
-  // Update profile with avatar if available
-  if (user.user_metadata?.avatar_url && !profile.avatar_url) {
+    const { error: cpError } = await supabaseAdmin
+      .from('customer_profiles')
+      .insert([{ id: userId }]);
+    if (cpError) {
+      throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+    }
+  } else if (avatarUrl && !profile.avatar_url) {
     await supabaseAdmin
       .from('profiles')
-      .update({ avatar_url: user.user_metadata.avatar_url })
-      .eq('id', user.id);
-
-    profile.avatar_url = user.user_metadata.avatar_url;
+      .update({ avatar_url: avatarUrl })
+      .eq('id', profile.id);
+    profile.avatar_url = avatarUrl;
   }
 
   return buildAuthResponse(profile);

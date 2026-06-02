@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/dark_glass_background.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -116,8 +117,10 @@ class _RegisterPageState extends State<RegisterPage> {
       context.go('/home');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = e is AuthException ? e.message : 'Đăng ký thất bại. Thử lại sau.');
+      setState(() => _error = 'Đăng ký thất bại. Thử lại sau.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

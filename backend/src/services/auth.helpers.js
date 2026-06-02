@@ -15,9 +15,20 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
-function publicProfile(row) {
+/** Chuẩn SĐT VN — khớp `CustomerAuthRepository.normalizePhone` (Flutter). */
+function normalizePhone(input) {
+  let digits = String(input || '').replace(/\D/g, '');
+  if (digits.startsWith('84')) digits = digits.slice(2);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length < 9 || digits.length > 10) {
+    throw httpError(400, 'Invalid phone number', 'validation_error');
+  }
+  return `+84${digits}`;
+}
+
+function publicProfile(row, providerProfile) {
   if (!row) return null;
-  return {
+  const base = {
     id: row.id,
     email: row.email,
     phone: row.phone,
@@ -29,6 +40,12 @@ function publicProfile(row) {
     university: row.university,
     created_at: row.created_at,
   };
+  if (providerProfile) {
+    base.business_name = providerProfile.business_name;
+    base.is_verified = providerProfile.is_verified;
+    base.rating = providerProfile.rating;
+  }
+  return base;
 }
 
 function buildAuthResponse(profile) {
@@ -44,6 +61,7 @@ function buildAuthResponse(profile) {
 module.exports = {
   httpError,
   normalizeEmail,
+  normalizePhone,
   publicProfile,
   buildAuthResponse,
 };
