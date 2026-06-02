@@ -58,6 +58,15 @@ async function resetPassword(req, res, next) {
   }
 }
 
+async function googleAuth(req, res, next) {
+  try {
+    const data = await authService.googleAuth(req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -65,4 +74,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  googleAuth,
 };

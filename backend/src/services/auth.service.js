@@ -1,5 +1,6 @@
 /**
  * Auth — Node JWT (register/login/me/change-password) + quên MK qua SMTP OTP.
+ * Bổ sung: đăng nhập Google (BE-008) — verify id_token rồi phát JWT Node.
  * DB: docs/supabase/20240113000000_node_auth.sql
  */
 const crypto = require('crypto');
@@ -11,7 +12,7 @@ const {
   publicProfile,
 } = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
-const { supabaseAdmin } = require('./supabase.service');
+const { supabaseAdmin, supabaseAnon } = require('./supabase.service');
 const { sendPasswordResetOtp } = require('./mail.service');
 const env = require('../config/env');
 
@@ -396,6 +397,92 @@ async function resetPassword(body) {
   return { message: 'Đặt lại mật khẩu thành công.' };
 }
 
+/**
+ * BE-008 — POST /api/auth/google
+ * Nhận id_token Google, verify qua Supabase Auth, đảm bảo có row trong
+ * `profiles`, rồi trả JWT Node (cùng format như login email).
+ */
+async function googleAuth(body) {
+  const { id_token } = body || {};
+
+  if (!id_token) {
+    throw httpError(400, 'id_token is required', 'validation_error');
+  }
+
+  const { data: sessionData, error: sessionError } = await supabaseAnon.auth.signInWithIdToken({
+    provider: 'google',
+    token: id_token,
+  });
+
+  if (sessionError || !sessionData) {
+    throw httpError(401, `Google sign-in failed: ${sessionError?.message || 'Unknown error'}`, 'auth_error');
+  }
+
+  const googleUser = sessionData.user || sessionData.session?.user;
+  if (!googleUser?.id || !googleUser?.email) {
+    throw httpError(401, 'Invalid Google token', 'auth_failed');
+  }
+
+  const normalizedEmail = normalizeEmail(googleUser.email);
+  const avatarUrl = googleUser.user_metadata?.avatar_url || null;
+  const fullName =
+    googleUser.user_metadata?.full_name ||
+    googleUser.user_metadata?.name ||
+    normalizedEmail.split('@')[0];
+
+  // Tìm profile theo email (nguồn dữ liệu chính của Node API).
+  const { data: existingProfiles, error: lookupError } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (lookupError) {
+    throw httpError(500, `Profile lookup failed: ${lookupError.message}`, 'db_error');
+  }
+
+  let profile = existingProfiles?.[0] || null;
+
+  if (!profile) {
+    const userId = googleUser.id;
+
+    const { data: created, error: createError } = await supabaseAdmin
+      .from('profiles')
+      .insert([
+        {
+          id: userId,
+          email: normalizedEmail,
+          full_name: fullName,
+          avatar_url: avatarUrl,
+          role: 'customer',
+          status: 'active',
+        },
+      ])
+      .select();
+
+    if (createError) {
+      throw httpError(500, `Profile creation failed: ${createError.message}`, 'db_error');
+    }
+
+    profile = created[0];
+
+    const { error: cpError } = await supabaseAdmin
+      .from('customer_profiles')
+      .insert([{ id: userId }]);
+    if (cpError) {
+      throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+    }
+  } else if (avatarUrl && !profile.avatar_url) {
+    await supabaseAdmin
+      .from('profiles')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', profile.id);
+    profile.avatar_url = avatarUrl;
+  }
+
+  return buildAuthResponse(profile);
+}
+
 module.exports = {
   register,
   login,
@@ -403,4 +490,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  googleAuth,
 };
