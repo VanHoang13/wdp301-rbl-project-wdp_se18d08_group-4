@@ -1,7 +1,8 @@
 const { supabaseAdmin } = require('../services/supabase.service');
+const authService = require('../services/auth.service');
 
 /**
- * Admin login
+ * Admin login — Node JWT (user_credentials), không dùng Supabase Auth.
  * POST /api/admin/auth/login
  */
 async function login(req, res) {
@@ -11,68 +12,36 @@ async function login(req, res) {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email và mật khẩu là bắt buộc'
+        message: 'Email và mật khẩu là bắt buộc',
       });
     }
 
-    // Authenticate with Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
-      email,
-      password
-    });
+    const data = await authService.login({ email, password });
 
-    if (authError || !authData.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Email hoặc mật khẩu không đúng'
-      });
-    }
-
-    // Check if user has admin role
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, full_name, role, avatar_url, created_at')
-      .eq('id', authData.user.id)
-      .single();
-
-    if (profileError || !profile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy thông tin người dùng'
-      });
-    }
-
-    if (profile.role !== 'admin') {
+    if (data.user?.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'Bạn không có quyền truy cập admin'
+        message: 'Bạn không có quyền truy cập admin',
       });
     }
 
-    // Return success with user info and token
     res.json({
       success: true,
       message: 'Đăng nhập thành công',
-      data: {
-        user: {
-          id: profile.id,
-          email: profile.email,
-          full_name: profile.full_name,
-          role: profile.role,
-          avatar_url: profile.avatar_url,
-          created_at: profile.created_at
-        },
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-        expires_at: authData.session.expires_at
-      }
+      data,
     });
-
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+      });
+    }
     console.error('Admin login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi server khi đăng nhập'
+      message: 'Lỗi server khi đăng nhập',
     });
   }
 }
@@ -92,20 +61,19 @@ async function getProfile(req, res) {
     if (error || !profile) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy thông tin admin'
+        message: 'Không tìm thấy thông tin admin',
       });
     }
 
     res.json({
       success: true,
-      data: profile
+      data: profile,
     });
-
   } catch (error) {
     console.error('Get admin profile error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi server khi lấy thông tin admin'
+      message: 'Lỗi server khi lấy thông tin admin',
     });
   }
 }
@@ -121,7 +89,6 @@ async function getDashboard(req, res) {
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 1. GMV Yesterday (Gross Merchandise Value)
     const { data: gmvYesterday } = await supabaseAdmin
       .from('orders')
       .select('total_price')
@@ -131,26 +98,22 @@ async function getDashboard(req, res) {
 
     const gmv_yesterday = gmvYesterday?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
 
-    // 2. New Orders 24h
     const { count: new_orders_24h } = await supabaseAdmin
       .from('orders')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', last24h.toISOString());
 
-    // 3. Active Customers (có đơn trong 30 ngày)
     const { count: active_customers } = await supabaseAdmin
       .from('orders')
       .select('customer_id', { count: 'exact', head: true })
       .gte('created_at', new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
-    // 4. Active Providers (online và available)
     const { count: active_providers } = await supabaseAdmin
       .from('provider_profiles')
       .select('*', { count: 'exact', head: true })
       .eq('is_available', true)
       .eq('is_verified', true);
 
-    // 5. Commission Total (tháng này)
     const { data: commissionData } = await supabaseAdmin
       .from('provider_earnings')
       .select('platform_commission')
@@ -158,17 +121,15 @@ async function getDashboard(req, res) {
 
     const commission_total = commissionData?.reduce((sum, earning) => sum + parseFloat(earning.platform_commission || 0), 0) || 0;
 
-    // 6. Completion Rate 24h
     const { data: ordersLast24h } = await supabaseAdmin
       .from('orders')
       .select('status')
       .gte('created_at', last24h.toISOString());
 
     const totalOrders24h = ordersLast24h?.length || 0;
-    const completedOrders24h = ordersLast24h?.filter(o => o.status === 'completed').length || 0;
-    const completion_rate_24h = totalOrders24h > 0 ? (completedOrders24h / totalOrders24h * 100) : 0;
+    const completedOrders24h = ordersLast24h?.filter((o) => o.status === 'completed').length || 0;
+    const completion_rate_24h = totalOrders24h > 0 ? (completedOrders24h / totalOrders24h) * 100 : 0;
 
-    // 7. Average Order Value (AOV) - tháng này
     const { data: monthOrders } = await supabaseAdmin
       .from('orders')
       .select('total_price')
@@ -176,9 +137,8 @@ async function getDashboard(req, res) {
       .gte('created_at', startOfMonth.toISOString());
 
     const monthRevenue = monthOrders?.reduce((sum, order) => sum + parseFloat(order.total_price || 0), 0) || 0;
-    const average_order_value = monthOrders?.length > 0 ? (monthRevenue / monthOrders.length) : 0;
+    const average_order_value = monthOrders?.length > 0 ? monthRevenue / monthOrders.length : 0;
 
-    // 8. Pending Tasks
     const { count: pending_verifications } = await supabaseAdmin
       .from('provider_profiles')
       .select('*', { count: 'exact', head: true })
@@ -194,7 +154,6 @@ async function getDashboard(req, res) {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 
-    // 9. Growth Metrics
     const { count: new_customers_24h } = await supabaseAdmin
       .from('profiles')
       .select('*', { count: 'exact', head: true })
@@ -210,57 +169,40 @@ async function getDashboard(req, res) {
     res.json({
       success: true,
       data: {
-        // Core KPIs
         gmv_yesterday: Math.round(gmv_yesterday),
         new_orders_24h,
         active_customers,
         active_providers,
         commission_total: Math.round(commission_total),
-        
-        // Performance KPIs
         completion_rate_24h: Math.round(completion_rate_24h * 100) / 100,
         average_order_value: Math.round(average_order_value),
-        
-        // Growth KPIs
         new_customers_24h,
         new_providers_24h,
-        
-        // Admin Tasks
         pending_tasks: {
           verifications: pending_verifications || 0,
           disputes: pending_disputes || 0,
           withdrawals: pending_withdrawals || 0,
-          total: (pending_verifications || 0) + (pending_disputes || 0) + (pending_withdrawals || 0)
+          total: (pending_verifications || 0) + (pending_disputes || 0) + (pending_withdrawals || 0),
         },
-        
-        // Metadata
         generated_at: now.toISOString(),
-        timezone: 'Asia/Ho_Chi_Minh'
-      }
+        timezone: 'Asia/Ho_Chi_Minh',
+      },
     });
-
   } catch (error) {
     console.error('Get dashboard error:', error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi server khi lấy dashboard KPI'
+      message: 'Lỗi server khi lấy dashboard KPI',
     });
   }
 }
 
-/**
- * Admin dashboard stats (legacy endpoint)
- * GET /api/admin/dashboard/stats
- */
+/** GET /api/admin/dashboard/stats */
 async function getDashboardStats(req, res) {
-  // Redirect to new dashboard endpoint
   return getDashboard(req, res);
 }
 
-/**
- * Get pending provider verifications
- * GET /api/admin/providers/pending
- */
+/** GET /api/admin/providers/pending */
 async function getPendingProviders(req, res) {
   try {
     const { data: providers, error } = await supabaseAdmin
@@ -299,39 +241,34 @@ async function getPendingProviders(req, res) {
     res.json({
       success: true,
       data: providers || [],
-      count: providers?.length || 0
+      count: providers?.length || 0,
     });
-
   } catch (error) {
     console.error('Get pending providers error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi lấy danh sách provider chờ duyệt',
-      error: error.message
+      error: error.message,
     });
   }
 }
 
-/**
- * Approve/Reject provider verification
- * PUT /api/admin/providers/:id/verify
- */
+/** PUT /api/admin/providers/:id/verify */
 async function verifyProvider(req, res) {
   try {
     const { id } = req.params;
-    const { action, notes } = req.body; // action: 'approve' | 'reject'
+    const { action, notes } = req.body;
 
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({
         success: false,
-        message: 'Action phải là "approve" hoặc "reject"'
+        message: 'Action phải là "approve" hoặc "reject"',
       });
     }
 
     const verification_status = action === 'approve' ? 'approved' : 'rejected';
     const is_verified = action === 'approve';
 
-    // Update provider verification
     const { data: updatedProvider, error } = await supabaseAdmin
       .from('provider_profiles')
       .update({
@@ -339,7 +276,7 @@ async function verifyProvider(req, res) {
         is_verified,
         verification_notes: notes,
         verified_at: new Date().toISOString(),
-        verified_by: req.user.id
+        verified_by: req.user.id,
       })
       .eq('id', id)
       .select(`
@@ -356,48 +293,41 @@ async function verifyProvider(req, res) {
     if (!updatedProvider) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy provider'
+        message: 'Không tìm thấy provider',
       });
     }
 
-    // Create notification for provider
     try {
-      await supabaseAdmin
-        .from('notifications')
-        .insert({
-          user_id: id,
-          notification_type: 'provider_verified',
-          title: action === 'approve' ? 'Tài khoản đã được xác thực' : 'Tài khoản bị từ chối',
-          body: action === 'approve' 
+      await supabaseAdmin.from('notifications').insert({
+        user_id: id,
+        notification_type: 'provider_verified',
+        title: action === 'approve' ? 'Tài khoản đã được xác thực' : 'Tài khoản bị từ chối',
+        body:
+          action === 'approve'
             ? 'Chúc mừng! Tài khoản nhà cung cấp của bạn đã được xác thực thành công.'
             : `Tài khoản của bạn bị từ chối. Lý do: ${notes || 'Không đạt yêu cầu'}`,
-          priority: 'high'
-        });
+        priority: 'high',
+      });
     } catch (notifError) {
       console.warn('Failed to create notification:', notifError.message);
-      // Continue even if notification fails
     }
 
     res.json({
       success: true,
       message: `${action === 'approve' ? 'Duyệt' : 'Từ chối'} provider thành công`,
-      data: updatedProvider
+      data: updatedProvider,
     });
-
   } catch (error) {
     console.error('Verify provider error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi xử lý duyệt provider',
-      error: error.message
+      error: error.message,
     });
   }
 }
 
-/**
- * Get all disputes
- * GET /api/admin/disputes
- */
+/** GET /api/admin/disputes */
 async function getDisputes(req, res) {
   try {
     const { status = 'all', page = 1, limit = 20 } = req.query;
@@ -449,42 +379,33 @@ async function getDisputes(req, res) {
       throw error;
     }
 
-    // Get total count
-    let countQuery = supabaseAdmin
-      .from('disputes')
-      .select('*', { count: 'exact', head: true });
-
+    let countQuery = supabaseAdmin.from('disputes').select('*', { count: 'exact', head: true });
     if (status !== 'all') {
       countQuery = countQuery.eq('status', status);
     }
-
     const { count } = await countQuery;
 
     res.json({
       success: true,
       data: disputes || [],
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
         total: count || 0,
-        pages: Math.ceil((count || 0) / limit)
-      }
+        pages: Math.ceil((count || 0) / limit),
+      },
     });
-
   } catch (error) {
     console.error('Get disputes error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi lấy danh sách khiếu nại',
-      error: error.message
+      error: error.message,
     });
   }
 }
 
-/**
- * Get dispute details
- * GET /api/admin/disputes/:id
- */
+/** GET /api/admin/disputes/:id */
 async function getDisputeDetails(req, res) {
   try {
     const { id } = req.params;
@@ -536,47 +457,37 @@ async function getDisputeDetails(req, res) {
     if (!dispute) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy khiếu nại'
+        message: 'Không tìm thấy khiếu nại',
       });
     }
 
     res.json({
       success: true,
-      data: dispute
+      data: dispute,
     });
-
   } catch (error) {
     console.error('Get dispute details error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi lấy chi tiết khiếu nại',
-      error: error.message
+      error: error.message,
     });
   }
 }
 
-/**
- * Resolve dispute
- * PUT /api/admin/disputes/:id/resolve
- */
+/** PUT /api/admin/disputes/:id/resolve */
 async function resolveDispute(req, res) {
   try {
     const { id } = req.params;
-    const { 
-      resolution, 
-      resolution_type, 
-      refund_amount, 
-      internal_notes 
-    } = req.body;
+    const { resolution, resolution_type, refund_amount, internal_notes } = req.body;
 
     if (!resolution || !resolution_type) {
       return res.status(400).json({
         success: false,
-        message: 'Resolution và resolution_type là bắt buộc'
+        message: 'Resolution và resolution_type là bắt buộc',
       });
     }
 
-    // Update dispute
     const { data: updatedDispute, error } = await supabaseAdmin
       .from('disputes')
       .update({
@@ -585,7 +496,7 @@ async function resolveDispute(req, res) {
         resolution_type,
         refund_amount: refund_amount || null,
         resolved_by: req.user.id,
-        resolved_at: new Date().toISOString()
+        resolved_at: new Date().toISOString(),
       })
       .eq('id', id)
       .select(`
@@ -603,60 +514,50 @@ async function resolveDispute(req, res) {
     if (!updatedDispute) {
       return res.status(404).json({
         success: false,
-        message: 'Không tìm thấy khiếu nại'
+        message: 'Không tìm thấy khiếu nại',
       });
     }
 
-    // Add internal message if provided
     if (internal_notes) {
-      await supabaseAdmin
-        .from('dispute_messages')
-        .insert({
-          dispute_id: id,
-          sender_id: req.user.id,
-          message: internal_notes,
-          is_internal: true
-        });
+      await supabaseAdmin.from('dispute_messages').insert({
+        dispute_id: id,
+        sender_id: req.user.id,
+        message: internal_notes,
+        is_internal: true,
+      });
     }
 
-    // Create notification for user who raised dispute
-    await supabaseAdmin
-      .from('notifications')
-      .insert({
-        user_id: updatedDispute.raised_by,
-        notification_type: 'dispute_resolved',
-        title: 'Khiếu nại đã được xử lý',
-        body: `Khiếu nại cho đơn hàng ${updatedDispute.orders.order_number} đã được xử lý. ${resolution}`,
-        priority: 'high'
-      });
+    await supabaseAdmin.from('notifications').insert({
+      user_id: updatedDispute.raised_by,
+      notification_type: 'dispute_resolved',
+      title: 'Khiếu nại đã được xử lý',
+      body: `Khiếu nại cho đơn hàng ${updatedDispute.orders.order_number} đã được xử lý. ${resolution}`,
+      priority: 'high',
+    });
 
-    // Process refund if applicable
     if (refund_amount && refund_amount > 0) {
-      await supabaseAdmin
-        .from('refunds')
-        .insert({
-          order_id: updatedDispute.order_id,
-          refund_amount,
-          refund_reason: `Dispute resolution: ${resolution}`,
-          status: 'approved',
-          requested_by: updatedDispute.raised_by,
-          approved_by: req.user.id,
-          processed_at: new Date().toISOString()
-        });
+      await supabaseAdmin.from('refunds').insert({
+        order_id: updatedDispute.order_id,
+        refund_amount,
+        refund_reason: `Dispute resolution: ${resolution}`,
+        status: 'approved',
+        requested_by: updatedDispute.raised_by,
+        approved_by: req.user.id,
+        processed_at: new Date().toISOString(),
+      });
     }
 
     res.json({
       success: true,
       message: 'Xử lý khiếu nại thành công',
-      data: updatedDispute
+      data: updatedDispute,
     });
-
   } catch (error) {
     console.error('Resolve dispute error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi xử lý khiếu nại',
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -670,5 +571,5 @@ module.exports = {
   verifyProvider,
   getDisputes,
   getDisputeDetails,
-  resolveDispute
+  resolveDispute,
 };

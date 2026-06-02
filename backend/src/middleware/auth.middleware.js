@@ -1,9 +1,8 @@
-const { getUserFromToken, supabaseAdmin } = require('../services/supabase.service');
+const { supabaseAdmin } = require('../services/supabase.service');
 const { verifyAccessToken } = require('../utils/jwt');
 
 /**
- * Bearer token từ Supabase Auth (Flutter supabase_flutter).
- * Dùng cho orders, payments, customers, admin — cho đến khi chuyển hết sang Node JWT.
+ * Bearer JWT do Node API phát hành — dùng cho mọi route bảo vệ.
  */
 async function requireAuth(req, res, next) {
   try {
@@ -15,31 +14,6 @@ async function requireAuth(req, res, next) {
         success: false,
         message: 'Thiếu access token',
       });
-    }
-
-    const user = await getUserFromToken(token);
-    req.user = { id: user.id, email: user.email };
-    req.accessToken = token;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Token không hợp lệ hoặc đã hết hạn',
-    });
-  }
-}
-
-/**
- * Bearer JWT do Node API phát hành (auth.service — BE-003+).
- * Dùng cho /api/auth/me, /api/auth/change-password.
- */
-async function requireNodeAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'Thiếu access token' });
     }
 
     const payload = verifyAccessToken(token);
@@ -58,6 +32,9 @@ async function requireNodeAuth(req, res, next) {
     });
   }
 }
+
+/** @deprecated Dùng requireAuth — giữ alias để không vỡ import cũ. */
+const requireNodeAuth = requireAuth;
 
 function requireRole(...roles) {
   return async (req, res, next) => {

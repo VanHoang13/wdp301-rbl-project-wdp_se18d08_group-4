@@ -5,6 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../orders/domain/order_models.dart';
 import '../../data/booking_mock_repository.dart';
 import '../../data/labor_repository.dart';
+import '../../data/providers_repository.dart';
+import '../../../orders/data/customer_orders_repository.dart';
 import '../../domain/booking_models.dart';
 import 'booking_flow_state.dart';
 
@@ -12,12 +14,18 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
   BookingFlowCubit({
     BookingMockRepository? repository,
     LaborRepository? laborRepository,
+    ProvidersRepository? providersRepository,
+    CustomerOrdersRepository? ordersRepository,
   })  : _repo = repository ?? BookingMockRepository(),
         _laborRepo = laborRepository ?? LaborRepository(),
+        _providersRepo = providersRepository ?? ProvidersRepository(),
+        _ordersRepo = ordersRepository ?? CustomerOrdersRepository(),
         super(const BookingFlowState());
 
   final BookingMockRepository _repo;
   final LaborRepository _laborRepo;
+  final ProvidersRepository _providersRepo;
+  final CustomerOrdersRepository _ordersRepo;
 
   Future<void> loadPlaces() async {
     if (state.recentPlaces.isNotEmpty) return;
@@ -50,13 +58,23 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
   Future<void> loadPartners() async {
     if (state.partners.isNotEmpty) return;
     emit(state.copyWith(loadingPartners: true));
-    final partners = await _repo.fetchPartners();
+    List<PartnerOffer> partners;
+    try {
+      partners = await _providersRepo.browse();
+      if (partners.isEmpty) {
+        partners = await _repo.fetchPartners();
+      }
+    } catch (_) {
+      partners = await _repo.fetchPartners();
+    }
     emit(state.copyWith(
       loadingPartners: false,
       partners: partners,
       selectedPartnerId: state.selectedPartnerId ?? (partners.isNotEmpty ? partners.first.id : null),
     ));
   }
+
+  Future<String> checkout() => _ordersRepo.createFromBooking(state);
 
   Future<void> loadLaborQuotes() async {
     emit(state.copyWith(loadingLaborQuotes: true, laborQuotes: []));

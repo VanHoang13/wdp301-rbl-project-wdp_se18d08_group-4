@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
-import 'core/config/supabase_config.dart';
+import 'core/auth/auth_token_storage.dart';
+import 'core/network/api_client.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: SupabaseConfig.supabaseUrl,
-    anonKey: SupabaseConfig.supabaseAnonKey,
-  );
+  final token = await AuthTokenStorage.instance.loadToken();
+  if (token != null && token.isNotEmpty) {
+    ApiClient.instance.setAccessToken(token);
+  }
 
   runApp(const ProviderScope(child: UniMoveProviderApp()));
 }

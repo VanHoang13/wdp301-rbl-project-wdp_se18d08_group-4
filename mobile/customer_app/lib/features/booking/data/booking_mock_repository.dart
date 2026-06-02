@@ -86,6 +86,7 @@ class BookingMockRepository {
     ];
   }
 
+  /// Gói bảo hiểm đồ đạc khi chuyển trọ.
   Future<List<CargoInsurancePlan>> fetchInsurancePlans() async {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     return const [

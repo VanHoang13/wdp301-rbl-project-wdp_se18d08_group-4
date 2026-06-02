@@ -3,8 +3,8 @@
 > **Leader:** chỉ push scaffold — xem [AUTH_SCAFFOLD_LEADER.md](./AUTH_SCAFFOLD_LEADER.md).  
 > **Team:** implement toàn bộ `auth.service.js` / `customers.service.js` (BE-001 → BE-010).
 
-Logic đăng ký, đăng nhập, quên MK, profile **không** nằm trong commit scaffold (mọi endpoint auth/customers hiện trả **501**).  
-**Flutter** vẫn dùng **Supabase Auth** (`customer_auth_repository.dart`) cho đến khi BE-003 xong.
+**Flutter customer + provider** dùng **Node JWT** (`AuthTokenStorage` + `ApiClient` Bearer).  
+**Supabase Auth** không còn dùng trên mobile; DB vẫn qua Postgres (service role trên backend).
 
 ---
 
@@ -72,7 +72,7 @@ cd backend && npm install && npm run dev
 
 | Task | Method | Path | Ghi chú |
 |------|--------|------|---------|
-| BE-001 | POST | `/api/auth/register` | body: email, password, full_name, phone |
+| BE-001 | POST | `/api/auth/register` | **Cách A** — body bắt buộc: `email`, `password` (≥8), `full_name`, `phone` (chuẩn `+84`). Không nhận `student_id`/`university` (bổ sung ở BE-009 PATCH profile). `role` luôn `customer`. |
 | BE-003 | POST | `/api/auth/login` | trả `{ user, accessToken }` |
 | — | GET | `/api/auth/me` | `requireNodeAuth` |
 | BE-006 | POST | `/api/auth/change-password` | `requireNodeAuth` |
@@ -85,7 +85,25 @@ Helper sẵn trong `auth.service.js` → `_utils`: `hashPassword`, `verifyPasswo
 
 ---
 
-## 5. Test nhanh (sau khi implement BE-003)
+## 5. Test nhanh
+
+**Đăng ký (BE-001 — Cách A, khớp UI customer):**
+
+```http
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@student.edu",
+  "password": "Password123!",
+  "full_name": "Nguyen Van A",
+  "phone": "0123456789"
+}
+```
+
+`phone` lưu dạng `+84901234567`. Không gửi `student_id` / `university` ở bước đăng ký.
+
+**Đăng nhập (BE-003):**
 
 ```http
 POST http://localhost:3000/api/auth/login

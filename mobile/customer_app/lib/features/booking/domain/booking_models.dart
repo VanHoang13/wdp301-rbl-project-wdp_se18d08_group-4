@@ -146,6 +146,8 @@ class CargoInsurancePlan {
   final String id;
   final String name;
   final String tagline;
+
+  /// Mức bồi thường tối đa (VND).
   final int coverageAmount;
   final int price;
   final List<String> benefits;

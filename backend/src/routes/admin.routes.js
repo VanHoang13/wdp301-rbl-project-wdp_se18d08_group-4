@@ -7,20 +7,17 @@ const router = express.Router();
 // Auth routes (không cần middleware)
 router.post('/auth/login', adminController.login);
 
-// Protected admin routes (cần auth + admin role)
+// Protected admin routes (Node JWT + admin role)
 router.use(requireAuth);
 router.use(requireRole('admin'));
 
-// Dashboard & Stats
 router.get('/auth/profile', adminController.getProfile);
 router.get('/dashboard', adminController.getDashboard);
-router.get('/dashboard/stats', adminController.getDashboardStats); // Legacy endpoint
+router.get('/dashboard/stats', adminController.getDashboardStats);
 
-// Provider Management
 router.get('/providers/pending', adminController.getPendingProviders);
 router.put('/providers/:id/verify', adminController.verifyProvider);
 
-// Dispute Management
 router.get('/disputes', adminController.getDisputes);
 router.get('/disputes/:id', adminController.getDisputeDetails);
 router.put('/disputes/:id/resolve', adminController.resolveDispute);
