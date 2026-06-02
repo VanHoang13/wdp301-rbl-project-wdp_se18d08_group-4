@@ -33,16 +33,16 @@ async function me(req, res, next) {
 
 async function resetPassword(req, res, next) {
   try {
-    const data = await authService.resetPasswordLoggedIn(req.user.id, req.body || {});
+    const data = await authService.resetPasswordViaOtp(req.body || {});
     res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
 }
 
-async function resetPasswordViaOtp(req, res, next) {
+async function changePassword(req, res, next) {
   try {
-    const data = await authService.resetPasswordViaOtp(req.body || {});
+    const data = await authService.resetPasswordLoggedIn(req.user.id, req.body || {});
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -64,6 +64,6 @@ module.exports = {
   login,
   me,
   resetPassword,
+  changePassword,
   forgotPassword,
-  resetPasswordViaOtp,
 };

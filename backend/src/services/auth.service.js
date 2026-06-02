@@ -385,77 +385,92 @@ async function forgotPassword(email) {
 
   return {
     email: normalized,
-    message: 'Nếu email đã đăng ký, mã xác nhận đã được gửi.',
+    message: 'Nếu email đã đăng ký, mã OTP đã được gửi.',
   };
 }
 
-/** BE-007 — POST /api/auth/forgot-password/verify (OTP quên MK) */
+/** BE-007 — POST /api/auth/reset-password — email + token/otp (từ email) + new_password */
 async function resetPasswordViaOtp(body) {
-  const { email, token, new_password } = body || {};
+  const email = normalizeEmail(body?.email);
+  const otp = String(body?.token ?? body?.otp ?? body?.OTP ?? '').trim();
+  const newPassword = body?.new_password ?? body?.newPassword;
 
-  if (!email || !token || !new_password) {
-    throw httpError(400, 'Email, token, and new password are required', 'validation_error');
+  if (!email || !otp || !newPassword) {
+    throw httpError(
+      400,
+      'email, token (mã OTP) và new_password là bắt buộc',
+      'validation_error',
+    );
   }
 
-  if (String(new_password).length < 8) {
-    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
+  if (String(newPassword).length < 8) {
+    throw httpError(400, 'Mật khẩu mới cần ít nhất 8 ký tự', 'validation_error');
   }
 
-  const normalizedEmail = normalizeEmail(email);
-
-  const { data: profiles, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('id')
-    .eq('email', normalizedEmail)
-    .limit(1);
-
-  if (profileError) {
-    throw httpError(500, `Profile lookup failed: ${profileError.message}`, 'db_error');
+  const profile = await findProfileByEmail(email);
+  if (!profile) {
+    throw httpError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn', 'invalid_token');
   }
 
-  if (!profiles || profiles.length === 0) {
-    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
-  }
+  const tokenHash = hashResetToken(otp);
 
-  const userId = profiles[0].id;
-  const tokenHash = hashResetToken(String(token).trim());
-
-  const { data: tokens, error: tokenError } = await supabaseAdmin
+  const { data: rows, error: tokenError } = await supabaseAdmin
     .from('password_reset_tokens')
-    .select('*')
-    .eq('user_id', userId)
+    .select('id')
+    .eq('user_id', profile.id)
     .eq('token_hash', tokenHash)
     .is('used_at', null)
     .gt('expires_at', new Date().toISOString())
     .limit(1);
 
   if (tokenError) {
-    throw httpError(500, `Token lookup failed: ${tokenError.message}`, 'db_error');
+    throw httpError(500, tokenError.message, 'db_error');
   }
 
-  if (!tokens || tokens.length === 0) {
-    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
+  if (!rows?.length) {
+    throw httpError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn', 'invalid_token');
   }
 
-  const newPasswordHash = await hashPassword(new_password);
+  const newPasswordHash = await hashPassword(newPassword);
+  const userId = profile.id;
 
-  const { error: updateError } = await supabaseAdmin
+  const { data: existingCred } = await supabaseAdmin
     .from('user_credentials')
-    .update({ password_hash: newPasswordHash })
-    .eq('user_id', userId);
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
 
-  if (updateError) {
-    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
+  if (existingCred) {
+    const { error: updateError } = await supabaseAdmin
+      .from('user_credentials')
+      .update({ password_hash: newPasswordHash })
+      .eq('user_id', userId);
+    if (updateError) {
+      throw httpError(500, updateError.message, 'db_error');
+    }
+  } else {
+    const { error: insertError } = await supabaseAdmin
+      .from('user_credentials')
+      .insert({ user_id: userId, password_hash: newPasswordHash });
+    if (insertError) {
+      throw httpError(500, insertError.message, 'db_error');
+    }
   }
 
-  const { error: markError } = await supabaseAdmin
+  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (authUser?.user) {
+    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: String(newPassword),
+    });
+    if (authUpdateError) {
+      throw httpError(500, authUpdateError.message, 'supabase_auth_error');
+    }
+  }
+
+  await supabaseAdmin
     .from('password_reset_tokens')
     .update({ used_at: new Date().toISOString() })
-    .eq('id', tokens[0].id);
-
-  if (markError) {
-    throw httpError(500, `Token update failed: ${markError.message}`, 'db_error');
-  }
+    .eq('id', rows[0].id);
 
   return { message: 'Đặt lại mật khẩu thành công.' };
 }
