@@ -1,6 +1,5 @@
 /**
  * SCAFFOLD — Chỉ gọi auth.service; không thêm logic ở đây.
- * Implement: backend/src/services/auth.service.js (BE-001 → BE-007).
  */
 const authService = require('../services/auth.service');
 

@@ -220,9 +220,10 @@ async function getMe(userId) {
   return publicProfile(row);
 }
 
-/** BE-006 — POST /api/auth/change-password */
+/** BE-006 — POST /api/auth/change-password (Node JWT — user_credentials) */
 async function changePassword(userId, body) {
-  const { old_password, new_password } = body || {};
+  const old_password = body?.old_password ?? body?.current_password ?? body?.password;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
@@ -322,9 +323,11 @@ async function forgotPassword(email) {
   };
 }
 
-/** BE-007 — POST /api/auth/reset-password (Node JWT — user_credentials) */
+/** BE-007 — POST /api/auth/reset-password (email + OTP — Node JWT) */
 async function resetPassword(body) {
-  const { email, token, new_password } = body || {};
+  const email = body?.email;
+  const token = body?.token ?? body?.otp ?? body?.OTP;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!email || !token || !new_password) {
     throw httpError(400, 'Email, token, and new password are required', 'validation_error');
