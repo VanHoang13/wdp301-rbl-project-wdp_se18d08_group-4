@@ -1,4 +1,4 @@
-const { createUserClient } = require('../services/supabase.service');
+const { supabaseAdmin } = require('../services/supabase.service');
 
 /** Tạo payment deposit — PayOS integration sẽ bổ sung ở bước sau. */
 async function createDeposit(req, res, next) {
@@ -9,8 +9,7 @@ async function createDeposit(req, res, next) {
       return res.status(400).json({ success: false, message: 'Thiếu order_id hoặc amount' });
     }
 
-    const db = createUserClient(req.accessToken);
-    const { data, error } = await db
+    const { data, error } = await supabaseAdmin
       .from('payments')
       .insert({
         order_id,

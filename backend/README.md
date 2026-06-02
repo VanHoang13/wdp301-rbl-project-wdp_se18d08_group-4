@@ -1,87 +1,59 @@
-# UniMove Backend
+# UniMove Backend API
 
-## Quick Start
+Node.js Express API server with Supabase integration.
 
-### 1. Install Dependencies
+## 🚀 Quick Start
+
 ```bash
-cd backend
 npm install
-```
-
-### 2. Chạy API server
-```bash
+cp ../.env.example ../.env
+# Edit .env with Supabase credentials
+npm run create-admin
 npm run dev
 ```
 
-API mặc định: `http://localhost:3000/api/health`
+## 🧪 Testing
 
-### 3. Test Database Connection
 ```bash
+# Test database connection
 npm test
+
+# API server
+curl http://localhost:3000/api/health
 ```
 
-## 📋 Prerequisites
+## 📋 Available Scripts
 
-Đảm bảo bạn đã:
-- ✅ Tạo project Supabase
-- ✅ Import tất cả 8 migration files
-- ✅ Tạo file `.env` ở thư mục root với các thông tin:
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - `DATABASE_URL`
+- `npm start` - Production server
+- `npm run dev` - Development server with auto-reload
+- `npm test` - Test database connection
+- `npm run create-admin` - Create admin user
 
-## 🧪 Test Connection
+## 🔗 API Documentation
 
-Script `test-connection.js` sẽ kiểm tra:
-1. ✅ Kết nối với Supabase
-2. ✅ Query notification_templates table
-3. ✅ Query promotions table
-4. ✅ Verify 10 critical tables exist
-5. ✅ Check RLS policies are active
+See [../docs/ADMIN_API.md](../docs/ADMIN_API.md) for complete API documentation.
 
-## Structure
+## 📊 Admin Endpoints
+
+- `POST /api/admin/auth/login` - Admin login
+- `GET /api/admin/dashboard` - KPI dashboard  
+- `GET /api/admin/providers/pending` - Pending providers
+- `GET /api/admin/disputes` - Dispute management
+
+## 🔧 Environment Variables
+
+Required in `../.env`:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY` 
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `DATABASE_URL`
+
+## 🏗️ Architecture
 
 ```
-backend/
-├── src/                     # Node.js Express API
-│   ├── server.js
-│   ├── routes/
-│   ├── controllers/
-│   ├── services/
-│   └── middleware/
-├── supabase/
-│   ├── migrations/          # Migration files (01–11)
-│   └── manual_fix_step*.sql # Script thủ công cho Supabase live
-├── test-connection.js
-├── package.json
-└── README.md
+src/
+├── controllers/    # Request handlers
+├── routes/        # API routes
+├── middleware/    # Auth & validation
+└── services/      # Supabase integration
 ```
-
-## 🔧 Troubleshooting
-
-### Error: "Missing environment variables"
-→ Kiểm tra file `.env` ở thư mục root (không phải trong `backend/`)
-
-### Error: "relation does not exist"
-→ Bạn chưa import migration files vào Supabase
-
-### Error: "Invalid API key"
-→ Kiểm tra lại `SUPABASE_ANON_KEY` trong `.env`
-
-### Error: "Connection refused"
-→ Kiểm tra internet và `SUPABASE_URL`
-
-## Next Steps
-
-Sau khi test thành công:
-1. Chạy `manual_fix_step5_auth_trigger.sql` trên Supabase (nếu chưa)
-2. Kết nối Flutter apps với Node API
-3. Hoàn thiện PayOS webhook
-4. Xem thêm: [nodejs-api.md](../docs/nodejs-api.md)
-
-## 🔗 Links
-
-- [Supabase Documentation](https://supabase.com/docs)
-- [Supabase JS Client](https://supabase.com/docs/reference/javascript/introduction)
-- [Project Documentation](../docs/)

@@ -86,6 +86,59 @@ class BookingMockRepository {
     ];
   }
 
+  /// Gói bảo hiểm đồ đạc khi chuyển trọ.
+  Future<List<CargoInsurancePlan>> fetchInsurancePlans() async {
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    return const [
+      CargoInsurancePlan(
+        id: 'none',
+        name: 'Không mua bảo hiểm',
+        tagline: 'Tự chịu rủi ro hư hỏng, mất mát',
+        coverageAmount: 0,
+        price: 0,
+        benefits: ['Không phí thêm', 'Phù hợp đồ ít giá trị'],
+        isNoCoverage: true,
+      ),
+      CargoInsurancePlan(
+        id: 'basic',
+        name: 'Bảo hiểm cơ bản',
+        tagline: 'Đồ sinh viên thông thường',
+        coverageAmount: 10000000,
+        price: 35000,
+        benefits: [
+          'Bồi thường tối đa 10 triệu',
+          'Hư hỏng do va chạm, rơi vỡ',
+          'Xử lý qua UniMove trong 7 ngày',
+        ],
+      ),
+      CargoInsurancePlan(
+        id: 'standard',
+        name: 'Bảo hiểm tiêu chuẩn',
+        tagline: 'Phòng trọ đầy đủ đồ',
+        coverageAmount: 30000000,
+        price: 75000,
+        recommended: true,
+        benefits: [
+          'Bồi thường tối đa 30 triệu',
+          'Bao gồm thiết bị điện tử (laptop, màn hình)',
+          'Ưu tiên xử lý khiếu nại 48h',
+        ],
+      ),
+      CargoInsurancePlan(
+        id: 'premium',
+        name: 'Bảo hiểm toàn diện',
+        tagline: 'Đồ giá trị cao, chuyến xa',
+        coverageAmount: 50000000,
+        price: 120000,
+        benefits: [
+          'Bồi thường tối đa 50 triệu',
+          'Mất mát, trộm cắp trong chuyến (có biên bản)',
+          'Hỗ trợ tạm ứng chi phí sửa chữa',
+        ],
+      ),
+    ];
+  }
+
   Future<List<PartnerOffer>> fetchPartners() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     return [

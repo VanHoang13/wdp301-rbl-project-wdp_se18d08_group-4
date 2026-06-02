@@ -1,23 +1,15 @@
 const { v2: cloudinary } = require('cloudinary');
+const env = require('../config/env');
+const { httpError, normalizePhone } = require('./auth.helpers');
 const { supabaseAdmin } = require('./supabase.service');
-const { httpError } = require('./auth.helpers');
 
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: env.CLOUDINARY_CLOUD_NAME,
+  api_key: env.CLOUDINARY_API_KEY,
+  api_secret: env.CLOUDINARY_API_SECRET,
 });
 
-/** Chuẩn hóa số điện thoại về +84 */
-function normalizePhone(phone) {
-  if (!phone) return phone;
-  const digits = String(phone).replace(/\D/g, '');
-  if (digits.startsWith('84')) return '+' + digits;
-  if (digits.startsWith('0')) return '+84' + digits.slice(1);
-  return '+84' + digits;
-}
-
-/** BE-008 — GET /api/customers/me */
+/** API-008 — GET /api/customers/me */
 async function getProfile(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -33,15 +25,22 @@ async function getProfile(userId) {
     .eq('id', userId)
     .single();
 
-  if (error || !data) throw httpError(404, 'Không tìm thấy profile', 'not_found');
+  if (error || !data) {
+    throw httpError(404, 'Không tìm thấy profile', 'not_found');
+  }
 
   const { customer_profiles: cp, ...profile } = data;
-  return { ...profile, ...(cp || {}) };
+  const cpRow = Array.isArray(cp) ? cp[0] : cp;
+  return { ...profile, ...(cpRow || {}) };
 }
 
 /** API-009 — PATCH /api/customers/me */
 async function updateProfile(userId, body) {
-  const { full_name, phone, student_id, university, date_of_birth, gender } = body;
+  if (body?.email !== undefined || body?.role !== undefined) {
+    throw httpError(400, 'Không được sửa email hoặc role', 'validation_error');
+  }
+
+  const { full_name, phone, student_id, university, date_of_birth, gender } = body || {};
 
   const profileUpdates = {};
   if (full_name !== undefined) profileUpdates.full_name = String(full_name).trim();
@@ -64,16 +63,22 @@ async function updateProfile(userId, body) {
   if (Object.keys(customerUpdates).length > 0) {
     const { error } = await supabaseAdmin
       .from('customer_profiles')
-      .update(customerUpdates)
-      .eq('id', userId);
+      .upsert({ id: userId, ...customerUpdates }, { onConflict: 'id' });
     if (error) throw httpError(500, error.message, 'db_error');
+  }
+
+  if (
+    Object.keys(profileUpdates).length === 0 &&
+    Object.keys(customerUpdates).length === 0
+  ) {
+    throw httpError(400, 'Không có trường hợp lệ để cập nhật', 'validation_error');
   }
 
   return getProfile(userId);
 }
 
 /** API-010 — POST /api/customers/me/avatar */
-async function uploadAvatar(userId, fileBuffer, mimetype) {
+async function uploadAvatar(userId, fileBuffer) {
   const avatarUrl = await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {

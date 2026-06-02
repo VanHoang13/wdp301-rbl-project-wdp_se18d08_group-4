@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/network/api_client.dart';
 import '../../data/auth_repository.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -33,7 +33,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           );
       if (mounted) context.go('/dashboard');
     } on AuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -54,14 +60,30 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text('UniMove Admin', style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Đăng nhập qua Node API (role: admin)',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 24),
                   TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email admin')),
                   const SizedBox(height: 16),
-                  TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Mật khẩu')),
+                  TextField(
+                    controller: _password,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Mật khẩu'),
+                  ),
                   const SizedBox(height: 24),
                   FilledButton(
                     onPressed: _loading ? null : _login,
-                    child: _loading ? const CircularProgressIndicator() : const Text('Đăng nhập'),
+                    child: _loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Đăng nhập'),
                   ),
                 ],
               ),

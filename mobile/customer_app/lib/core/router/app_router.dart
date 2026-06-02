@@ -9,6 +9,7 @@ import '../../features/booking/presentation/pages/labor_order_picker_page.dart';
 import '../../features/booking/presentation/pages/labor_providers_page.dart';
 import '../../features/booking/presentation/pages/labor_service_page.dart';
 import '../../features/booking/presentation/pages/choose_partner_page.dart';
+import '../../features/booking/presentation/pages/insurance_selection_page.dart';
 import '../../features/booking/presentation/pages/payment_page.dart';
 import '../../features/booking/presentation/pages/service_packages_page.dart';
 import '../../features/chat/presentation/pages/chat_thread_page.dart';
@@ -54,6 +55,7 @@ abstract final class AppRouter {
       GoRoute(path: '/booking/location', builder: (_, __) => const ChooseLocationPage()),
       GoRoute(path: '/booking/packages', builder: (_, __) => const ServicePackagesPage()),
       GoRoute(path: '/booking/partners', builder: (_, __) => const ChoosePartnerPage()),
+      GoRoute(path: '/booking/insurance', builder: (_, __) => const InsuranceSelectionPage()),
       GoRoute(path: '/booking/payment', builder: (_, __) => const PaymentPage()),
       GoRoute(
         path: '/orders/:orderId/tracking',
