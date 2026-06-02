@@ -7,9 +7,9 @@
  * | POST   | /register         | BE-001 | body: email, password, full_name, phone |
  * | POST   | /login            | BE-003 | —               |
  * | GET    | /me               | BE-003 | requireNodeAuth |
- * | POST   | /change-password  | BE-006 | requireNodeAuth |
- * | POST   | /forgot-password  | BE-007 | —               |
- * | POST   | /reset-password   | BE-007 | —               |
+ * | POST   | /reset-password         | BE-006 | requireNodeAuth |
+ * | POST   | /forgot-password        | BE-007 | —               |
+ * | POST   | /forgot-password/verify | BE-007 | OTP + email     |
  */
 const express = require('express');
 const authController = require('../controllers/auth.controller');
@@ -20,9 +20,9 @@ const router = express.Router();
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password', authController.resetPassword);
+router.post('/forgot-password/verify', authController.resetPasswordViaOtp);
 
 router.get('/me', requireNodeAuth, authController.me);
-router.post('/change-password', requireNodeAuth, authController.changePassword);
+router.post('/reset-password', requireNodeAuth, authController.resetPassword);
 
 module.exports = router;

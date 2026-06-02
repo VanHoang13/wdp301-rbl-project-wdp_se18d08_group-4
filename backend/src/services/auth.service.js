@@ -1,5 +1,5 @@
 /**
- * Auth — Node JWT (register/login/me/change-password) + quên MK qua SMTP OTP.
+ * Auth — Node JWT (register/login/me/reset-password) + quên MK qua SMTP OTP.
  * DB: docs/supabase/20240113000000_node_auth.sql
  */
 const crypto = require('crypto');
@@ -11,7 +11,7 @@ const {
   publicProfile,
 } = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
-const { supabaseAdmin } = require('./supabase.service');
+const { supabaseAdmin, createAnonClient } = require('./supabase.service');
 const { sendPasswordResetOtp } = require('./mail.service');
 const env = require('../config/env');
 
@@ -217,22 +217,79 @@ async function getMe(userId) {
 
 
 
-/** BE-006 — POST /api/auth/change-password */
-async function changePassword(userId, body) {
-  const { old_password, new_password } = body || {};
+/** BE-006 — POST /api/auth/reset-password (đã đăng nhập — requireNodeAuth) */
+async function resetPasswordLoggedIn(userId, body) {
+  const emailInput = body?.email;
+  const currentPassword = body?.current_password ?? body?.old_password ?? body?.password;
+  const newPassword = body?.new_password;
 
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
   }
 
-  if (!old_password || !new_password) {
-    throw httpError(400, 'Old password and new password are required', 'validation_error');
+  if (!emailInput || !currentPassword || !newPassword) {
+    throw httpError(400, 'email, current_password và new_password là bắt buộc', 'validation_error');
   }
 
-  if (String(new_password).length < 8) {
-    throw httpError(400, 'New password must be at least 8 characters', 'validation_error');
+  if (String(currentPassword) === String(newPassword)) {
+    throw httpError(400, 'Mật khẩu mới phải khác mật khẩu hiện tại', 'validation_error');
   }
 
+  if (String(newPassword).length < 8) {
+    throw httpError(400, 'Mật khẩu mới cần ít nhất 8 ký tự', 'validation_error');
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profileError) {
+    throw httpError(500, profileError.message, 'db_error');
+  }
+  if (!profile?.email) {
+    throw httpError(404, 'Không tìm thấy tài khoản', 'user_not_found');
+  }
+
+  const email = normalizeEmail(profile.email);
+  const requestEmail = normalizeEmail(emailInput);
+
+  if (requestEmail !== email) {
+    throw httpError(400, 'Email không khớp tài khoản đang đăng nhập', 'validation_error');
+  }
+
+  const newPasswordHash = await hashPassword(newPassword);
+
+  /** Tài khoản Supabase Auth (auth.users) — reauthenticate rồi admin.updateUser */
+  const { data: authUserData, error: authLookupError } =
+    await supabaseAdmin.auth.admin.getUserById(userId);
+
+  if (!authLookupError && authUserData?.user) {
+    const anon = createAnonClient();
+    const { error: signInError } = await anon.auth.signInWithPassword({
+      email,
+      password: String(currentPassword),
+    });
+
+    if (signInError) {
+      throw httpError(400, 'Mật khẩu hiện tại không đúng', 'invalid_password');
+    }
+
+    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: String(newPassword),
+    });
+
+    if (authUpdateError) {
+      throw httpError(500, authUpdateError.message, 'supabase_auth_error');
+    }
+
+    await syncUserCredentialsHash(userId, newPasswordHash);
+
+    return { message: 'Đặt lại mật khẩu thành công.' };
+  }
+
+  /** Tài khoản chỉ Node JWT (user_credentials) */
   const { data: credentials, error: credError } = await supabaseAdmin
     .from('user_credentials')
     .select('password_hash')
@@ -240,19 +297,17 @@ async function changePassword(userId, body) {
     .limit(1);
 
   if (credError) {
-    throw httpError(500, `Credential lookup failed: ${credError.message}`, 'db_error');
+    throw httpError(500, credError.message, 'db_error');
   }
 
-  if (!credentials || credentials.length === 0) {
-    throw httpError(404, 'User credentials not found', 'not_found');
+  if (!credentials?.length) {
+    throw httpError(404, 'Không tìm thấy thông tin đăng nhập', 'not_found');
   }
 
-  const passwordMatch = await verifyPassword(old_password, credentials[0].password_hash);
+  const passwordMatch = await verifyPassword(currentPassword, credentials[0].password_hash);
   if (!passwordMatch) {
-    throw httpError(401, 'Old password is incorrect', 'invalid_password');
+    throw httpError(400, 'Mật khẩu hiện tại không đúng', 'invalid_password');
   }
-
-  const newPasswordHash = await hashPassword(new_password);
 
   const { error: updateError } = await supabaseAdmin
     .from('user_credentials')
@@ -260,10 +315,25 @@ async function changePassword(userId, body) {
     .eq('user_id', userId);
 
   if (updateError) {
-    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
+    throw httpError(500, updateError.message, 'db_error');
   }
 
-  return { success: true, message: 'Password changed successfully' };
+  return { message: 'Đặt lại mật khẩu thành công.' };
+}
+
+async function syncUserCredentialsHash(userId, passwordHash) {
+  const { data: existing } = await supabaseAdmin
+    .from('user_credentials')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabaseAdmin
+      .from('user_credentials')
+      .update({ password_hash: passwordHash })
+      .eq('user_id', userId);
+  }
 }
 
 /** BE-007 — POST /api/auth/forgot-password (OTP qua SMTP) */
@@ -319,8 +389,8 @@ async function forgotPassword(email) {
   };
 }
 
-/** BE-007 — POST /api/auth/reset-password (Node JWT — user_credentials) */
-async function resetPassword(body) {
+/** BE-007 — POST /api/auth/forgot-password/verify (OTP quên MK) */
+async function resetPasswordViaOtp(body) {
   const { email, token, new_password } = body || {};
 
   if (!email || !token || !new_password) {
@@ -391,17 +461,10 @@ async function resetPassword(body) {
 }
 
 module.exports = {
-
   register,
-
   login,
-
   getMe,
-
-  changePassword,
-
+  resetPasswordLoggedIn,
   forgotPassword,
-
-  resetPassword,
-
+  resetPasswordViaOtp,
 };
