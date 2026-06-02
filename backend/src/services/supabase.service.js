@@ -6,6 +6,11 @@ const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_K
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+/** Anonymous client — password sign-in and public auth actions. */
+const supabaseAnon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
 /** Verify JWT và lấy user từ access token. */
 async function getUserFromToken(accessToken) {
   const client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
@@ -31,6 +36,7 @@ function createUserClient(accessToken) {
 
 module.exports = {
   supabaseAdmin,
+  supabaseAnon,
   getUserFromToken,
   createUserClient,
 };
