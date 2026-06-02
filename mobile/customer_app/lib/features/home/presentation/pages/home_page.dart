@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../../../core/constants/app_images.dart';
-import '../../../../core/mock/mock_orders_data.dart';
+import '../../../orders/data/customer_orders_repository.dart';
+import '../../../orders/domain/order_models.dart';
+import '../../../../core/auth/auth_token_storage.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 import '../../../booking/presentation/cubit/booking_flow_cubit.dart';
 import '../../../chat/domain/active_chat_context.dart';
@@ -22,12 +24,18 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _userName = 'Nam';
+  String _userName = '';
 
   @override
   void initState() {
     super.initState();
     _loadProfileName();
+  }
+
+  static String _greetingFirstName(String fullName) {
+    final parts = fullName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '';
+    return parts.length == 1 ? parts.first : parts.last;
   }
 
   Future<void> _loadProfileName() async {
@@ -36,12 +44,20 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final stored = await AuthTokenStorage.instance.loadUser();
+    final storedName = stored?['full_name'] as String?;
+    if (storedName != null && storedName.trim().isNotEmpty && mounted) {
+      setState(() => _userName = _greetingFirstName(storedName));
+    }
+
     try {
       final profile = await CustomerAuthRepository().fetchMe();
       if (profile.fullName.trim().isNotEmpty && mounted) {
-        setState(() => _userName = profile.fullName.trim().split(' ').last);
+        setState(() => _userName = _greetingFirstName(profile.fullName));
       }
-    } catch (_) {}
+    } catch (_) {
+      // Giữ tên từ JWT snapshot nếu /customers/me lỗi tạm thời
+    }
   }
 
   @override
@@ -138,7 +154,7 @@ class _HomePageState extends State<HomePage> {
               FadeSlideIn(
                 delay: const Duration(milliseconds: 80),
                 child: Text(
-                  'Chào buổi sáng, $_userName! 👋',
+                  'Chào buổi sáng, ${_userName.isNotEmpty ? _userName : 'bạn'}! 👋',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w600,
@@ -547,17 +563,48 @@ class _FlashSaleBanner extends StatelessWidget {
   }
 }
 
-class _RecentOrderCard extends StatelessWidget {
-  _RecentOrderCard({required this.colors});
+class _RecentOrderCard extends StatefulWidget {
+  const _RecentOrderCard({required this.colors});
 
   final UniMoveColors colors;
 
   @override
+  State<_RecentOrderCard> createState() => _RecentOrderCardState();
+}
+
+class _RecentOrderCardState extends State<_RecentOrderCard> {
+  final _repo = CustomerOrdersRepository();
+  CustomerOrder? _order;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final list = await _repo.fetchOrders(activeOnly: true);
+    if (!mounted) return;
+    setState(() {
+      _order = list.isNotEmpty ? list.first : null;
+      _loading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
+    }
+    final order = _order;
+    if (order == null) return const SizedBox.shrink();
+
+    final colors = widget.colors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PressableScale(
-      onTap: () => context.push('/orders/${MockOrdersData.activeOrderId}/tracking'),
+      onTap: () => context.push('/orders/${order.id}/tracking'),
       child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -594,12 +641,12 @@ class _RecentOrderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '#UM-29304',
+                      '#${order.orderNumber}',
                       style: TextStyle(color: colors.primary, fontWeight: FontWeight.w700, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Xe tải 500kg',
+                      order.vehicleLabel,
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: colors.onSurface),
                     ),
                   ],
@@ -612,7 +659,7 @@ class _RecentOrderCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  'Đang đến',
+                  order.status == OrderStatus.pending ? 'Chờ nhà xe' : 'Đang xử lý',
                   style: TextStyle(color: colors.accentGreen, fontWeight: FontWeight.w600, fontSize: 12),
                 ),
               ),
@@ -621,8 +668,8 @@ class _RecentOrderCard extends StatelessWidget {
           const SizedBox(height: 16),
           _RouteTimeline(
             colors: colors,
-            startLabel: 'Ký túc xá khu B, ĐHQG',
-            endLabel: '152 Nguyễn Văn Cừ, Quận 5',
+            startLabel: order.pickupAddress,
+            endLabel: order.deliveryAddress,
           ),
           const SizedBox(height: 16),
           Divider(color: colors.border, height: 1),
@@ -646,7 +693,7 @@ class _RecentOrderCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Nhà xe: Minh Quân Logistics',
+                  order.providerName != null ? 'Nhà xe: ${order.providerName}' : 'Đang tìm nhà xe...',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: colors.onSurface),
                 ),
               ),
@@ -657,7 +704,6 @@ class _RecentOrderCard extends StatelessWidget {
                 shadowColor: colors.primary.withValues(alpha: 0.3),
                 child: InkWell(
                   onTap: () {
-                    final order = MockOrdersData.orders.first;
                     if (ActiveChatContext.orderAllowsChat(order) && order.conversationId != null) {
                       context.push('/chat/${order.conversationId}');
                     }

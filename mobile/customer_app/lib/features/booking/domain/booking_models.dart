@@ -129,3 +129,28 @@ class LaborServiceInfo {
   final List<String> benefits;
   final int minPrice;
 }
+
+/// Gói bảo hiểm đồ đạc — khớp `orders.has_insurance`, `orders.insurance_value`.
+class CargoInsurancePlan {
+  const CargoInsurancePlan({
+    required this.id,
+    required this.name,
+    required this.tagline,
+    required this.coverageAmount,
+    required this.price,
+    required this.benefits,
+    this.recommended = false,
+    this.isNoCoverage = false,
+  });
+
+  final String id;
+  final String name;
+  final String tagline;
+
+  /// Mức bồi thường tối đa (VND).
+  final int coverageAmount;
+  final int price;
+  final List<String> benefits;
+  final bool recommended;
+  final bool isNoCoverage;
+}

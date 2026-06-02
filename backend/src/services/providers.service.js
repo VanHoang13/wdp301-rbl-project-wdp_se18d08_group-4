@@ -12,7 +12,7 @@ async function browseProviders({ city, minRating, limit = 20 }) {
       total_reviews,
       is_verified,
       is_available,
-      profiles!inner(full_name, avatar_url, city)
+      profiles!provider_profiles_id_fkey(full_name, avatar_url)
     `)
     .eq('is_verified', true)
     .eq('is_available', true)
@@ -24,9 +24,6 @@ async function browseProviders({ city, minRating, limit = 20 }) {
   const { data, error } = await query;
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
 
-  if (city) {
-    return data.filter((p) => p.profiles?.city === city);
-  }
   return data;
 }
 

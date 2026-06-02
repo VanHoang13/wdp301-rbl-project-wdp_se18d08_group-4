@@ -1,8 +1,31 @@
 import 'package:flutter/foundation.dart';
 
-/// Base URL Node API — Android emulator dùng 10.0.2.2 thay localhost.
+/// URL Node API.
+///
+/// **Điện thoại thật (Vysor/USB):** [useLanHost] = true + [lanHost] = IP Wi‑Fi PC (`ipconfig`).
+/// Hoặc chạy: `adb reverse tcp:3000 tcp:3000` rồi đặt [useAdbReverse] = true.
+///
+/// **Android emulator:** [useLanHost] = false → `10.0.2.2`
 abstract final class ApiConfig {
+  /// May that qua Wi-Fi cung mang voi PC.
+  static const useLanHost = false;
+
+  /// IP PC (Wi-Fi) — chi khi useLanHost = true.
+  static const lanHost = '192.168.1.60';
+
+  /// USB + `adb reverse tcp:3000 tcp:3000` (cach 2 — dang dung).
+  static const useAdbReverse = true;
+
   static String get baseUrl {
+    if (useAdbReverse) return 'http://127.0.0.1:3000';
+
+    if (useLanHost && lanHost.isNotEmpty) {
+      return 'http://$lanHost:3000';
+    }
+
+    const fromEnv = String.fromEnvironment('API_BASE_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+
     if (kIsWeb) return 'http://localhost:3000';
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -13,4 +36,5 @@ abstract final class ApiConfig {
   }
 
   static const apiPrefix = '/api';
+  static String get displayUrl => '$baseUrl$apiPrefix';
 }
