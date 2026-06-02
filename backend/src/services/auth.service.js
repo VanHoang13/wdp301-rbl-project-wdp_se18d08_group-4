@@ -1,5 +1,5 @@
 /**
- * Auth — Node JWT (register/login/me/reset-password) + quên MK qua SMTP OTP.
+ * Auth — Node JWT (register/login/me/change-password) + quên MK qua SMTP OTP.
  * DB: docs/supabase/20240113000000_node_auth.sql
  */
 const crypto = require('crypto');
@@ -11,7 +11,7 @@ const {
   publicProfile,
 } = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
-const { supabaseAdmin, createAnonClient } = require('./supabase.service');
+const { supabaseAdmin } = require('./supabase.service');
 const { sendPasswordResetOtp } = require('./mail.service');
 const env = require('../config/env');
 
@@ -108,7 +108,14 @@ async function register(body) {
       throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
     }
 
-    if (role === 'provider') {
+    if (role === 'customer') {
+      const { error: cpError } = await supabaseAdmin.from('customer_profiles').insert([
+        { id: userId },
+      ]);
+      if (cpError) {
+        throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+      }
+    } else if (role === 'provider') {
       const { error: ppError } = await supabaseAdmin.from('provider_profiles').insert([
         {
           id: userId,
@@ -131,8 +138,6 @@ async function register(body) {
     throw httpError(500, error.message, 'internal_error');
   }
 }
-
-
 
 /** BE-003 — POST /api/auth/login */
 async function login(body) {
@@ -215,81 +220,23 @@ async function getMe(userId) {
   return publicProfile(row);
 }
 
-
-
-/** BE-006 — POST /api/auth/reset-password (đã đăng nhập — requireNodeAuth) */
-async function resetPasswordLoggedIn(userId, body) {
-  const emailInput = body?.email;
-  const currentPassword = body?.current_password ?? body?.old_password ?? body?.password;
-  const newPassword = body?.new_password;
+/** BE-006 — POST /api/auth/change-password (Node JWT — user_credentials) */
+async function changePassword(userId, body) {
+  const old_password = body?.old_password ?? body?.current_password ?? body?.password;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
   }
 
-  if (!emailInput || !currentPassword || !newPassword) {
-    throw httpError(400, 'email, current_password và new_password là bắt buộc', 'validation_error');
+  if (!old_password || !new_password) {
+    throw httpError(400, 'Old password and new password are required', 'validation_error');
   }
 
-  if (String(currentPassword) === String(newPassword)) {
-    throw httpError(400, 'Mật khẩu mới phải khác mật khẩu hiện tại', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'New password must be at least 8 characters', 'validation_error');
   }
 
-  if (String(newPassword).length < 8) {
-    throw httpError(400, 'Mật khẩu mới cần ít nhất 8 ký tự', 'validation_error');
-  }
-
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('id, email')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileError) {
-    throw httpError(500, profileError.message, 'db_error');
-  }
-  if (!profile?.email) {
-    throw httpError(404, 'Không tìm thấy tài khoản', 'user_not_found');
-  }
-
-  const email = normalizeEmail(profile.email);
-  const requestEmail = normalizeEmail(emailInput);
-
-  if (requestEmail !== email) {
-    throw httpError(400, 'Email không khớp tài khoản đang đăng nhập', 'validation_error');
-  }
-
-  const newPasswordHash = await hashPassword(newPassword);
-
-  /** Tài khoản Supabase Auth (auth.users) — reauthenticate rồi admin.updateUser */
-  const { data: authUserData, error: authLookupError } =
-    await supabaseAdmin.auth.admin.getUserById(userId);
-
-  if (!authLookupError && authUserData?.user) {
-    const anon = createAnonClient();
-    const { error: signInError } = await anon.auth.signInWithPassword({
-      email,
-      password: String(currentPassword),
-    });
-
-    if (signInError) {
-      throw httpError(400, 'Mật khẩu hiện tại không đúng', 'invalid_password');
-    }
-
-    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password: String(newPassword),
-    });
-
-    if (authUpdateError) {
-      throw httpError(500, authUpdateError.message, 'supabase_auth_error');
-    }
-
-    await syncUserCredentialsHash(userId, newPasswordHash);
-
-    return { message: 'Đặt lại mật khẩu thành công.' };
-  }
-
-  /** Tài khoản chỉ Node JWT (user_credentials) */
   const { data: credentials, error: credError } = await supabaseAdmin
     .from('user_credentials')
     .select('password_hash')
@@ -297,17 +244,19 @@ async function resetPasswordLoggedIn(userId, body) {
     .limit(1);
 
   if (credError) {
-    throw httpError(500, credError.message, 'db_error');
+    throw httpError(500, `Credential lookup failed: ${credError.message}`, 'db_error');
   }
 
-  if (!credentials?.length) {
-    throw httpError(404, 'Không tìm thấy thông tin đăng nhập', 'not_found');
+  if (!credentials || credentials.length === 0) {
+    throw httpError(404, 'User credentials not found', 'not_found');
   }
 
-  const passwordMatch = await verifyPassword(currentPassword, credentials[0].password_hash);
+  const passwordMatch = await verifyPassword(old_password, credentials[0].password_hash);
   if (!passwordMatch) {
-    throw httpError(400, 'Mật khẩu hiện tại không đúng', 'invalid_password');
+    throw httpError(401, 'Old password is incorrect', 'invalid_password');
   }
+
+  const newPasswordHash = await hashPassword(new_password);
 
   const { error: updateError } = await supabaseAdmin
     .from('user_credentials')
@@ -315,25 +264,10 @@ async function resetPasswordLoggedIn(userId, body) {
     .eq('user_id', userId);
 
   if (updateError) {
-    throw httpError(500, updateError.message, 'db_error');
+    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
   }
 
-  return { message: 'Đặt lại mật khẩu thành công.' };
-}
-
-async function syncUserCredentialsHash(userId, passwordHash) {
-  const { data: existing } = await supabaseAdmin
-    .from('user_credentials')
-    .select('user_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (existing) {
-    await supabaseAdmin
-      .from('user_credentials')
-      .update({ password_hash: passwordHash })
-      .eq('user_id', userId);
-  }
+  return { success: true, message: 'Password changed successfully' };
 }
 
 /** BE-007 — POST /api/auth/forgot-password (OTP qua SMTP) */
@@ -385,92 +319,79 @@ async function forgotPassword(email) {
 
   return {
     email: normalized,
-    message: 'Nếu email đã đăng ký, mã OTP đã được gửi.',
+    message: 'Nếu email đã đăng ký, mã xác nhận đã được gửi.',
   };
 }
 
-/** BE-007 — POST /api/auth/reset-password — email + token/otp (từ email) + new_password */
-async function resetPasswordViaOtp(body) {
-  const email = normalizeEmail(body?.email);
-  const otp = String(body?.token ?? body?.otp ?? body?.OTP ?? '').trim();
-  const newPassword = body?.new_password ?? body?.newPassword;
+/** BE-007 — POST /api/auth/reset-password (email + OTP — Node JWT) */
+async function resetPassword(body) {
+  const email = body?.email;
+  const token = body?.token ?? body?.otp ?? body?.OTP;
+  const new_password = body?.new_password ?? body?.newPassword;
 
-  if (!email || !otp || !newPassword) {
-    throw httpError(
-      400,
-      'email, token (mã OTP) và new_password là bắt buộc',
-      'validation_error',
-    );
+  if (!email || !token || !new_password) {
+    throw httpError(400, 'Email, token, and new password are required', 'validation_error');
   }
 
-  if (String(newPassword).length < 8) {
-    throw httpError(400, 'Mật khẩu mới cần ít nhất 8 ký tự', 'validation_error');
+  if (String(new_password).length < 8) {
+    throw httpError(400, 'Password must be at least 8 characters', 'validation_error');
   }
 
-  const profile = await findProfileByEmail(email);
-  if (!profile) {
-    throw httpError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn', 'invalid_token');
-  }
+  const normalizedEmail = normalizeEmail(email);
 
-  const tokenHash = hashResetToken(otp);
-
-  const { data: rows, error: tokenError } = await supabaseAdmin
-    .from('password_reset_tokens')
+  const { data: profiles, error: profileError } = await supabaseAdmin
+    .from('profiles')
     .select('id')
-    .eq('user_id', profile.id)
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (profileError) {
+    throw httpError(500, `Profile lookup failed: ${profileError.message}`, 'db_error');
+  }
+
+  if (!profiles || profiles.length === 0) {
+    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
+  }
+
+  const userId = profiles[0].id;
+  const tokenHash = hashResetToken(String(token).trim());
+
+  const { data: tokens, error: tokenError } = await supabaseAdmin
+    .from('password_reset_tokens')
+    .select('*')
+    .eq('user_id', userId)
     .eq('token_hash', tokenHash)
     .is('used_at', null)
     .gt('expires_at', new Date().toISOString())
     .limit(1);
 
   if (tokenError) {
-    throw httpError(500, tokenError.message, 'db_error');
+    throw httpError(500, `Token lookup failed: ${tokenError.message}`, 'db_error');
   }
 
-  if (!rows?.length) {
-    throw httpError(400, 'Mã OTP không hợp lệ hoặc đã hết hạn', 'invalid_token');
+  if (!tokens || tokens.length === 0) {
+    throw httpError(400, 'Mã xác nhận không hợp lệ hoặc đã hết hạn', 'invalid_token');
   }
 
-  const newPasswordHash = await hashPassword(newPassword);
-  const userId = profile.id;
+  const newPasswordHash = await hashPassword(new_password);
 
-  const { data: existingCred } = await supabaseAdmin
+  const { error: updateError } = await supabaseAdmin
     .from('user_credentials')
-    .select('user_id')
-    .eq('user_id', userId)
-    .maybeSingle();
+    .update({ password_hash: newPasswordHash })
+    .eq('user_id', userId);
 
-  if (existingCred) {
-    const { error: updateError } = await supabaseAdmin
-      .from('user_credentials')
-      .update({ password_hash: newPasswordHash })
-      .eq('user_id', userId);
-    if (updateError) {
-      throw httpError(500, updateError.message, 'db_error');
-    }
-  } else {
-    const { error: insertError } = await supabaseAdmin
-      .from('user_credentials')
-      .insert({ user_id: userId, password_hash: newPasswordHash });
-    if (insertError) {
-      throw httpError(500, insertError.message, 'db_error');
-    }
+  if (updateError) {
+    throw httpError(500, `Password update failed: ${updateError.message}`, 'db_error');
   }
 
-  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
-  if (authUser?.user) {
-    const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password: String(newPassword),
-    });
-    if (authUpdateError) {
-      throw httpError(500, authUpdateError.message, 'supabase_auth_error');
-    }
-  }
-
-  await supabaseAdmin
+  const { error: markError } = await supabaseAdmin
     .from('password_reset_tokens')
     .update({ used_at: new Date().toISOString() })
-    .eq('id', rows[0].id);
+    .eq('id', tokens[0].id);
+
+  if (markError) {
+    throw httpError(500, `Token update failed: ${markError.message}`, 'db_error');
+  }
 
   return { message: 'Đặt lại mật khẩu thành công.' };
 }
@@ -479,7 +400,7 @@ module.exports = {
   register,
   login,
   getMe,
-  resetPasswordLoggedIn,
+  changePassword,
   forgotPassword,
-  resetPasswordViaOtp,
+  resetPassword,
 };

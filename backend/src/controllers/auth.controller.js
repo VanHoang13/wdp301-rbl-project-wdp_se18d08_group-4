@@ -1,6 +1,5 @@
 /**
  * SCAFFOLD — Chỉ gọi auth.service; không thêm logic ở đây.
- * Implement: backend/src/services/auth.service.js (BE-001 → BE-007).
  */
 const authService = require('../services/auth.service');
 
@@ -31,18 +30,9 @@ async function me(req, res, next) {
   }
 }
 
-async function resetPassword(req, res, next) {
-  try {
-    const data = await authService.resetPasswordViaOtp(req.body || {});
-    res.json({ success: true, data });
-  } catch (error) {
-    next(error);
-  }
-}
-
 async function changePassword(req, res, next) {
   try {
-    const data = await authService.resetPasswordLoggedIn(req.user.id, req.body || {});
+    const data = await authService.changePassword(req.user.id, req.body || {});
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -59,11 +49,20 @@ async function forgotPassword(req, res, next) {
   }
 }
 
+async function resetPassword(req, res, next) {
+  try {
+    const data = await authService.resetPassword(req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   register,
   login,
   me,
-  resetPassword,
   changePassword,
   forgotPassword,
+  resetPassword,
 };

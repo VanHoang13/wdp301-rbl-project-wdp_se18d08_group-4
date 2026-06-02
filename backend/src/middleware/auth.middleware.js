@@ -10,7 +10,10 @@ async function requireAuth(req, res, next) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
     if (!token) {
-      return res.status(401).json({ success: false, message: 'Thiếu access token' });
+      return res.status(401).json({
+        success: false,
+        message: 'Thiếu access token',
+      });
     }
 
     const payload = verifyAccessToken(token);
@@ -35,24 +38,50 @@ const requireNodeAuth = requireAuth;
 
 function requireRole(...roles) {
   return async (req, res, next) => {
-    let role = req.user?.role;
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ success: false, message: 'Thiếu access token' });
+      }
 
-    if (!role && req.user?.id) {
-      const { data: profile } = await supabaseAdmin
+      const { data: profile, error } = await supabaseAdmin
         .from('profiles')
-        .select('role')
+        .select('role, status')
         .eq('id', req.user.id)
         .single();
-      role = profile?.role;
-      if (role) req.user.role = role;
-    }
 
-    if (!role || !roles.includes(role)) {
-      return res.status(403).json({ success: false, message: 'Không có quyền truy cập' });
-    }
+      if (error || !profile) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy thông tin người dùng',
+        });
+      }
 
-    req.userRole = role;
-    next();
+      if (profile.status && profile.status !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: 'Tài khoản đã bị vô hiệu hóa',
+        });
+      }
+
+      const role = profile.role;
+      req.user.role = role;
+
+      if (!role || !roles.includes(role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Không có quyền truy cập',
+        });
+      }
+
+      req.userRole = role;
+      next();
+    } catch (error) {
+      console.error('Role check error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Lỗi server khi kiểm tra quyền',
+      });
+    }
   };
 }
 

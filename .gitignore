@@ -1,11 +1,18 @@
-# Environment & secrets
+# Environment & secrets (.env.example is committed as template)
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
 
 # Node
 node_modules/
 npm-debug.log*
+
+# Development & Testing files
+test-*.js
+*-test.js
+create-sample-data.js
+test-all-*.js
 
 # Flutter
 .dart_tool/
