@@ -15,6 +15,19 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function normalizePhone(phone) {
+  let digits = String(phone || '').replace(/\D/g, '');
+  if (digits.startsWith('84')) digits = digits.slice(2);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length < 9 || digits.length > 10) {
+    const err = new Error('Số điện thoại không hợp lệ');
+    err.status = 400;
+    err.code = 'validation_error';
+    throw err;
+  }
+  return `+84${digits}`;
+}
+
 function publicProfile(row) {
   if (!row) return null;
   return {
@@ -44,6 +57,7 @@ function buildAuthResponse(profile) {
 module.exports = {
   httpError,
   normalizeEmail,
+  normalizePhone,
   publicProfile,
   buildAuthResponse,
 };

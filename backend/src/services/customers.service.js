@@ -4,39 +4,23 @@
 const { httpError } = require('./auth.helpers');
 const { supabaseAdmin } = require('./supabase.service');
 
-const CUSTOMER_PROFILE_COLUMNS = [
-  'id',
-  'full_name',
-  'email',
-  'phone',
-  'avatar_url',
-  'student_id',
-  'university',
-  'loyalty_points',
-  'total_orders',
-  'total_spent',
-  'rating',
-  'date_of_birth',
-  'gender',
-  'role',
-].join(', ');
-
+/** Map row — cột thiếu trên Supabase trả null/0 (tránh lỗi SELECT cột không tồn tại). */
 function mapCustomerProfile(row) {
   const loyaltyPoints = row.loyalty_points ?? 0;
   return {
     id: row.id,
     full_name: row.full_name,
     email: row.email,
-    phone: row.phone,
-    avatar_url: row.avatar_url,
-    student_id: row.student_id,
-    university: row.university,
+    phone: row.phone ?? null,
+    avatar_url: row.avatar_url ?? null,
+    student_id: row.student_id ?? null,
+    university: row.university ?? null,
     loyalty_points: loyaltyPoints,
     total_orders: row.total_orders ?? 0,
     total_spent: Number(row.total_spent ?? 0),
     rating: Number(row.rating ?? 0),
-    date_of_birth: row.date_of_birth,
-    gender: row.gender,
+    date_of_birth: row.date_of_birth ?? null,
+    gender: row.gender ?? null,
     wallet: loyaltyPoints,
   };
 }
@@ -45,7 +29,7 @@ function mapCustomerProfile(row) {
 async function getProfile(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select(CUSTOMER_PROFILE_COLUMNS)
+    .select('*')
     .eq('id', userId)
     .eq('role', 'customer')
     .maybeSingle();
