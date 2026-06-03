@@ -1,6 +1,7 @@
-# Environment & secrets
+# Environment & secrets (.env.example is committed as template)
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
 
 # Node

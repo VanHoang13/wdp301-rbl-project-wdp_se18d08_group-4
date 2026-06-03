@@ -40,6 +40,7 @@ class ProvidersRepository {
           'Đối tác';
       final basePrice = ((map['base_price'] as num?) ?? 450000).round();
       final rating = (map['rating'] as num?)?.toDouble() ?? 4.5;
+      final reviewCount = ((map['review_count'] as num?) ?? (60 + i * 7)).round();
       final vehicle = map['vehicle_type'] as String? ?? 'medium_truck';
       final img = images[i % images.length];
       i++;
@@ -49,11 +50,37 @@ class ProvidersRepository {
         name: name,
         distanceKm: 2.5 + (i % 5) * 0.8,
         rating: rating,
+        reviewCount: reviewCount,
         price: basePrice,
         imageUrl: profile['avatar_url'] as String? ?? img,
         vehicleLabel: _vehicleLabel(vehicle),
+        completedTrips: ((map['completed_trips'] as num?) ?? 500 + i * 24).round(),
+        recentReviews: _defaultReviews(name),
       );
     }).toList();
+  }
+
+  static List<ProviderReview> _defaultReviews(String name) {
+    return [
+      ProviderReview(
+        author: 'Khách hàng A',
+        rating: 4.8,
+        comment: 'Dịch vụ của $name khá tốt, đúng giờ và hỗ trợ nhiệt tình.',
+        timeAgoLabel: '3 ngày trước',
+      ),
+      ProviderReview(
+        author: 'Khách hàng B',
+        rating: 4.7,
+        comment: 'Giá hợp lý, không phát sinh thêm chi phí.',
+        timeAgoLabel: '1 tuần trước',
+      ),
+      ProviderReview(
+        author: 'Khách hàng C',
+        rating: 4.9,
+        comment: 'Đồ đạc được bọc kỹ, đội ngũ thân thiện.',
+        timeAgoLabel: '2 tuần trước',
+      ),
+    ];
   }
 
   static String _vehicleLabel(String vehicle) {

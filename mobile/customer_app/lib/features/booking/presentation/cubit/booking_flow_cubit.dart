@@ -160,6 +160,16 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
     emit(const BookingFlowState());
   }
 
+  /// Đặt vận chuyển cho 1 món pass đồ — điểm lấy = nơi bán, khách chọn điểm giao.
+  void startPassItemDelivery({required String pickup, required String passItemId}) {
+    emit(BookingFlowState(
+      pickup: pickup,
+      destination: '',
+      passItemDelivery: true,
+      passItemId: passItemId,
+    ));
+  }
+
   /// So sánh báo giá nhanh — đã có địa điểm mẫu, vào thẳng quy mô chuyến.
   void startCompareQuotesFlow() {
     emit(

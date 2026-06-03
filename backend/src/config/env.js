@@ -24,6 +24,10 @@ const PAYOS_CHECKSUM_KEY = process.env.PAYOS_CHECKSUM_KEY || '';
 // Google Maps
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 
+// Google Sign-In — OAuth Web client ID dùng làm `audience` khi verify id_token.
+// Có thể khai báo nhiều client id (web/android/ios) cách nhau bằng dấu phẩy.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+
 // Node API
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -67,6 +71,7 @@ module.exports = {
   PAYOS_API_KEY,
   PAYOS_CHECKSUM_KEY,
   GOOGLE_MAPS_API_KEY,
+  GOOGLE_CLIENT_ID,
   PORT,
   NODE_ENV,
   SMTP_HOST,
