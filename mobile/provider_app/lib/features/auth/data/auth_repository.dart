@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/config/dev_config.dart';
+import '../../../core/mock/mock_provider_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/auth_session_notifier.dart';
 import '../domain/provider_profile.dart';
@@ -23,12 +25,27 @@ class AuthRepository {
   Future<bool> get isSignedIn => _storage.hasSession();
 
   Future<ProviderProfile?> fetchProfile() async {
+    if (await _storage.isMockSession()) {
+      return MockProviderData.profile;
+    }
     final envelope = await _api.guard(() => _api.get('/auth/me'));
     final me = Map<String, dynamic>.from(envelope['data'] as Map);
     return ProviderProfile.fromJson(me);
   }
 
   Future<void> signIn({required String email, required String password}) async {
+    // Đăng nhập demo (không cần backend) — dùng dữ liệu mẫu.
+    if (DevConfig.useMockAuth &&
+        DevConfig.isDemoCredential(email: email, password: password)) {
+      await _storage.save(
+        accessToken: DevConfig.mockToken,
+        user: MockProviderData.userJson,
+      );
+      _api.setAccessToken(DevConfig.mockToken);
+      authSessionNotifier.notifyAuthChanged();
+      return;
+    }
+
     final envelope = await _api.guard(
       () => _api.post('/auth/login', body: {
         'email': email.trim().toLowerCase(),

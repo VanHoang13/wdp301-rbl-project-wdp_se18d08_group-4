@@ -1,5 +1,7 @@
 # Node.js API — Auth and Profile Contract
 
+> **Customer app (đầy đủ endpoint + Pass đồ):** xem [CUSTOMER_APP_API.md](./CUSTOMER_APP_API.md).
+
 ## Overview
 
 This backend uses Supabase Auth for password storage and verification.
@@ -163,40 +165,39 @@ if (response.statusCode == 200) {
 }
 ```
 
-**Setup in Supabase Dashboard**:
+**Setup (Google Cloud Console — không cần Supabase Auth)**:
 
-1. Go to **Authentication** → **Providers**
-2. Enable **Google**
-3. Add your Google OAuth 2.0 credentials (Client ID and Secret from Google Cloud Console)
-4. Set redirect URL to your app URL (for web) or leave blank for mobile deep links
+1. Tạo OAuth 2.0 Client ID **Web application** trong Google Cloud Console.
+2. Dùng Web client ID này làm `serverClientId` ở app Flutter và đặt `GOOGLE_CLIENT_ID` ở backend (audience khi verify).
+3. Không cần bật Google provider trong Supabase — backend verify `id_token` trực tiếp.
 
 When a new Google user signs in:
-- Supabase creates `auth.users` entry with `provider='google'`
-- Trigger `handle_new_user()` automatically creates a `profiles` row
-- Profile is created with `role='customer'` and metadata from Google (name, avatar)
+- App Flutter lấy `id_token` từ Google, gửi `POST /api/auth/google`.
+- Backend verify `id_token` bằng `google-auth-library` (kiểm tra `audience = GOOGLE_CLIENT_ID`).
+- Nếu chưa có `profiles` theo email → tạo mới (`role='customer'`, kèm `customer_profiles`).
+- Trả về JWT Node (cùng format như login email).
 
 ## Implementation notes
 
 - `backend/src/services/auth.service.js`
-  - `register()` → `supabaseAdmin.auth.admin.createUser()`
-  - `login()` → `supabaseAnon.auth.signInWithPassword()`
-  - `changePassword()` → verify old password with Supabase sign-in, then `supabaseAdmin.auth.admin.updateUserById()`
-  - `forgotPassword()` / `resetPassword()` → token flow for reset, but password update still uses Supabase Auth admin API
-  - `googleAuth()` → `supabaseAdmin.auth.signInWithIdToken()` for Google OAuth verification
+  - `register()` → tạo `profiles` + `user_credentials` (bcrypt) + `customer_profiles`/`provider_profiles`
+  - `login()` → kiểm tra mật khẩu với `user_credentials` (bcrypt), phát JWT Node
+  - `changePassword()` → verify mật khẩu cũ trong `user_credentials`, cập nhật hash mới
+  - `forgotPassword()` / `resetPassword()` → OTP qua SMTP + bảng `password_reset_tokens`, cập nhật hash trong `user_credentials`
+  - `googleAuth()` → verify Google `id_token` bằng `google-auth-library` (Node), phát JWT Node
 - `backend/src/services/supabase.service.js`
-  - exports `supabaseAdmin` for admin actions
-  - exports `supabaseAnon` for sign-in/password verification
+  - chỉ export `supabaseAdmin` (service role) để truy cập Postgres — **không dùng Supabase Auth**
 - `backend/src/middleware/auth.middleware.js`
-  - Node JWT (`requireNodeAuth`) is used for Node-only protected routes
+  - Node JWT (`requireNodeAuth` / `requireAuth`) cho mọi route được bảo vệ
 
 ## Schema check
 
-- `profiles` must not have `password` or `password_hash`.
-- Password data is not in `profiles`; it is in Supabase Auth only.
+- Mật khẩu lưu ở bảng `user_credentials` (`password_hash`, bcrypt), **không** lưu trong `profiles`.
+- Không sử dụng `auth.users` của Supabase Auth.
 
 ## Security checks
 
-- No direct bcrypt hashing of user passwords in the registration/login/change-password flow.
+- Mật khẩu được hash bằng bcrypt (`user_credentials`) trong register/login/change-password.
 - No password stored in `profiles`.
 - Supabase Auth is responsible for secure password encryption.
 - Google OAuth tokens are verified by Supabase Auth API.

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/dev_config.dart';
+
 class AuthTokenStorage {
   AuthTokenStorage._();
   static final AuthTokenStorage instance = AuthTokenStorage._();
@@ -39,6 +41,12 @@ class AuthTokenStorage {
   Future<bool> hasSession() async {
     final t = await loadToken();
     return t != null && t.isNotEmpty;
+  }
+
+  /// Phiên đăng nhập demo (token giả) — repo dùng để trả dữ liệu mẫu.
+  Future<bool> isMockSession() async {
+    if (!DevConfig.useMockAuth) return false;
+    return (await loadToken()) == DevConfig.mockToken;
   }
 
   Future<void> clear() async {

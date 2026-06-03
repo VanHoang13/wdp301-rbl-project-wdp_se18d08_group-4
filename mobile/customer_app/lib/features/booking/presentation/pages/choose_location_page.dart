@@ -9,6 +9,7 @@ import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/booking_scaffold.dart';
 import '../../../../core/widgets/cached_hero_image.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
+import '../../../pass_items/data/pass_item_repository.dart';
 import '../../domain/booking_models.dart';
 import '../cubit/booking_flow_cubit.dart';
 import '../cubit/booking_flow_state.dart';
@@ -44,7 +45,9 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
         final isLabor = state.isLaborOnly;
 
         return BookingScaffold(
-          title: isLabor ? 'Địa điểm làm việc' : 'Chọn địa điểm',
+          title: state.passItemDelivery
+              ? 'Chở đồ về nhà'
+              : (isLabor ? 'Địa điểm làm việc' : 'Chọn địa điểm'),
           trailing: CircleAvatar(
             radius: 18.r,
             backgroundColor: c.surfaceTint,
@@ -53,6 +56,10 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           body: ListView(
             padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
             children: [
+              if (state.passItemDelivery) ...[
+                _passItemHint(c),
+                SizedBox(height: 12.h),
+              ],
               _routeCard(context, state, c),
               SizedBox(height: 20.h),
               CachedHeroImage(url: AppImages.mapPreview, height: 160.h),
@@ -72,14 +79,44 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
                 label: 'Tiếp tục',
                 onPressed: state.destination.trim().isEmpty
                     ? null
-                    : () => context.push(
+                    : () async {
+                        if (state.passItemDelivery && state.passItemId != null) {
+                          await PassItemRepository().markTransportBooked(state.passItemId!);
+                        }
+                        if (!context.mounted) return;
+                        context.push(
                           isLabor ? '/booking/labor/configure' : '/booking/packages',
-                        ),
+                        );
+                      },
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _passItemHint(UniMoveColors c) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      decoration: BoxDecoration(
+        color: c.chipBg,
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: c.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18.sp, color: c.primary),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              'Người bán đã chốt đơn. Nhập địa chỉ nhận bên dưới — xe sẽ lấy đồ tại điểm đăng tin.',
+              style: TextStyle(fontSize: 12.sp, color: c.onSurface, height: 1.35),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

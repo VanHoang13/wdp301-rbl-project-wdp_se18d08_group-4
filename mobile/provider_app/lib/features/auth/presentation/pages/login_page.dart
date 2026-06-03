@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../../../core/config/dev_config.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
@@ -322,11 +323,31 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                           ],
                                         ),
                                       ),
+                                      if (DevConfig.useMockAuth) ...[
+                                        const SizedBox(height: 16),
+                                        _stagger(
+                                          7,
+                                          ShadButton.outline(
+                                            size: ShadButtonSize.lg,
+                                            width: double.infinity,
+                                            enabled: !_loading,
+                                            leading: const Icon(LucideIcons.userRound, size: 18),
+                                            onPressed: _loading
+                                                ? null
+                                                : () {
+                                                    _emailCtrl.text = DevConfig.demoEmail;
+                                                    _passwordCtrl.text = DevConfig.demoPassword;
+                                                    _submit(shadContext);
+                                                  },
+                                            child: const Text('Dùng tài khoản demo'),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 16),
                                       _stagger(
-                                        7,
+                                        8,
                                         GestureDetector(
-                                          onTap: () => context.push('/register'),
+                                          onTap: () => context.push('/driver-registration'),
                                           child: Text.rich(
                                             TextSpan(
                                               style: theme.textTheme.p.copyWith(

@@ -6,12 +6,6 @@ const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_K
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-/** Anon client — chỉ dùng cho Google sign-in (signInWithIdToken). */
-const supabaseAnon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
-
 module.exports = {
   supabaseAdmin,
-  supabaseAnon,
 };
