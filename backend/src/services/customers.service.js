@@ -50,4 +50,59 @@ async function updateProfile(userId, body) {
   return publicProfile(data);
 }
 
-module.exports = { getProfile, updateProfile };
+const AVATAR_BUCKET = 'avatars';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+
+/** BE-010 — POST /api/customers/me/avatar (multipart field: avatar) */
+async function uploadAvatar(userId, file) {
+  if (!file?.buffer?.length) {
+    throw httpError(400, 'Thiếu file ảnh (field: avatar)', 'validation_error');
+  }
+
+  const ext = EXT_BY_MIME[file.mimetype];
+  if (!ext) {
+    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+  }
+
+  const objectPath = `${userId}/avatar.${ext}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(AVATAR_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true,
+      cacheControl: '3600',
+    });
+
+  if (uploadError) {
+    if (uploadError.message?.includes('Bucket not found')) {
+      throw httpError(
+        500,
+        'Chưa có bucket avatars trên Supabase. Chạy migration 20240114000000_avatars_storage.sql.',
+        'storage_bucket_missing',
+      );
+    }
+    throw httpError(500, uploadError.message, 'storage_error');
+  }
+
+  const { data: urlData } = supabaseAdmin.storage.from(AVATAR_BUCKET).getPublicUrl(objectPath);
+  const avatarUrl = urlData?.publicUrl;
+  if (!avatarUrl) {
+    throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+    .eq('id', userId)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw httpError(500, `Profile update failed: ${error.message}`, 'db_error');
+  }
+
+  return publicProfile(data);
+}
+
+module.exports = { getProfile, updateProfile, uploadAvatar };

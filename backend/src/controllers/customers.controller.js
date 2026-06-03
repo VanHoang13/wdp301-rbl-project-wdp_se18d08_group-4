@@ -21,4 +21,13 @@ async function patchMe(req, res, next) {
   }
 }
 
-module.exports = { getMe, patchMe };
+async function uploadAvatar(req, res, next) {
+  try {
+    const data = await customersService.uploadAvatar(req.user.id, req.file);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { getMe, patchMe, uploadAvatar };
