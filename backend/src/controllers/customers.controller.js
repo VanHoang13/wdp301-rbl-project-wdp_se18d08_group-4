@@ -21,4 +21,14 @@ async function patchMe(req, res, next) {
   }
 }
 
-module.exports = { getMe, patchMe };
+async function getRecentPlaces(req, res, next) {
+  try {
+    const limit = req.query.limit;
+    const data = await customersService.getRecentPlaces(req.user.id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { getMe, patchMe, getRecentPlaces };

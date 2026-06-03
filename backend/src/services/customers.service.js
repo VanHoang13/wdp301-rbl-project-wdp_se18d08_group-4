@@ -50,4 +50,66 @@ async function updateProfile(userId, body) {
   return publicProfile(data);
 }
 
-module.exports = { getProfile, updateProfile };
+function shortPlaceTitle(address) {
+  const parts = String(address)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts[0] || address;
+}
+
+/** BE-017 — GET /api/customers/me/recent-places */
+async function getRecentPlaces(userId, limitParam) {
+  const limit = Math.min(Math.max(parseInt(String(limitParam || 5), 10) || 5, 1), 20);
+
+  const { data: orders, error } = await supabaseAdmin
+    .from('orders')
+    .select(
+      'pickup_address, delivery_address, pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, created_at',
+    )
+    .eq('customer_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw httpError(500, error.message, 'db_error');
+  }
+
+  const seen = new Set();
+  const places = [];
+
+  for (const order of orders || []) {
+    const candidates = [
+      {
+        address: order.delivery_address,
+        lat: order.delivery_latitude,
+        lng: order.delivery_longitude,
+      },
+      {
+        address: order.pickup_address,
+        lat: order.pickup_latitude,
+        lng: order.pickup_longitude,
+      },
+    ];
+
+    for (const row of candidates) {
+      const address = String(row.address || '').trim();
+      if (!address || seen.has(address)) continue;
+      seen.add(address);
+
+      places.push({
+        title: shortPlaceTitle(address),
+        address,
+        lat: row.lat != null ? Number(row.lat) : null,
+        lng: row.lng != null ? Number(row.lng) : null,
+      });
+
+      if (places.length >= limit) break;
+    }
+    if (places.length >= limit) break;
+  }
+
+  return places;
+}
+
+module.exports = { getProfile, updateProfile, getRecentPlaces };
