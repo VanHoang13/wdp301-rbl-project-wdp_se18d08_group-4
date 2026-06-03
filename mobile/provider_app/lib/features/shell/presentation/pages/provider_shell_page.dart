@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../../../core/theme/uni_move_colors.dart';
-import '../../../../core/widgets/dark_glass_background.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../earnings/presentation/pages/earnings_tab_page.dart';
 import '../../../home/presentation/pages/provider_dashboard_page.dart';
@@ -46,14 +45,8 @@ class _ProviderShellPageState extends State<ProviderShellPage> {
     return ShadScreenScope(
       builder: (_, theme) {
         return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              const DarkGlassBackground(variant: DarkGlassVariant.subtle, animated: false),
-              Positioned.fill(child: IndexedStack(index: _index, children: List.generate(_tabs.length, _pageAt))),
-            ],
-          ),
+          backgroundColor: c.background,
+          body: IndexedStack(index: _index, children: List.generate(_tabs.length, _pageAt)),
           bottomNavigationBar: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: Container(
