@@ -12,9 +12,33 @@ const {
   publicProfile,
 } = require('./auth.helpers');
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
-const { supabaseAdmin, supabaseAnon } = require('./supabase.service');
+const { supabaseAdmin } = require('./supabase.service');
 const { sendPasswordResetOtp } = require('./mail.service');
+const { OAuth2Client } = require('google-auth-library');
 const env = require('../config/env');
+
+/** Danh sách client id hợp lệ (audience) khi verify Google id_token. */
+const GOOGLE_CLIENT_IDS = String(env.GOOGLE_CLIENT_ID || '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const googleClient = new OAuth2Client();
+
+/** Verify Google id_token thuần Node (không qua Supabase Auth). */
+async function verifyGoogleIdToken(idToken) {
+  if (GOOGLE_CLIENT_IDS.length === 0) {
+    throw httpError(500, 'GOOGLE_CLIENT_ID chưa được cấu hình trên server', 'config_error');
+  }
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_IDS,
+    });
+    return ticket.getPayload();
+  } catch (err) {
+    throw httpError(401, `Google token không hợp lệ: ${err.message}`, 'auth_failed');
+  }
+}
 
 async function findProfileByEmail(email) {
   const { data, error } = await supabaseAdmin
@@ -399,8 +423,9 @@ async function resetPassword(body) {
 
 /**
  * BE-008 — POST /api/auth/google
- * Nhận id_token Google, verify qua Supabase Auth, đảm bảo có row trong
- * `profiles`, rồi trả JWT Node (cùng format như login email).
+ * Verify id_token Google thuần Node (google-auth-library), đảm bảo có row
+ * trong `profiles`, rồi trả JWT Node (cùng format như login email).
+ * Không dùng Supabase Auth.
  */
 async function googleAuth(body) {
   const { id_token } = body || {};
@@ -409,26 +434,18 @@ async function googleAuth(body) {
     throw httpError(400, 'id_token is required', 'validation_error');
   }
 
-  const { data: sessionData, error: sessionError } = await supabaseAnon.auth.signInWithIdToken({
-    provider: 'google',
-    token: id_token,
-  });
+  const payload = await verifyGoogleIdToken(id_token);
 
-  if (sessionError || !sessionData) {
-    throw httpError(401, `Google sign-in failed: ${sessionError?.message || 'Unknown error'}`, 'auth_error');
+  if (!payload?.email) {
+    throw httpError(401, 'Google token thiếu email', 'auth_failed');
+  }
+  if (payload.email_verified === false) {
+    throw httpError(401, 'Email Google chưa được xác minh', 'auth_failed');
   }
 
-  const googleUser = sessionData.user || sessionData.session?.user;
-  if (!googleUser?.id || !googleUser?.email) {
-    throw httpError(401, 'Invalid Google token', 'auth_failed');
-  }
-
-  const normalizedEmail = normalizeEmail(googleUser.email);
-  const avatarUrl = googleUser.user_metadata?.avatar_url || null;
-  const fullName =
-    googleUser.user_metadata?.full_name ||
-    googleUser.user_metadata?.name ||
-    normalizedEmail.split('@')[0];
+  const normalizedEmail = normalizeEmail(payload.email);
+  const avatarUrl = payload.picture || null;
+  const fullName = payload.name || normalizedEmail.split('@')[0];
 
   // Tìm profile theo email (nguồn dữ liệu chính của Node API).
   const { data: existingProfiles, error: lookupError } = await supabaseAdmin
@@ -444,7 +461,7 @@ async function googleAuth(body) {
   let profile = existingProfiles?.[0] || null;
 
   if (!profile) {
-    const userId = googleUser.id;
+    const userId = crypto.randomUUID();
 
     const { data: created, error: createError } = await supabaseAdmin
       .from('profiles')

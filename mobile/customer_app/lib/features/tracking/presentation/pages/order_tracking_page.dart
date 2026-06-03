@@ -299,53 +299,88 @@ class _TrackingStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final last = steps.length - 1;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < steps.length; i++) ...[
-          if (i > 0)
-            Expanded(
-              child: Container(
-                height: 2,
-                color: steps[i].done || steps[i].active ? colors.primary : colors.border,
-              ),
+        for (var i = 0; i < steps.length; i++)
+          Expanded(
+            child: _stepCell(
+              steps[i],
+              isFirst: i == 0,
+              isLast: i == last,
+              nextReached: i < last && _reached(steps[i + 1]),
             ),
-          _stepDot(steps[i]),
-        ],
+          ),
       ],
     );
   }
 
-  Widget _stepDot(TrackingStep step) {
+  bool _reached(TrackingStep step) => step.done || step.active;
+
+  Widget _stepCell(
+    TrackingStep step, {
+    required bool isFirst,
+    required bool isLast,
+    required bool nextReached,
+  }) {
     final active = step.active;
     final done = step.done;
+    final reached = active || done;
+
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 32.w,
-          height: 32.w,
-          decoration: BoxDecoration(
-            color: active || done ? colors.primary : colors.surfaceTint,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            done
-                ? Icons.check
-                : step.key == 'coming'
-                    ? Icons.navigation_rounded
-                    : step.key == 'moving'
-                        ? Icons.local_shipping_outlined
-                        : Icons.location_on_outlined,
-            color: active || done ? AppColors.onPrimary : colors.onSurfaceMuted,
-            size: 16.sp,
-          ),
+        // Hàng đường nối + chấm: line trái/phải nằm đúng giữa chấm.
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 2,
+                color: !isFirst && reached ? colors.primary : Colors.transparent,
+              ),
+            ),
+            Container(
+              width: 32.w,
+              height: 32.w,
+              decoration: BoxDecoration(
+                color: reached ? colors.primary : colors.surfaceTint,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                done
+                    ? Icons.check
+                    : step.key == 'coming'
+                        ? Icons.navigation_rounded
+                        : step.key == 'moving'
+                            ? Icons.local_shipping_outlined
+                            : Icons.location_on_outlined,
+                color: reached ? AppColors.onPrimary : colors.onSurfaceMuted,
+                size: 16.sp,
+              ),
+            ),
+            Expanded(
+              child: Container(
+                height: 2,
+                color: !isLast && nextReached ? colors.primary : Colors.transparent,
+              ),
+            ),
+          ],
         ),
         SizedBox(height: 6.h),
-        Text(
-          step.label,
-          style: TextStyle(
-            fontSize: 10.sp,
-            fontWeight: FontWeight.w600,
-            color: active ? colors.primary : colors.onSurfaceMuted,
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2.w),
+          child: Text(
+            step.label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10.sp,
+              height: 1.15,
+              fontWeight: FontWeight.w600,
+              color: active ? colors.primary : colors.onSurfaceMuted,
+            ),
           ),
         ),
       ],

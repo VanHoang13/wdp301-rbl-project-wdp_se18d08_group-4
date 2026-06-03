@@ -7,6 +7,7 @@ import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../../core/widgets/theme_toggle_tile.dart';
 import '../../../auth/data/auth_repository.dart';
+import '../../../orders/presentation/providers/orders_providers.dart';
 
 class ProviderProfileTabPage extends ConsumerWidget {
   const ProviderProfileTabPage({super.key});
@@ -14,6 +15,11 @@ class ProviderProfileTabPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(providerProfileProvider);
+    final ordersAsync = ref.watch(providerOrdersListProvider);
+    final completedCount = ordersAsync.maybeWhen(
+      data: (orders) => orders.where((o) => o.isCompleted).length,
+      orElse: () => 0,
+    );
     final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
@@ -51,11 +57,29 @@ class ProviderProfileTabPage extends ConsumerWidget {
                               Text(profile?.email ?? '', style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
                               if ((profile?.businessName ?? '').isNotEmpty)
                                 Text(profile!.businessName!, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
+                              const SizedBox(height: 6),
+                              if (profile?.isVerified ?? false)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.badgeCheck, size: 14, color: c.success),
+                                    const SizedBox(width: 4),
+                                    Text('Đã xác thực', style: theme.textTheme.small.copyWith(color: c.success, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
                             ],
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: _statBox(theme, c, LucideIcons.star, '${profile?.rating ?? 0}', 'Đánh giá')),
+                      const SizedBox(width: 12),
+                      Expanded(child: _statBox(theme, c, LucideIcons.circleCheck, '$completedCount', 'Đơn hoàn thành')),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   const ThemeToggleTile(),
@@ -65,8 +89,21 @@ class ProviderProfileTabPage extends ConsumerWidget {
                     title: 'Giấy tờ & xác thực',
                     onTap: () => context.push('/documents'),
                   ),
-                  _MenuTile(icon: LucideIcons.bell, title: 'Thông báo', subtitle: 'Sắp có', onTap: () {}),
-                  _MenuTile(icon: LucideIcons.helpCircle, title: 'Hỗ trợ', onTap: () {}),
+                  _MenuTile(
+                    icon: LucideIcons.bell,
+                    title: 'Thông báo',
+                    subtitle: 'Sắp có',
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Cài đặt thông báo — sắp có')),
+                    ),
+                  ),
+                  _MenuTile(
+                    icon: LucideIcons.helpCircle,
+                    title: 'Hỗ trợ',
+                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Hotline hỗ trợ đối tác: 1900 1234')),
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   ShadButton.destructive(
                     width: double.infinity,
@@ -84,6 +121,22 @@ class ProviderProfileTabPage extends ConsumerWidget {
       },
     );
   }
+}
+
+Widget _statBox(ShadThemeData theme, UniMoveColors c, IconData icon, String value, String label) {
+  return GlassCard(
+    padding: const EdgeInsets.all(14),
+    radius: 16,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: c.primary),
+        const SizedBox(height: 8),
+        Text(value, style: theme.textTheme.h4.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
+        Text(label, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
+      ],
+    ),
+  );
 }
 
 class _MenuTile extends StatelessWidget {
