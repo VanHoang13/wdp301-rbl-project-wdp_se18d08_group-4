@@ -14,8 +14,13 @@ docs/
 ├── BE_TASK_DIVISION.md               # Hướng dẫn đọc CSV
 ├── database-schema.md              # Tổng quan & chi tiết database (CHÍNH)
 ├── database-enums-and-functions.md # ENUM, Views, Functions chi tiết
-├── flutter-setup.md                # Hướng dẫn chạy Flutter apps
-├── nodejs-api.md                   # Node.js Express API
+├── HUONG_DAN_CHAY_CUSTOMER_APP.md  # Hướng dẫn chạy customer app (người mới)
+├── flutter-setup.md                # Flutter setup tóm tắt
+├── nodejs-api.md                   # Node.js Express API (auth/profile)
+├── CUSTOMER_APP_API.md             # Toàn bộ API customer app + Pass đồ
+├── CUSTOMER_APP_API.csv            # Import Google Sheets (danh sách API)
+├── CUSTOMER_APP_API_TONG_HOP.csv   # Sheet tổng hợp số liệu
+├── CUSTOMER_APP_API_IMPORT.md      # Hướng dẫn import CSV vào Sheets
 ├── setup-checklist.md              # Checklist setup dự án
 ├── slide-presentation.md           # Slide thuyết trình
 └── supabase/                       # SQL tham chiếu, email templates

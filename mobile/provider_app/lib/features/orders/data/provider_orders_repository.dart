@@ -1,3 +1,5 @@
+import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/mock/mock_provider_data.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/provider_order.dart';
 
@@ -7,12 +9,19 @@ class ProviderOrdersRepository {
   final ApiClient _api;
 
   Future<List<ProviderOrder>> fetchOrders() async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      return MockProviderData.orders;
+    }
     final envelope = await _api.guard(() => _api.get('/orders'));
     final rows = envelope['data'] as List<dynamic>? ?? [];
     return rows.map((e) => ProviderOrder.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<ProviderOrder> fetchById(String id) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      final order = MockProviderData.orderById(id);
+      if (order != null) return order;
+    }
     final envelope = await _api.guard(() => _api.get('/orders/$id'));
     return ProviderOrder.fromJson(envelope['data'] as Map<String, dynamic>);
   }
@@ -22,6 +31,14 @@ class ProviderOrdersRepository {
     required String response,
     String? declineReason,
   }) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      MockProviderData.updateStatus(
+        orderId,
+        response == 'accepted' ? 'accepted' : 'declined',
+      );
+      return;
+    }
     await _api.guard(
       () => _api.post(
         '/orders/$orderId/respond',
