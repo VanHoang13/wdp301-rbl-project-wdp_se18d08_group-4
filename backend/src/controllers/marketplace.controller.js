@@ -1,13 +1,13 @@
 const marketplaceService = require('../services/marketplace.service');
 
+// ── Batch 1 ──────────────────────────────────────────────────────────────────
+
 /** API-062 — POST /api/marketplace/listings */
 async function createListing(req, res, next) {
   try {
     const data = await marketplaceService.createListing(req.user.id, req.body);
     res.status(201).json({ success: true, data });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 }
 
 /** API-059 — GET /api/marketplace/listings */
@@ -15,9 +15,7 @@ async function browseListings(req, res, next) {
   try {
     const data = await marketplaceService.browseListings(req.query);
     res.json({ success: true, ...data });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 }
 
 /** API-060 — GET /api/marketplace/my-listings */
@@ -25,9 +23,63 @@ async function getMyListings(req, res, next) {
   try {
     const data = await marketplaceService.getMyListings(req.user.id, req.query);
     res.json({ success: true, ...data });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 }
 
-module.exports = { createListing, browseListings, getMyListings };
+// ── Batch 2 ──────────────────────────────────────────────────────────────────
+
+/** API-061 — GET /api/marketplace/listings/:id */
+async function getListing(req, res, next) {
+  try {
+    const data = await marketplaceService.getListing(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-064 — PATCH /api/marketplace/listings/:id/status */
+async function updateListingStatus(req, res, next) {
+  try {
+    const data = await marketplaceService.updateListingStatus(req.params.id, req.user.id, req.body.status);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-065 — POST /api/marketplace/listings/:id/interest */
+async function expressInterest(req, res, next) {
+  try {
+    const data = await marketplaceService.expressInterest(req.params.id, req.user.id, req.body);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+// ── Batch 3 ──────────────────────────────────────────────────────────────────
+
+/** API-066 — GET /api/marketplace/listings/:id/interests */
+async function getInterestedBuyers(req, res, next) {
+  try {
+    const data = await marketplaceService.getInterestedBuyers(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-067 — GET /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
+async function getMessages(req, res, next) {
+  try {
+    const data = await marketplaceService.getMessages(req.params.listingId, req.params.buyerId, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-068 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
+async function sendMessage(req, res, next) {
+  try {
+    const data = await marketplaceService.sendMessage(req.params.listingId, req.params.buyerId, req.user.id, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+module.exports = {
+  createListing, browseListings, getMyListings,
+  getListing, updateListingStatus, expressInterest,
+  getInterestedBuyers, getMessages, sendMessage,
+};
