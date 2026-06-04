@@ -4,13 +4,28 @@ const { requireAuth } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-// API-059 — Khám phá tin (public, nhưng yêu cầu login)
+// ── Batch 1 ──────────────────────────────────────────────────────────────────
+// API-059 — Khám phá tin
 router.get('/listings', requireAuth, marketplaceController.browseListings);
-
 // API-060 — Tin của tôi
 router.get('/my-listings', requireAuth, marketplaceController.getMyListings);
-
 // API-062 — Đăng tin
 router.post('/listings', requireAuth, marketplaceController.createListing);
+
+// ── Batch 2 ──────────────────────────────────────────────────────────────────
+// API-061 — Chi tiết tin
+router.get('/listings/:id', requireAuth, marketplaceController.getListing);
+// API-064 — Đổi trạng thái tin
+router.patch('/listings/:id/status', requireAuth, marketplaceController.updateListingStatus);
+// API-065 — Quan tâm tin
+router.post('/listings/:id/interest', requireAuth, marketplaceController.expressInterest);
+
+// ── Batch 3 ──────────────────────────────────────────────────────────────────
+// API-066 — DS khách quan tâm
+router.get('/listings/:id/interests', requireAuth, marketplaceController.getInterestedBuyers);
+// API-067 — Đọc chat
+router.get('/listings/:listingId/conversations/:buyerId/messages', requireAuth, marketplaceController.getMessages);
+// API-068 — Gửi chat
+router.post('/listings/:listingId/conversations/:buyerId/messages', requireAuth, marketplaceController.sendMessage);
 
 module.exports = router;
