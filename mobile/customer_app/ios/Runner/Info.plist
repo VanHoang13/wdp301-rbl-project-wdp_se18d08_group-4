@@ -59,6 +59,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>UniMove cần truy cập thư viện ảnh để đăng ảnh món pass đồ.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>UniMove cần dùng camera để chụp ảnh món pass đồ.</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -4,10 +4,23 @@
 
 ## 🚀 Quick Start
 
+### Customer App (Flutter) — người mới pull code
+
+**[docs/HUONG_DAN_CHAY_CUSTOMER_APP.md](docs/HUONG_DAN_CHAY_CUSTOMER_APP.md)** — cài Flutter, chạy mock hoặc kèm backend, emulator/USB/Windows.
+
+```powershell
+cd mobile/customer_app
+flutter pub get
+flutter run
+# Login demo (debug): demo@unimove.local / demo1234
+```
+
+Hoặc backend + app: `npm run dev:customer` (từ root, sau `npm install`).
+
 ### Prerequisites
 - Node.js 18+
 - Flutter 3.0+
-- Supabase Account
+- Supabase Account (khi chạy backend thật)
 
 ### Backend Setup
 ```bash

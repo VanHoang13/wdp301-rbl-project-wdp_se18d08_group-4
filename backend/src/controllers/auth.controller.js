@@ -1,6 +1,5 @@
 /**
  * SCAFFOLD — Chỉ gọi auth.service; không thêm logic ở đây.
- * Implement: backend/src/services/auth.service.js (BE-001 → BE-007).
  */
 const authService = require('../services/auth.service');
 
@@ -59,6 +58,15 @@ async function resetPassword(req, res, next) {
   }
 }
 
+async function googleAuth(req, res, next) {
+  try {
+    const data = await authService.googleAuth(req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -66,4 +74,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  googleAuth,
 };

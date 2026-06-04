@@ -1,5 +1,6 @@
 /**
  * Auth — Node JWT (register/login/me/change-password) + quên MK qua SMTP OTP.
+ * Bổ sung: đăng nhập Google (BE-008) — verify id_token rồi phát JWT Node.
  * DB: docs/supabase/20240113000000_node_auth.sql
  */
 const crypto = require('crypto');
@@ -13,7 +14,31 @@ const {
 const { hashPassword, verifyPassword, hashResetToken, generateResetToken } = require('../utils/password');
 const { supabaseAdmin } = require('./supabase.service');
 const { sendPasswordResetOtp } = require('./mail.service');
+const { OAuth2Client } = require('google-auth-library');
 const env = require('../config/env');
+
+/** Danh sách client id hợp lệ (audience) khi verify Google id_token. */
+const GOOGLE_CLIENT_IDS = String(env.GOOGLE_CLIENT_ID || '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+const googleClient = new OAuth2Client();
+
+/** Verify Google id_token thuần Node (không qua Supabase Auth). */
+async function verifyGoogleIdToken(idToken) {
+  if (GOOGLE_CLIENT_IDS.length === 0) {
+    throw httpError(500, 'GOOGLE_CLIENT_ID chưa được cấu hình trên server', 'config_error');
+  }
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_IDS,
+    });
+    return ticket.getPayload();
+  } catch (err) {
+    throw httpError(401, `Google token không hợp lệ: ${err.message}`, 'auth_failed');
+  }
+}
 
 async function findProfileByEmail(email) {
   const { data, error } = await supabaseAdmin
@@ -108,7 +133,14 @@ async function register(body) {
       throw httpError(500, `Credential creation failed: ${credError.message}`, 'db_error');
     }
 
-    if (role === 'provider') {
+    if (role === 'customer') {
+      const { error: cpError } = await supabaseAdmin.from('customer_profiles').insert([
+        { id: userId },
+      ]);
+      if (cpError) {
+        throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+      }
+    } else if (role === 'provider') {
       const { error: ppError } = await supabaseAdmin.from('provider_profiles').insert([
         {
           id: userId,
@@ -213,9 +245,10 @@ async function getMe(userId) {
   return publicProfile(row);
 }
 
-/** BE-006 — POST /api/auth/change-password */
+/** BE-006 — POST /api/auth/change-password (Node JWT — user_credentials) */
 async function changePassword(userId, body) {
-  const { old_password, new_password } = body || {};
+  const old_password = body?.old_password ?? body?.current_password ?? body?.password;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!userId) {
     throw httpError(400, 'User ID is required', 'validation_error');
@@ -315,9 +348,11 @@ async function forgotPassword(email) {
   };
 }
 
-/** BE-007 — POST /api/auth/reset-password (Node JWT — user_credentials) */
+/** BE-007 — POST /api/auth/reset-password (email + OTP — Node JWT) */
 async function resetPassword(body) {
-  const { email, token, new_password } = body || {};
+  const email = body?.email;
+  const token = body?.token ?? body?.otp ?? body?.OTP;
+  const new_password = body?.new_password ?? body?.newPassword;
 
   if (!email || !token || !new_password) {
     throw httpError(400, 'Email, token, and new password are required', 'validation_error');
@@ -386,6 +421,85 @@ async function resetPassword(body) {
   return { message: 'Đặt lại mật khẩu thành công.' };
 }
 
+/**
+ * BE-008 — POST /api/auth/google
+ * Verify id_token Google thuần Node (google-auth-library), đảm bảo có row
+ * trong `profiles`, rồi trả JWT Node (cùng format như login email).
+ * Không dùng Supabase Auth.
+ */
+async function googleAuth(body) {
+  const { id_token } = body || {};
+
+  if (!id_token) {
+    throw httpError(400, 'id_token is required', 'validation_error');
+  }
+
+  const payload = await verifyGoogleIdToken(id_token);
+
+  if (!payload?.email) {
+    throw httpError(401, 'Google token thiếu email', 'auth_failed');
+  }
+  if (payload.email_verified === false) {
+    throw httpError(401, 'Email Google chưa được xác minh', 'auth_failed');
+  }
+
+  const normalizedEmail = normalizeEmail(payload.email);
+  const avatarUrl = payload.picture || null;
+  const fullName = payload.name || normalizedEmail.split('@')[0];
+
+  // Tìm profile theo email (nguồn dữ liệu chính của Node API).
+  const { data: existingProfiles, error: lookupError } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .limit(1);
+
+  if (lookupError) {
+    throw httpError(500, `Profile lookup failed: ${lookupError.message}`, 'db_error');
+  }
+
+  let profile = existingProfiles?.[0] || null;
+
+  if (!profile) {
+    const userId = crypto.randomUUID();
+
+    const { data: created, error: createError } = await supabaseAdmin
+      .from('profiles')
+      .insert([
+        {
+          id: userId,
+          email: normalizedEmail,
+          full_name: fullName,
+          avatar_url: avatarUrl,
+          role: 'customer',
+          status: 'active',
+        },
+      ])
+      .select();
+
+    if (createError) {
+      throw httpError(500, `Profile creation failed: ${createError.message}`, 'db_error');
+    }
+
+    profile = created[0];
+
+    const { error: cpError } = await supabaseAdmin
+      .from('customer_profiles')
+      .insert([{ id: userId }]);
+    if (cpError) {
+      throw httpError(500, `Customer profile creation failed: ${cpError.message}`, 'db_error');
+    }
+  } else if (avatarUrl && !profile.avatar_url) {
+    await supabaseAdmin
+      .from('profiles')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', profile.id);
+    profile.avatar_url = avatarUrl;
+  }
+
+  return buildAuthResponse(profile);
+}
+
 module.exports = {
   register,
   login,
@@ -393,4 +507,5 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  googleAuth,
 };

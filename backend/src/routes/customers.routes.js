@@ -4,11 +4,19 @@
 const express = require('express');
 const customersController = require('../controllers/customers.controller');
 const { requireAuth, requireRole } = require('../middleware/auth.middleware');
+const { handleAvatarUpload } = require('../middleware/upload.middleware');
 
 const router = express.Router();
 
 router.get('/me', requireAuth, requireRole('customer'), customersController.getMe);
 router.get('/me/recent-places', requireAuth, requireRole('customer'), customersController.getRecentPlaces);
 router.patch('/me', requireAuth, requireRole('customer'), customersController.patchMe);
+router.post(
+  '/me/avatar',
+  requireAuth,
+  requireRole('customer'),
+  handleAvatarUpload,
+  customersController.uploadAvatar,
+);
 
 module.exports = router;

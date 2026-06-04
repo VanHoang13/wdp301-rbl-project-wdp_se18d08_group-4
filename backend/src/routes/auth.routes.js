@@ -7,9 +7,9 @@
  * | POST   | /register         | BE-001 | body: email, password, full_name, phone |
  * | POST   | /login            | BE-003 | —               |
  * | GET    | /me               | BE-003 | requireNodeAuth |
- * | POST   | /change-password  | BE-006 | requireNodeAuth |
- * | POST   | /forgot-password  | BE-007 | —               |
- * | POST   | /reset-password   | BE-007 | —               |
+ * | POST   | /change-password  | BE-006 | requireNodeAuth — đổi MK khi đã login |
+ * | POST   | /forgot-password  | BE-007 | gửi OTP qua email |
+ * | POST   | /reset-password   | BE-007 | email + token (OTP) + new_password |
  */
 const express = require('express');
 const authController = require('../controllers/auth.controller');
@@ -21,6 +21,7 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
+router.post('/google', authController.googleAuth);
 
 router.get('/me', requireNodeAuth, authController.me);
 router.post('/change-password', requireNodeAuth, authController.changePassword);

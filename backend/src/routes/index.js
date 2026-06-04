@@ -6,6 +6,7 @@ const providersRoutes = require('./providers.routes');
 const paymentsRoutes = require('./payments.routes');
 const webhooksRoutes = require('./webhooks.routes');
 const adminRoutes = require('./admin.routes');
+const marketplaceRoutes = require('./marketplace.routes');
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use('/providers', providersRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/webhooks', webhooksRoutes);
 router.use('/admin', adminRoutes);
+router.use('/marketplace', marketplaceRoutes);
 
 module.exports = router;

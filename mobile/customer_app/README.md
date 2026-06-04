@@ -1,34 +1,40 @@
 # UniMove Customer App
 
-Splash → Onboarding → Login (theo design HTML).
+App khách hàng — chuyển trọ, khuân vác, Pass đồ cũ.
 
-## Chạy trên emulator Android Studio
+## Chạy nhanh
 
 ```powershell
 flutter pub get
 flutter run
 ```
 
-Cấu hình Impeller/software rendering đã nằm trong `AndroidManifest.xml` — không cần thêm flag khi chạy.
+**Đăng nhập demo (debug):** `demo@unimove.local` / `demo1234`
 
-**Onboarding khi dev:** `flutter run` (debug) luôn hiện Onboarding mỗi lần mở app. Bản release (`flutter build apk --release`) mới nhớ đã xem và nhảy thẳng Login.
+## Hướng dẫn đầy đủ (cho người mới pull code)
 
-Nếu **vẫn màn đen** trên emulator:
+**[docs/HUONG_DAN_CHAY_CUSTOMER_APP.md](../../docs/HUONG_DAN_CHAY_CUSTOMER_APP.md)** — cài đặt, mock vs backend, emulator/USB/Windows, xử lý lỗi.
 
-```powershell
-.\scripts\emulator-fix.ps1   # khởi động AVD với GPU software
-flutter run
-```
+## Backend + app một lệnh
 
-Hoặc chạy trên Windows desktop:
+Từ root repo:
 
 ```powershell
-flutter run -d windows
+npm run dev:customer
 ```
+
+Hoặc trong folder này: `.\run.ps1`
 
 ## Luồng màn hình
 
-1. **Splash** — dark gradient, logo UniMove, 3s
-2. **Onboarding** — 3 slide (đặt xe, gộp đơn, tracking)
-3. **Login** — email sinh viên + mật khẩu (`role: customer`). SĐT dùng khi đặt đơn/hồ sơ. Nhà cung cấp: `mobile/provider_app`
-4. **Home** — sau đăng nhập thành công
+1. Splash → Onboarding (debug: mỗi lần mở) → Login  
+2. Home — 4 tab: Trang chủ · Thanh toán · Hoạt động · Tin nhắn  
+
+## Emulator màn đen (Windows)
+
+```powershell
+.\scripts\emulator-fix.ps1
+flutter run
+```
+
+Windows desktop: `.\run_windows.ps1`

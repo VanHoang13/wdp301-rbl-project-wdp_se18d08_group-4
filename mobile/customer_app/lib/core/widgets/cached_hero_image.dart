@@ -39,7 +39,18 @@ class CachedHeroImage extends StatelessWidget {
           ),
           errorWidget: (_, __, ___) => Container(
             color: c.surfaceTint,
-            child: Icon(Icons.image_not_supported_outlined, color: c.onSurfaceMuted),
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.image_outlined, color: c.onSurfaceMuted, size: 28.sp),
+                SizedBox(height: 6.h),
+                Text(
+                  'Hình ảnh minh hoạ',
+                  style: TextStyle(fontSize: 11.sp, color: c.onSurfaceMuted),
+                ),
+              ],
+            ),
           ),
         ),
       ),

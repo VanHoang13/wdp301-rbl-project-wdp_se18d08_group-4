@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/config/dev_config.dart';
+import '../../../core/mock/mock_auth_session.dart';
+import '../../../core/mock/mock_provider_data.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/auth_session_notifier.dart';
 import '../domain/provider_profile.dart';
@@ -11,7 +14,18 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 
 final providerProfileProvider = FutureProvider<ProviderProfile?>((ref) async {
   if (!await AuthTokenStorage.instance.hasSession()) return null;
-  return ref.watch(authRepositoryProvider).fetchProfile();
+  if (await AuthTokenStorage.instance.isMockSession()) {
+    return ProviderProfile.fromJson(MockProviderData.userJson);
+  }
+  try {
+    return await ref.watch(authRepositoryProvider).fetchProfile();
+  } on ApiException catch (e) {
+    if (e.statusCode == 401 && DevConfig.useMockAuth) {
+      await MockAuthSession.signIn();
+      return ProviderProfile.fromJson(MockProviderData.userJson);
+    }
+    rethrow;
+  }
 });
 
 class AuthRepository {
@@ -29,6 +43,13 @@ class AuthRepository {
   }
 
   Future<void> signIn({required String email, required String password}) async {
+    if (DevConfig.useMockAuth && DevConfig.isDemoCredential(email: email, password: password)) {
+      await MockAuthSession.signIn();
+      _api.setAccessToken(AuthTokenStorage.mockToken);
+      authSessionNotifier.notifyAuthChanged();
+      return;
+    }
+
     final envelope = await _api.guard(
       () => _api.post('/auth/login', body: {
         'email': email.trim().toLowerCase(),

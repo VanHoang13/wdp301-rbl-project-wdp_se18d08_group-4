@@ -7,6 +7,7 @@ import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/dark_glass_background.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../../core/widgets/unimove_logo.dart';
+import '../../../../core/auth/google_sign_in_service.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/data/customer_auth_repository.dart';
 
@@ -24,6 +25,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _remember = true;
   bool _obscure = true;
   bool _loading = false;
+  bool _googleLoading = false;
   String? _error;
 
   @override
@@ -242,7 +244,13 @@ class _LoginPageState extends State<LoginPage> {
                                         ),
                                         const Spacer(),
                                         ShadButton.link(
-                                          onPressed: () {},
+                                          onPressed: () {
+                                            final email = _emailCtrl.text.trim();
+                                            final q = email.isEmpty
+                                                ? ''
+                                                : '?email=${Uri.encodeComponent(email)}';
+                                            context.push('/forgot-password$q');
+                                          },
                                           child: const Text('Quên mật khẩu?'),
                                         ),
                                       ],
@@ -326,19 +334,27 @@ class _LoginPageState extends State<LoginPage> {
                                         children: [
                                           Expanded(
                                             child: ShadButton.outline(
-                                              onPressed: () => _socialSnack(shadContext, 'Google'),
+                                              enabled: !_googleLoading,
+                                              onPressed: _googleLoading ? null : _signInWithGoogle,
                                               child: Row(
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
-                                                  Image.network(
-                                                    AppImages.googleIcon,
-                                                    width: 18,
-                                                    height: 18,
-                                                    errorBuilder: (_, __, ___) =>
-                                                        const Icon(LucideIcons.globe, size: 18),
-                                                  ),
+                                                  if (_googleLoading)
+                                                    const SizedBox(
+                                                      width: 18,
+                                                      height: 18,
+                                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                                    )
+                                                  else
+                                                    Image.network(
+                                                      AppImages.googleIcon,
+                                                      width: 18,
+                                                      height: 18,
+                                                      errorBuilder: (_, __, ___) =>
+                                                          const Icon(LucideIcons.globe, size: 18),
+                                                    ),
                                                   const SizedBox(width: 8),
-                                                  const Text('Google'),
+                                                  Text(_googleLoading ? 'Đang mở...' : 'Google'),
                                                 ],
                                               ),
                                             ),
@@ -412,6 +428,30 @@ class _LoginPageState extends State<LoginPage> {
         );
       },
     );
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _googleLoading = true;
+      _error = null;
+    });
+    try {
+      await CustomerAuthRepository().signInWithGoogle();
+      if (!mounted) return;
+      context.go('/home');
+    } on GoogleSignInCancelled {
+      // người dùng huỷ
+    } on GoogleSignInFailure catch (e) {
+      setState(() => _error = e.message);
+    } on AuthException catch (e) {
+      setState(() => _error = e.message);
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } catch (_) {
+      setState(() => _error = 'Đăng nhập Google thất bại. Thử lại sau.');
+    } finally {
+      if (mounted) setState(() => _googleLoading = false);
+    }
   }
 
   void _socialSnack(BuildContext shadContext, String provider) {
