@@ -1,5 +1,7 @@
 # Node.js API — Auth and Profile Contract
 
+> **Customer app (đầy đủ endpoint + Pass đồ):** xem [CUSTOMER_APP_API.md](./CUSTOMER_APP_API.md).
+
 ## Overview
 
 This backend uses Supabase Auth for password storage and verification.

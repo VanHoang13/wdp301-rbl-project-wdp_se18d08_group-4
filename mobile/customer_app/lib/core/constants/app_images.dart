@@ -27,5 +27,5 @@ abstract final class AppImages {
       'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&q=80';
 
   static const moversPhoto =
-      'https://images.unsplash.com/photo-1600518464441-915588223ad5?w=800&q=80';
+      'https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=800&q=80';
 }

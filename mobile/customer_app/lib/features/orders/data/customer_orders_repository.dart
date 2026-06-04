@@ -25,11 +25,18 @@ class CustomerOrdersRepository {
 
     final envelope = await _api.guard(() => _api.get('/orders'));
     final raw = envelope['data'];
-    if (raw is! List) return [];
 
-    var list = raw
-        .map((e) => OrderApiMapper.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
+    var list = raw is List
+        ? raw
+            .map((e) => OrderApiMapper.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList()
+        : <CustomerOrder>[];
+
+    // Demo fallback: tài khoản thật chưa có đơn nào → hiển thị dữ liệu mẫu
+    // để màn "Hoạt động" không trống khi demo.
+    if (list.isEmpty) {
+      return _mockFilter(activeOnly: activeOnly, completedOnly: completedOnly);
+    }
 
     if (activeOnly) {
       list = list.where((o) => o.status.isActive).toList();
@@ -54,9 +61,17 @@ class CustomerOrdersRepository {
     try {
       final envelope = await _api.guard(() => _api.get('/orders/$id'));
       final data = envelope['data'];
-      if (data is! Map) return null;
+      if (data is! Map) return _mockById(id);
       return OrderApiMapper.fromJson(Map<String, dynamic>.from(data));
     } on ApiException {
+      return _mockById(id);
+    }
+  }
+
+  CustomerOrder? _mockById(String id) {
+    try {
+      return MockOrdersData.orders.firstWhere((o) => o.id == id);
+    } catch (_) {
       return null;
     }
   }

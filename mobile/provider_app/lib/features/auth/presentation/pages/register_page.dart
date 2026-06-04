@@ -111,7 +111,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       );
       await Future<void>.delayed(const Duration(milliseconds: 400));
       if (!mounted) return;
-      context.go('/home');
+      context.go('/driver-registration');
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } on ApiException catch (e) {
