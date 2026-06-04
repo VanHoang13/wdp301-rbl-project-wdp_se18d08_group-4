@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../../../core/config/dev_config.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
@@ -62,6 +63,27 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       setState(() => _error = e.message);
     } catch (_) {
       setState(() => _error = 'Đăng nhập thất bại. Kiểm tra email/mật khẩu.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _demoLogin() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _emailCtrl.text = DevConfig.demoEmail;
+      _passwordCtrl.text = DevConfig.demoPassword;
+    });
+    try {
+      await ref.read(authRepositoryProvider).signIn(
+            email: DevConfig.demoEmail,
+            password: DevConfig.demoPassword,
+          );
+      if (!mounted) return;
+      context.go('/home');
+    } catch (e) {
+      setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -322,9 +344,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                           ],
                                         ),
                                       ),
+                                      if (DevConfig.useMockAuth) ...[
+                                        const SizedBox(height: 12),
+                                        _stagger(
+                                          7,
+                                          ShadButton.outline(
+                                            size: ShadButtonSize.lg,
+                                            width: double.infinity,
+                                            enabled: !_loading,
+                                            onPressed: _loading ? null : _demoLogin,
+                                            child: const Text('Đăng nhập demo (không cần API)'),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 16),
                                       _stagger(
-                                        7,
+                                        8,
                                         GestureDetector(
                                           onTap: () => context.push('/register'),
                                           child: Text.rich(

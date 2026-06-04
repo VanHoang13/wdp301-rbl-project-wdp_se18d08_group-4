@@ -9,6 +9,9 @@ class AuthTokenStorage {
   static const _tokenKey = 'provider_node_access_token';
   static const _userKey = 'provider_node_user_json';
 
+  /// Token giả — mọi repository dùng mock, không gọi API.
+  static const mockToken = 'mock_provider_session';
+
   String? _cachedToken;
 
   String? get cachedToken => _cachedToken;
@@ -39,6 +42,11 @@ class AuthTokenStorage {
   Future<bool> hasSession() async {
     final t = await loadToken();
     return t != null && t.isNotEmpty;
+  }
+
+  Future<bool> isMockSession() async {
+    final t = await loadToken();
+    return t == mockToken;
   }
 
   Future<void> clear() async {
