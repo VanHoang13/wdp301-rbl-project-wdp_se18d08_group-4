@@ -279,7 +279,7 @@ function UserRow({ user, isCustomers, onStatusChanged }: UserRowProps) {
               <AvatarImage src={user.avatar_url} alt={user.full_name} />
             )}
             <AvatarFallback>
-              {user.full_name.charAt(0).toUpperCase()}
+              {user.full_name ? user.full_name.charAt(0).toUpperCase() : "?"}
             </AvatarFallback>
           </Avatar>
           <span
