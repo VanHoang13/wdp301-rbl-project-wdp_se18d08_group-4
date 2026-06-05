@@ -19,6 +19,16 @@ async function patchMe(req, res, next) {
   }
 }
 
+async function getRecentPlaces(req, res, next) {
+  try {
+    const limit = req.query.limit;
+    const data = await customersService.getRecentPlaces(req.user.id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function uploadAvatar(req, res, next) {
   try {
     if (!req.file) {
@@ -31,4 +41,4 @@ async function uploadAvatar(req, res, next) {
   }
 }
 
-module.exports = { getMe, patchMe, uploadAvatar };
+module.exports = { getMe, patchMe, getRecentPlaces, uploadAvatar };
