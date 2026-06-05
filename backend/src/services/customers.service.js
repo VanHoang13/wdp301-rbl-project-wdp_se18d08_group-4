@@ -1,13 +1,8 @@
-const { v2: cloudinary } = require('cloudinary');
-const env = require('../config/env');
 const { httpError, normalizePhone } = require('./auth.helpers');
 const { supabaseAdmin } = require('./supabase.service');
 
-cloudinary.config({
-  cloud_name: env.CLOUDINARY_CLOUD_NAME,
-  api_key: env.CLOUDINARY_API_KEY,
-  api_secret: env.CLOUDINARY_API_SECRET,
-});
+const AVATAR_BUCKET = 'avatars';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 /** Validation helpers */
 function validateFullName(fullName) {
@@ -169,23 +164,105 @@ async function updateProfile(userId, body) {
   return getProfile(userId);
 }
 
-/** API-010 — POST /api/customers/me/avatar */
-async function uploadAvatar(userId, fileBuffer) {
-  const avatarUrl = await new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
+function shortPlaceTitle(address) {
+  const parts = String(address)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts[0] || address;
+}
+
+/** BE-017 — GET /api/customers/me/recent-places */
+async function getRecentPlaces(userId, limitParam) {
+  const limit = Math.min(Math.max(parseInt(String(limitParam || 5), 10) || 5, 1), 20);
+
+  const { data: orders, error } = await supabaseAdmin
+    .from('orders')
+    .select(
+      'pickup_address, delivery_address, pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, created_at',
+    )
+    .eq('customer_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw httpError(500, error.message, 'db_error');
+  }
+
+  const seen = new Set();
+  const places = [];
+
+  for (const order of orders || []) {
+    const candidates = [
       {
-        folder: 'avatars',
-        public_id: userId,
-        overwrite: true,
-        resource_type: 'image',
+        address: order.delivery_address,
+        lat: order.delivery_latitude,
+        lng: order.delivery_longitude,
       },
-      (error, result) => {
-        if (error) return reject(httpError(500, error.message, 'storage_error'));
-        resolve(result.secure_url);
+      {
+        address: order.pickup_address,
+        lat: order.pickup_latitude,
+        lng: order.pickup_longitude,
       },
-    );
-    stream.end(fileBuffer);
-  });
+    ];
+
+    for (const row of candidates) {
+      const address = String(row.address || '').trim();
+      if (!address || seen.has(address)) continue;
+      seen.add(address);
+
+      places.push({
+        title: shortPlaceTitle(address),
+        address,
+        lat: row.lat != null ? Number(row.lat) : null,
+        lng: row.lng != null ? Number(row.lng) : null,
+      });
+
+      if (places.length >= limit) break;
+    }
+    if (places.length >= limit) break;
+  }
+
+  return places;
+}
+
+/** BE-010 / API-010 — POST /api/customers/me/avatar (Supabase Storage bucket avatars) */
+async function uploadAvatar(userId, file) {
+  if (!file?.buffer?.length) {
+    throw httpError(400, 'Thiếu file ảnh (field: avatar)', 'validation_error');
+  }
+
+  const ext = EXT_BY_MIME[file.mimetype];
+  if (!ext) {
+    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+  }
+
+  const objectPath = `${userId}/avatar.${ext}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(AVATAR_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true,
+      cacheControl: '3600',
+    });
+
+  if (uploadError) {
+    if (uploadError.message?.includes('Bucket not found')) {
+      throw httpError(
+        500,
+        'Chưa có bucket avatars trên Supabase. Chạy migration 20240114000000_avatars_storage.sql.',
+        'storage_bucket_missing',
+      );
+    }
+    throw httpError(500, uploadError.message, 'storage_error');
+  }
+
+  const { data: urlData } = supabaseAdmin.storage.from(AVATAR_BUCKET).getPublicUrl(objectPath);
+  const avatarUrl = urlData?.publicUrl;
+  if (!avatarUrl) {
+    throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+  }
 
   const { error: dbError } = await supabaseAdmin
     .from('profiles')
@@ -194,7 +271,7 @@ async function uploadAvatar(userId, fileBuffer) {
 
   if (dbError) throw httpError(500, dbError.message, 'db_error');
 
-  return { avatar_url: avatarUrl };
+  return getProfile(userId);
 }
 
-module.exports = { getProfile, updateProfile, uploadAvatar };
+module.exports = { getProfile, updateProfile, getRecentPlaces, uploadAvatar };

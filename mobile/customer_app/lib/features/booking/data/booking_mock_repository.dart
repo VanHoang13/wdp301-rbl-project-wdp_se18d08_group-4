@@ -148,7 +148,7 @@ class BookingMockRepository {
   Future<List<PartnerOffer>> fetchPartners() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     return [
-      PartnerOffer(
+      const PartnerOffer(
         id: 'p1',
         name: 'Minh Quân Logistics',
         distanceKm: 1.2,
@@ -179,7 +179,7 @@ class BookingMockRepository {
           ),
         ],
       ),
-      PartnerOffer(
+      const PartnerOffer(
         id: 'p2',
         name: 'FastMove SV',
         distanceKm: 2.4,
@@ -210,7 +210,7 @@ class BookingMockRepository {
           ),
         ],
       ),
-      PartnerOffer(
+      const PartnerOffer(
         id: 'p3',
         name: 'GreenLine Moving',
         distanceKm: 3.1,
