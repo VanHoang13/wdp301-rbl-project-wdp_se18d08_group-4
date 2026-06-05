@@ -83,6 +83,8 @@ class PassItemRepository {
     return user?['id'] as String?;
   }
 
+  Future<String?> currentUserId() => _myId();
+
   void _updateCache(List<PassItemPost> posts) {
     for (final p in posts) {
       final idx = _cache.indexWhere((c) => c.id == p.id);
