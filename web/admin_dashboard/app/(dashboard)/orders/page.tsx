@@ -1,32 +1,63 @@
-export const dynamic = "force-dynamic";
-import { Suspense } from "react";
-import { getOrders } from "@/lib/queries/orders";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { apiClient, adminApi } from "@/lib/api";
 import { PageHeader } from "@/components/dashboard/page-header";
 import type { OrderStatus } from "@/lib/types";
 import { OrdersClient } from "./orders-client";
 
-type SearchParams = Promise<{
-  status?: string;
-  search?: string;
-  page?: string;
-}>;
+export default function OrdersPage() {
+  const searchParams = useSearchParams();
+  const status = searchParams.get('status') as OrderStatus | undefined;
+  const search = searchParams.get('search');
+  const page = Number(searchParams.get('page') ?? 1);
 
-async function OrdersContent({ searchParams }: { searchParams: SearchParams }) {
-  const params = await searchParams;
-  const status = params.status as OrderStatus | undefined;
-  const search = params.search;
-  const page = Number(params.page ?? 1);
+  const [data, setData] = useState<any[]>([]);
+  const [meta, setMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [adminId, setAdminId] = useState("");
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  useEffect(() => {
+    // Set up API token from localStorage
+    const token = localStorage.getItem('admin_token');
+    if (token) {
+      apiClient.setToken(token);
+    }
 
-  const { data, meta, error } = await getOrders({
-    page,
-    pageSize: 20,
-    status: status || undefined,
-    search: search || undefined,
-  });
+    const userStr = localStorage.getItem('admin_user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setAdminId(user.id);
+    }
+
+    // Fetch data
+    loadOrders();
+  }, [status, search, page]);
+
+  async function loadOrders() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await adminApi.getOrders({
+        page,
+        pageSize: 20,
+        status: status || undefined,
+        search: search || undefined,
+      });
+      if (response.success) {
+        setData(response.data ?? []);
+        setMeta(response.meta ?? { page, pageSize: 20, total: 0, totalPages: 0 });
+      } else {
+        throw new Error(response.message || 'Failed to load orders');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (error) {
     return (
@@ -39,57 +70,45 @@ async function OrdersContent({ searchParams }: { searchParams: SearchParams }) {
     );
   }
 
-  return (
-    <OrdersClient
-      orders={data as any[]}
-      meta={meta}
-      activeStatus={status}
-      currentSearch={search ?? ""}
-      adminId={user?.id ?? ""}
-    />
-  );
-}
-
-function OrdersSkeleton() {
-  return (
-    <div className="animate-pulse space-y-4">
-      {/* Filter bar skeleton */}
-      <div className="flex gap-3">
-        <div className="h-10 w-48 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
-        <div className="h-10 w-64 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        {/* Filter bar skeleton */}
+        <div className="flex gap-3">
+          <div className="h-10 w-48 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
+          <div className="h-10 w-64 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
+        </div>
+        {/* Table skeleton */}
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ border: "1px solid var(--border)", backgroundColor: "var(--card)" }}
+        >
+          <div className="h-12" style={{ backgroundColor: "var(--surface)" }} />
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div
+              key={i}
+              className="h-16 border-t"
+              style={{ borderColor: "var(--border)" }}
+            />
+          ))}
+        </div>
       </div>
-      {/* Table skeleton */}
-      <div
-        className="rounded-2xl overflow-hidden"
-        style={{ border: "1px solid var(--border)", backgroundColor: "var(--card)" }}
-      >
-        <div className="h-12" style={{ backgroundColor: "var(--surface)" }} />
-        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-          <div
-            key={i}
-            className="h-16 border-t"
-            style={{ borderColor: "var(--border)" }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+    );
+  }
 
-export default function OrdersPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
   return (
     <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Quản lý Đơn hàng"
         description="Xem và quản lý tất cả đơn hàng trên hệ thống"
       />
-      <Suspense fallback={<OrdersSkeleton />}>
-        <OrdersContent searchParams={searchParams} />
-      </Suspense>
+      <OrdersClient
+        orders={data as any[]}
+        meta={meta}
+        activeStatus={status}
+        currentSearch={search ?? ""}
+        adminId={adminId}
+      />
     </div>
   );
 }

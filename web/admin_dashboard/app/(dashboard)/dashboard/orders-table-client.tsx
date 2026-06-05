@@ -156,7 +156,7 @@ export function OrdersTableClient({ initialData }: OrdersTableClientProps) {
                               />
                             )}
                             <AvatarFallback>
-                              {customerName.charAt(0).toUpperCase()}
+                              {customerName && customerName !== "—" ? customerName.charAt(0).toUpperCase() : "?"}
                             </AvatarFallback>
                           </Avatar>
                           <span
@@ -181,7 +181,7 @@ export function OrdersTableClient({ initialData }: OrdersTableClientProps) {
                                 />
                               )}
                               <AvatarFallback>
-                                {String(providerName).charAt(0).toUpperCase()}
+                                {String(providerName) && String(providerName) !== "—" ? String(providerName).charAt(0).toUpperCase() : "?"}
                               </AvatarFallback>
                             </Avatar>
                             <span
