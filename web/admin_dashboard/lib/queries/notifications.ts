@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { adminApi } from "@/lib/api";
 import type { NotificationPriority } from "@/lib/types";
 
 export async function getAnnouncements({
@@ -10,29 +10,34 @@ export async function getAnnouncements({
   page?: number;
   pageSize?: number;
 }) {
-  const supabase = await createClient();
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-
-  const { data, error, count } = await supabase
-    .from("announcements")
-    .select(
-      "id, title, body, target_audience, priority, is_published, sent_count, read_count, scheduled_at, published_at, created_at",
-      { count: "exact" }
-    )
-    .order("created_at", { ascending: false })
-    .range(from, to);
-
-  return {
-    data: data ?? [],
-    error,
-    meta: {
-      page,
-      pageSize,
-      total: count ?? 0,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
-    },
-  };
+  try {
+    const response = await adminApi.getAnnouncements({ page, pageSize });
+    if (response.success) {
+      return {
+        data: response.data ?? [],
+        error: null,
+        meta: response.meta ?? {
+          page,
+          pageSize,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
+    throw new Error(response.message || 'Failed to fetch announcements');
+  } catch (error) {
+    console.error('Get announcements error:', error);
+    return {
+      data: [],
+      error: error instanceof Error ? error : new Error('Unknown error'),
+      meta: {
+        page,
+        pageSize,
+        total: 0,
+        totalPages: 0,
+      },
+    };
+  }
 }
 
 export async function createAnnouncement({
@@ -42,7 +47,7 @@ export async function createAnnouncement({
   targetCities,
   priority,
   scheduledAt,
-  createdBy,
+  createdBy, // Auto-handled by backend auth
 }: {
   title: string;
   body: string;
@@ -52,66 +57,52 @@ export async function createAnnouncement({
   scheduledAt?: string;
   createdBy: string;
 }) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("announcements")
-    .insert({
+  try {
+    const response = await adminApi.createAnnouncement({
       title,
       body,
-      target_audience: targetAudience,
-      target_cities: targetCities ?? null,
+      targetAudience,
+      targetCities,
       priority,
-      scheduled_at: scheduledAt ?? null,
-      is_published: !scheduledAt,
-      published_at: !scheduledAt ? new Date().toISOString() : null,
-      created_by: createdBy,
-    })
-    .select()
-    .single();
-
-  return { data, error };
+      scheduledAt,
+    });
+    
+    if (response.success) {
+      return { data: response.data, error: null };
+    }
+    throw new Error(response.message || 'Failed to create announcement');
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error : new Error('Unknown error'),
+    };
+  }
 }
 
 export async function publishAnnouncement(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("announcements")
-    .update({
-      is_published: true,
-      published_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-  return { error };
+  try {
+    const response = await adminApi.publishAnnouncement(id);
+    if (response.success) {
+      return { error: null };
+    }
+    throw new Error(response.message || 'Failed to publish announcement');
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error('Unknown error'),
+    };
+  }
 }
 
+// Note: These notification functions would require additional backend endpoints
 export async function getAdminNotifications(userId: string, limit = 5) {
-  const supabase = await createClient();
-  const { data, count } = await supabase
-    .from("notifications")
-    .select("id, title, body, is_read, created_at, notification_type", {
-      count: "exact",
-    })
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  const unreadCount = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("is_read", false);
-
+  // TODO: Implement backend endpoint for admin notifications
   return {
-    notifications: data ?? [],
-    unreadCount: unreadCount.count ?? 0,
+    notifications: [],
+    unreadCount: 0,
   };
 }
 
 export async function markNotificationRead(id: string) {
-  const supabase = await createClient();
-  await supabase
-    .from("notifications")
-    .update({ is_read: true, read_at: new Date().toISOString() })
-    .eq("id", id);
+  // TODO: Implement backend endpoint for marking notifications as read
+  return null;
 }

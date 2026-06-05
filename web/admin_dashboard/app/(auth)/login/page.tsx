@@ -3,9 +3,10 @@
 import React, { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Truck, Mail, Lock, AlertCircle } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,32 +20,119 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
+    console.log('========================================');
+    console.log('🔐 BẮT ĐẦU ĐĂNG NHẬP');
+    console.log('Email:', email);
+    console.log('API URL:', API_URL);
+    console.log('Full URL:', `${API_URL}/admin/auth/login`);
+    console.log('========================================');
+
     try {
-      const supabase = createClient();
+      const url = `${API_URL}/admin/auth/login`;
+      const body = { email, password };
+      
+      console.log('📡 Đang gọi API...');
+      console.log('URL:', url);
+      console.log('Body:', body);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        mode: 'cors',
+        credentials: 'omit',
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      }).catch(fetchError => {
+        console.error('🌐 Network fetch failed:', fetchError);
+        console.error('Fetch error name:', fetchError.name);
+        console.error('Fetch error message:', fetchError.message);
+        throw new Error(`Lỗi kết nối: ${fetchError.message}. Vui lòng kiểm tra backend có đang chạy không.`);
+      });
 
-      const { data, error: signInError } =
-        await supabase.auth.signInWithPassword({ email, password });
+      console.log('📥 Nhận được response!');
+      console.log('Response object:', response);
+      console.log('Status:', response.status);
+      console.log('Status Text:', response.statusText);
+      console.log('OK?:', response.ok);
+      console.log('Headers:', Array.from(response.headers.entries()));
+      
+      console.log('🔍 Parsing JSON...');
+      let data;
+      try {
+        const responseText = await response.text();
+        console.log('📄 Raw response text:', responseText);
+        data = JSON.parse(responseText);
+        console.log('✅ JSON parsed successfully');
+      } catch (jsonError) {
+        console.error('❌ JSON parse failed:', jsonError);
+        throw new Error('Invalid JSON response from server');
+      }
+      
+      console.log('📦 Dữ liệu response:');
+      console.log('Success:', data.success);
+      console.log('Message:', data.message);
+      console.log('Data:', data.data);
 
-      if (signInError || !data.user) {
-        setError("Sai email hoặc mật khẩu");
+      if (!response.ok || !data.success) {
+        console.error('❌ ĐĂNG NHẬP THẤT BẠI!');
+        console.error('Lý do:', data.message);
+        setError(data.message || "Sai email hoặc mật khẩu");
+        setLoading(false);
         return;
       }
 
-      // Verify admin role
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", data.user.id)
-        .single();
-
-      if (!profile || (profile as { role: string }).role !== "admin") {
-        await supabase.auth.signOut();
+      // Check admin role
+      console.log('🔍 Kiểm tra quyền admin...');
+      console.log('User role:', data.data.user.role);
+      
+      if (data.data.user.role !== 'admin') {
+        console.error('❌ KHÔNG PHẢI ADMIN!');
+        console.error('Role hiện tại:', data.data.user.role);
         setError("Bạn không có quyền admin");
+        setLoading(false);
         return;
       }
 
-      router.push("/dashboard");
-    } finally {
+      console.log('✅ ĐĂNG NHẬP THÀNH CÔNG!');
+      console.log('💾 Đang lưu token vào localStorage và cookies...');
+
+      // Save token to localStorage
+      const token = data.data.accessToken;
+      const user = data.data.user;
+      
+      localStorage.setItem('admin_token', token);
+      localStorage.setItem('admin_user', JSON.stringify(user));
+      
+      // IMPORTANT: Save to cookie for middleware
+      document.cookie = `admin_token=${token}; path=/; max-age=604800; SameSite=Lax`; // 7 days
+      document.cookie = `admin_user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=604800; SameSite=Lax`;
+
+      console.log('✅ Đã lưu token:', token.substring(0, 20) + '...');
+      console.log('✅ Đã lưu user:', user.email);
+      
+      // Verify localStorage
+      const savedToken = localStorage.getItem('admin_token');
+      const savedUser = localStorage.getItem('admin_user');
+      const cookieToken = document.cookie.includes('admin_token');
+      console.log('🔍 Kiểm tra storage:');
+      console.log('LocalStorage token?', savedToken ? 'YES' : 'NO');
+      console.log('LocalStorage user?', savedUser ? 'YES' : 'NO');
+      console.log('Cookie saved?', cookieToken ? 'YES' : 'NO');
+
+      console.log('🚀 ĐANG CHUYỂN HƯỚNG ĐÊN /dashboard...');
+      
+      // Redirect to dashboard
+      window.location.href = "/dashboard";
+      
+    } catch (err) {
+      console.error('========================================');
+      console.error('💥 LỖI NGHIÊM TRỌNG!');
+      console.error('Error:', err);
+      console.error('Error message:', err instanceof Error ? err.message : 'Unknown error');
+      console.error('========================================');
+      setError("Không thể kết nối đến server. Vui lòng kiểm tra xem backend có đang chạy không.");
       setLoading(false);
     }
   }
@@ -105,7 +193,7 @@ export default function LoginPage() {
               type="email"
               autoComplete="email"
               required
-              placeholder="admin@unimove.vn"
+              placeholder="admin@unimove.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               startAdornment={
@@ -175,12 +263,20 @@ export default function LoginPage() {
         </form>
 
         {/* Footer */}
-        <p
-          className="mt-6 text-center text-xs"
-          style={{ color: "var(--muted)" }}
-        >
-          UniMove Admin Dashboard · Chỉ dành cho quản trị viên
-        </p>
+        <div className="mt-6">
+          <p
+            className="text-center text-xs"
+            style={{ color: "var(--muted)" }}
+          >
+            UniMove Admin Dashboard · Chỉ dành cho quản trị viên
+          </p>
+          <p
+            className="text-center text-xs mt-2"
+            style={{ color: "var(--muted-foreground)" }}
+          >
+            Test account: admin@unimove.com / Admin123!@#
+          </p>
+        </div>
       </div>
     </div>
   );

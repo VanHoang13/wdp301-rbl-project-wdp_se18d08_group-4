@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import * as Avatar from "@radix-ui/react-avatar";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { createClient } from "@/lib/supabase/client";
 import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { useTheme } from "@/components/providers/theme-provider";
 import { cn } from "@/lib/utils";
@@ -357,56 +356,51 @@ function AdminAvatarDropdown({ profile, onLogout }: AdminAvatarDropdownProps) {
 export default function Header() {
   const router = useRouter();
   const { toggleCollapsed, setMobileOpen } = useSidebarStore();
-  const supabase = createClient();
 
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [searchValue, setSearchValue] = useState("");
 
-  // Fetch current admin profile
+  // Fetch current admin profile from localStorage (JWT-based auth)
   const fetchProfile = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, avatar_url, email")
-      .eq("id", user.id)
-      .single();
-
-    if (data) {
+    try {
+      const userStr = localStorage.getItem('admin_user');
+      if (!userStr) return;
+      
+      const user = JSON.parse(userStr);
       setProfile({
-        id: data.id as string,
-        full_name: (data.full_name as string | null) ?? null,
-        avatar_url: (data.avatar_url as string | null) ?? null,
+        id: user.id as string,
+        full_name: user.full_name ?? null,
+        avatar_url: user.avatar_url ?? null,
         email: user.email ?? null,
       });
+    } catch (err) {
+      console.error('Failed to fetch profile:', err);
     }
-  }, [supabase]);
+  }, []);
 
-  // Fetch notifications
+  // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("notifications")
-      .select("id, title, body, created_at, is_read")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (data) {
-      const rows = data as NotificationRow[];
-      setNotifications(rows);
-      setUnreadCount(rows.filter((n) => !n.is_read).length);
+    try {
+      const response = await fetch('http://localhost:3000/api/admin/notifications', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      });
+      
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        const rows = data.data as NotificationRow[];
+        setNotifications(rows);
+        setUnreadCount(rows.filter((n) => !n.is_read).length);
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchProfile();
@@ -414,25 +408,35 @@ export default function Header() {
   }, [fetchProfile, fetchNotifications]);
 
   const handleMarkRead = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", user.id)
-      .eq("is_read", false);
-
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-  }, [supabase]);
+    try {
+      const response = await fetch('http://localhost:3000/api/admin/notifications/mark-read', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      });
+      
+      if (response.ok) {
+        setUnreadCount(0);
+        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      }
+    } catch (err) {
+      console.error('Failed to mark notifications as read:', err);
+    }
+  }, []);
 
   const handleLogout = useCallback(async () => {
-    await supabase.auth.signOut();
+    // Clear authentication from localStorage
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    
+    // Clear cookies
+    document.cookie = 'admin_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'admin_user=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    
+    // Redirect to login
     router.push("/login");
-  }, [supabase, router]);
+  }, [router]);
 
   return (
     <header
