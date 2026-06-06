@@ -19,6 +19,12 @@ router.get('/listings/:id', requireAuth, marketplaceController.getListing);
 router.patch('/listings/:id/status', requireAuth, marketplaceController.updateListingStatus);
 // API-065 — Quan tâm tin
 router.post('/listings/:id/interest', requireAuth, marketplaceController.expressInterest);
+// API-065b — Bỏ quan tâm
+router.delete('/listings/:id/interest', requireAuth, marketplaceController.removeInterest);
+
+// ── Batch 5 ──────────────────────────────────────────────────────────────────
+// Tin tôi đã quan tâm (Yêu thích)
+router.get('/my-interests', requireAuth, marketplaceController.getMyInterests);
 
 // ── Batch 3 ──────────────────────────────────────────────────────────────────
 // API-066 — DS khách quan tâm

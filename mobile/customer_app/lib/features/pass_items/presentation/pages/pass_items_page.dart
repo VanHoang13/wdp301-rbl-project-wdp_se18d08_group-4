@@ -20,7 +20,7 @@ class PassItemsPage extends StatefulWidget {
 
 class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProviderStateMixin {
   final _repo = PassItemRepository();
-  late final TabController _tab = TabController(length: 2, vsync: this);
+  late final TabController _tab = TabController(length: 3, vsync: this);
   final _searchCtrl = TextEditingController();
 
   String _category = 'Tất cả';
@@ -29,6 +29,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   bool _loading = true;
   List<PassItemPost> _browse = const [];
   List<PassItemPost> _mine = const [];
+  List<PassItemPost> _favorites = const [];
 
   PassItemProvince get _province => PassItemProvince.resolve(_provinceId);
 
@@ -54,17 +55,17 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final browse = await _repo.browse(
-      keyword: _keyword,
-      category: _category,
-      provinceId: _provinceId,
-    );
-    final mine = await _repo.myPosts();
+    final results = await Future.wait([
+      _repo.browse(keyword: _keyword, category: _category, provinceId: _provinceId),
+      _repo.myPosts(),
+      _repo.myInterests(),
+    ]);
     if (!mounted) return;
     setState(() {
-      _browse = browse;
-      _mine = mine;
-      _loading = false;
+      _browse     = results[0];
+      _mine       = results[1];
+      _favorites  = results[2];
+      _loading    = false;
     });
   }
 
@@ -80,7 +81,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   Future<void> _openCreate() async {
     final created = await context.push<bool>('/pass-items/new');
     if (created == true) {
-      _tab.animateTo(1);
+      _tab.animateTo(2);
       _load();
     }
   }
@@ -107,6 +108,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
           labelStyle: const TextStyle(fontWeight: FontWeight.w700),
           tabs: const [
             Tab(text: 'Khám phá'),
+            Tab(text: 'Yêu thích'),
             Tab(text: 'Tin của tôi'),
           ],
         ),
@@ -122,6 +124,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         controller: _tab,
         children: [
           _browseTab(c),
+          _favoritesTab(c),
           _myTab(c),
         ],
       ),
@@ -471,6 +474,104 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         const SizedBox(height: 16),
         Center(
           child: TextButton(onPressed: _pickProvince, child: const Text('Chọn tỉnh / thành phố khác')),
+        ),
+      ],
+    );
+  }
+
+  // ---------------- Yêu thích ----------------
+
+  Widget _favoritesTab(UniMoveColors c) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_favorites.isEmpty) return _emptyFavorites(c);
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.58,
+        ),
+        itemCount: _favorites.length,
+        itemBuilder: (_, i) => _favoriteCard(c, _favorites[i]),
+      ),
+    );
+  }
+
+  Widget _favoriteCard(UniMoveColors c, PassItemPost post) {
+    final isSold = post.status == PassItemStatus.completed || post.status == PassItemStatus.hidden;
+    return Stack(
+      clipBehavior: Clip.antiAlias,
+      children: [
+        Opacity(
+          opacity: isSold ? 0.55 : 1.0,
+          child: _gridCard(c, post),
+        ),
+        if (isSold)
+          Positioned(
+            top: 8, left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('Đã bán', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        Positioned(
+          top: 6, right: 6,
+          child: GestureDetector(
+            onTap: () => _removeFavorite(post),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+              child: const Icon(Icons.favorite, color: Colors.redAccent, size: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _removeFavorite(PassItemPost post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Bỏ yêu thích?'),
+        content: Text('Bỏ quan tâm "${post.title}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Không')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Bỏ yêu thích', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _repo.removeInterest(post.id);
+      _load();
+    }
+  }
+
+  Widget _emptyFavorites(UniMoveColors c) {
+    return ListView(
+      children: [
+        const SizedBox(height: 80),
+        Icon(Icons.favorite_border, size: 48, color: c.onSurfaceMuted),
+        const SizedBox(height: 12),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'Chưa có tin yêu thích.\nNhấn "Tôi muốn nhận" trên bất kỳ tin nào để thêm vào đây.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w600, height: 1.5),
+            ),
+          ),
         ),
       ],
     );

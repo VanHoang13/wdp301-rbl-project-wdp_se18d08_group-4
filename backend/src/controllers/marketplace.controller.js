@@ -104,9 +104,28 @@ async function markTransportBooked(req, res, next) {
   } catch (error) { next(error); }
 }
 
+// ── Batch 5 ──────────────────────────────────────────────────────────────────
+
+/** GET /api/marketplace/my-interests */
+async function getMyInterests(req, res, next) {
+  try {
+    const data = await marketplaceService.getMyInterests(req.user.id);
+    res.json({ success: true, ...data });
+  } catch (error) { next(error); }
+}
+
+/** DELETE /api/marketplace/listings/:id/interest */
+async function removeInterest(req, res, next) {
+  try {
+    const data = await marketplaceService.removeInterest(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
-  getListing, updateListingStatus, expressInterest,
+  getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
+  getMyInterests,
 };

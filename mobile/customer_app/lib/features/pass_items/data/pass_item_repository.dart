@@ -199,6 +199,25 @@ class PassItemRepository {
     }
   }
 
+  // ── API-065b: Bỏ quan tâm ────────────────────────────────────────────────
+
+  Future<void> removeInterest(String id) async {
+    await _api.guard(() => _api.delete('/marketplace/listings/$id/interest'));
+  }
+
+  // ── My Interests: Tin tôi quan tâm ───────────────────────────────────────
+
+  Future<List<PassItemPost>> myInterests() async {
+    try {
+      final myId = await _myId();
+      final envelope = await _api.guard(() => _api.get('/marketplace/my-interests'));
+      final raw = (envelope['listings'] as List?) ?? [];
+      return raw.map((e) => _fromJson(Map<String, dynamic>.from(e as Map), myId: myId)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ── API-066: DS khách quan tâm ───────────────────────────────────────────
 
   Future<List<PassInterestedBuyer>> interestedBuyers(String itemId) async {

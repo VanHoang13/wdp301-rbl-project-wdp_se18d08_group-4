@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
+const { createNotification } = require('./notification.service');
 
 const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', 'books', 'other'];
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
@@ -381,12 +382,7 @@ async function sendMessage(listingId, buyerId, userId, body) {
 
   if (error) throw httpError(500, error.message, 'db_error');
 
-  // Cập nhật last_message + unread count cho bên kia
-  const unreadIncrement = isSeller
-    ? { buyer_unread: supabaseAdmin.rpc('increment', { x: 1 }) }
-    : { seller_unread: supabaseAdmin.rpc('increment', { x: 1 }) };
-
-  // Update last message preview
+  // Update last message preview + unread count
   await supabaseAdmin
     .from('marketplace_conversations')
     .update({
@@ -396,10 +392,16 @@ async function sendMessage(listingId, buyerId, userId, body) {
     })
     .eq('id', conv.id);
 
-  return {
-    ...msg,
-    from_buyer: isBuyer,
-  };
+  // Notify bên còn lại
+  const recipientId = isSeller ? buyerId : listing.owner_id;
+  const preview = msg.text.length > 60 ? msg.text.substring(0, 60) + '…' : msg.text;
+  createNotification(recipientId, 'marketplace_message', 'Tin nhắn mới trong Chợ sinh viên', preview, {
+    listingId,
+    actionData: { listing_id: listingId, buyer_id: buyerId },
+    icon: 'chat',
+  });
+
+  return { ...msg, from_buyer: isBuyer };
 }
 
 // ── Batch 4 ──────────────────────────────────────────────────────────────────
@@ -458,6 +460,13 @@ async function confirmDeal(listingId, sellerId, buyerId, body) {
       is_deal_confirm: true,
     }]);
 
+  // Notify buyer
+  createNotification(buyerId, 'marketplace_deal_confirmed',
+    '🎉 Đơn hàng đã được chốt!',
+    `Người bán đã chốt đơn${priceNote}. Bạn có thể đặt xe lấy đồ ngay.`,
+    { listingId, actionData: { listing_id: listingId, buyer_id: buyerId }, priority: 'high' },
+  );
+
   return updated;
 }
 
@@ -500,6 +509,13 @@ async function cancelDeal(listingId, sellerId) {
         text:            'Người bán đã huỷ chốt đơn.',
         is_deal_cancel:  true,
       }]);
+
+    // Notify buyer
+    createNotification(buyerId, 'marketplace_deal_cancelled',
+      'Đơn hàng bị huỷ chốt',
+      'Người bán đã huỷ chốt đơn. Bạn vẫn có thể tiếp tục thương lượng.',
+      { listingId, actionData: { listing_id: listingId, buyer_id: buyerId } },
+    );
   }
 
   return updated;
@@ -509,7 +525,7 @@ async function cancelDeal(listingId, sellerId) {
 async function markTransportBooked(listingId, buyerId) {
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
-    .select('id, deal_confirmed, confirmed_buyer_id, transport_booked')
+    .select('id, owner_id, deal_confirmed, confirmed_buyer_id, transport_booked')
     .eq('id', listingId)
     .single();
 
@@ -526,12 +542,59 @@ async function markTransportBooked(listingId, buyerId) {
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');
+
+  // Notify seller
+  createNotification(listing.owner_id, 'marketplace_transport_booked',
+    '🚚 Người mua đã đặt xe!',
+    'Người mua đã đặt xe lấy đồ. Chuẩn bị đồ để bàn giao nhé.',
+    { listingId, actionData: { listing_id: listingId, buyer_id: buyerId }, priority: 'high' },
+  );
+
   return updated;
+}
+
+// ── Batch 5 — Yêu thích ──────────────────────────────────────────────────────
+
+/** GET /api/marketplace/my-interests */
+async function getMyInterests(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_interests')
+    .select(`
+      id, created_at,
+      listing:listing_id (
+        id, title, description, category, condition, area,
+        price, images, status, created_at,
+        profiles:owner_id ( id, full_name, avatar_url )
+      )
+    `)
+    .eq('buyer_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const listings = (data || [])
+    .filter(row => row.listing)
+    .map(row => ({ ...row.listing, interest_count: 0, interested_at: row.created_at }));
+
+  return { listings };
+}
+
+/** DELETE /api/marketplace/listings/:id/interest */
+async function removeInterest(listingId, userId) {
+  const { error } = await supabaseAdmin
+    .from('marketplace_interests')
+    .delete()
+    .eq('listing_id', listingId)
+    .eq('buyer_id', userId);
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return { listing_id: listingId };
 }
 
 module.exports = {
   createListing, browseListings, getMyListings,
-  getListing, updateListingStatus, expressInterest,
+  getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
+  getMyInterests,
 };
