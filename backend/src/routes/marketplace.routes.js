@@ -28,4 +28,12 @@ router.get('/listings/:listingId/conversations/:buyerId/messages', requireAuth, 
 // API-068 — Gửi chat
 router.post('/listings/:listingId/conversations/:buyerId/messages', requireAuth, marketplaceController.sendMessage);
 
+// ── Batch 4 ──────────────────────────────────────────────────────────────────
+// API-069 — Chốt đơn
+router.post('/listings/:listingId/conversations/:buyerId/deal', requireAuth, marketplaceController.confirmDeal);
+// API-070 — Huỷ chốt
+router.delete('/listings/:listingId/deal', requireAuth, marketplaceController.cancelDeal);
+// API-071 — Buyer đã đặt xe
+router.post('/listings/:listingId/transport-booked', requireAuth, marketplaceController.markTransportBooked);
+
 module.exports = router;

@@ -27,11 +27,19 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
   List<PassInterestedBuyer> _interestedBuyers = const [];
   bool _loading = true;
   bool _interested = false;
+  final _pageController = PageController();
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -69,46 +77,17 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
 
     return Scaffold(
       backgroundColor: c.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: 280,
-            backgroundColor: c.surface,
-            surfaceTintColor: Colors.transparent,
-            iconTheme: const IconThemeData(color: Colors.white),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PassItemImage(
-                    imageUrl: post.imageUrl,
-                    fit: BoxFit.cover,
-                    errorPlaceholder: Container(
-                      color: c.surfaceTint,
-                      child: Icon(Icons.inventory_2_outlined, size: 60, color: c.onSurfaceMuted),
-                    ),
-                  ),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.black38, Colors.transparent],
-                        stops: [0, 0.35],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      body: Stack(
+        children: [
+          ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _imageCarousel(c, post),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                   Row(
                     children: [
                       Expanded(
@@ -172,11 +151,137 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
                 ],
               ),
             ),
+          ],
+        ),
+          // Nút back floating phía trên ảnh
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8, top: 4),
+              child: Material(
+                color: Colors.black45,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => context.pop(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
       bottomNavigationBar: post.isMine ? _sellerManageBar(c, post) : _buyerBottomBar(c, post),
     );
+  }
+
+  Widget _imageCarousel(UniMoveColors c, PassItemPost post) {
+    final imgs = post.images.isNotEmpty
+        ? post.images
+        : (post.imageUrl.isNotEmpty ? [post.imageUrl] : <String>[]);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Ảnh chính ─────────────────────────────────────────────────────────
+        AspectRatio(
+          aspectRatio: 1,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // nền tối khớp dark theme
+              Container(color: c.surface),
+              if (imgs.isEmpty)
+                Center(child: Icon(Icons.inventory_2_outlined, size: 60, color: c.onSurfaceMuted))
+              else
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: imgs.length,
+                  onPageChanged: (i) => setState(() => _currentPage = i),
+                  itemBuilder: (_, i) => GestureDetector(
+                    onTap: () => _openFullScreen(context, imgs, i),
+                    child: PassItemImage(
+                      imageUrl: imgs[i],
+                      fit: BoxFit.contain,
+                      errorPlaceholder: Center(
+                        child: Icon(Icons.inventory_2_outlined, size: 60, color: c.onSurfaceMuted),
+                      ),
+                    ),
+                  ),
+                ),
+              // counter "1/n" góc dưới phải
+              if (imgs.length > 1)
+                Positioned(
+                  bottom: 10, right: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_currentPage + 1}/${imgs.length}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // ── Thumbnail strip ────────────────────────────────────────────────────
+        if (imgs.length > 1)
+          Container(
+            color: c.surface,
+            height: 74,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              itemCount: imgs.length,
+              itemBuilder: (_, i) => GestureDetector(
+                onTap: () {
+                  _pageController.animateToPage(
+                    i,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                  );
+                  setState(() => _currentPage = i);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 52,
+                  height: 52,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _currentPage == i ? c.primary : c.border,
+                      width: _currentPage == i ? 2.5 : 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: PassItemImage(imageUrl: imgs[i], fit: BoxFit.cover),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _openFullScreen(BuildContext context, List<String> imgs, int initialIndex) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.black,
+      barrierDismissible: true,
+      pageBuilder: (ctx, _, __) => _FullScreenImageViewer(
+        images: imgs,
+        initialIndex: initialIndex,
+      ),
+    ));
   }
 
   Widget _infoGrid(UniMoveColors c, PassItemPost post) {
@@ -274,44 +379,38 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
           colors: [c.primaryContainer, c.surfaceTint],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: c.border),
+        border: Border.all(color: c.primary.withValues(alpha: 0.2)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.local_shipping_outlined, color: c.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(12)),
+            child: Icon(Icons.local_shipping_outlined, color: c.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text('Chở đồ về chỗ bạn',
-                        style: TextStyle(fontWeight: FontWeight.w800, color: c.onSurface, fontSize: 15)),
-                    const SizedBox(height: 4),
-                    Text('Lấy tại: ${post.area}',
-                        style: TextStyle(fontSize: 12, color: c.onSurfaceMuted, height: 1.35)),
-                    const SizedBox(height: 4),
-                    Text('Người bán đã chốt đơn. Nhập địa chỉ nhận → chọn nhà xe báo giá.',
-                        style: TextStyle(fontSize: 11, color: c.onSurfaceMuted, height: 1.35)),
+                    Icon(LucideIcons.circleCheck, size: 14, color: c.success),
+                    const SizedBox(width: 6),
+                    Text('Đã chốt đơn — sẵn sàng đặt xe',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: c.onSurface, fontSize: 14)),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ShadButton(
-            width: double.infinity,
-            onPressed: () => _startDelivery(post),
-            leading: const Icon(LucideIcons.truck, size: 18),
-            child: const Text('Đặt chuyển đồ'),
+                const SizedBox(height: 4),
+                Text('Lấy tại: ${post.area}',
+                    style: TextStyle(fontSize: 12, color: c.onSurfaceMuted, height: 1.35)),
+                const SizedBox(height: 2),
+                Text('Nhập địa chỉ nhận → chọn nhà xe → xác nhận.',
+                    style: TextStyle(fontSize: 11, color: c.onSurfaceMuted, height: 1.35)),
+              ],
+            ),
           ),
         ],
       ),
@@ -546,6 +645,7 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
     );
     if (yes != true || !mounted) return;
     final ok = await _repo.cancelDealConfirmation(post.id);
+
     if (!mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã huỷ chốt đơn')));
@@ -670,6 +770,45 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
   }
 
   Widget _buyerBottomBar(UniMoveColors c, PassItemPost post) {
+    // Đã chốt đơn → ưu tiên CTA "Đặt chuyển đồ"
+    if (post.dealConfirmed) {
+      return SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: c.surface,
+            border: Border(top: BorderSide(color: c.border)),
+          ),
+          child: Row(
+            children: [
+              _compactIconBtn(c, LucideIcons.messageCircle, onTap: () async {
+                await context.push('/pass-items/${post.id}/chat');
+                _load();
+              }),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _startDelivery(post),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(LucideIcons.truck, size: 16),
+                    label: const Text('Đặt chuyển đồ', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final available = post.status == PassItemStatus.open || post.status == PassItemStatus.reserved;
     final ctaLabel = _interested ? 'Đã quan tâm' : 'Tôi muốn nhận';
 
@@ -763,6 +902,81 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: Icon(icon, size: 18, color: c.onSurface),
+      ),
+    );
+  }
+}
+
+// ── Full-screen image viewer ──────────────────────────────────────────────────
+
+class _FullScreenImageViewer extends StatefulWidget {
+  const _FullScreenImageViewer({required this.images, required this.initialIndex});
+  final List<String> images;
+  final int initialIndex;
+
+  @override
+  State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+  late final PageController _ctrl;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _ctrl = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.images.length,
+            onPageChanged: (i) => setState(() => _current = i),
+            itemBuilder: (_, i) => InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: Center(
+                child: PassItemImage(
+                  imageUrl: widget.images[i],
+                  fit: BoxFit.contain,
+                  errorPlaceholder: const Icon(Icons.broken_image_outlined, color: Colors.white38, size: 60),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white, size: 26),
+                ),
+                if (widget.images.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Text(
+                      '${_current + 1} / ${widget.images.length}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

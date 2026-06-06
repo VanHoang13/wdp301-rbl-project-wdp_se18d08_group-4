@@ -78,8 +78,35 @@ async function sendMessage(req, res, next) {
   } catch (error) { next(error); }
 }
 
+// ── Batch 4 ──────────────────────────────────────────────────────────────────
+
+/** API-069 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+async function confirmDeal(req, res, next) {
+  try {
+    const data = await marketplaceService.confirmDeal(req.params.listingId, req.user.id, req.params.buyerId, req.body);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-070 — DELETE /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+async function cancelDeal(req, res, next) {
+  try {
+    const data = await marketplaceService.cancelDeal(req.params.listingId, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-071 — POST /api/marketplace/listings/:listingId/transport-booked */
+async function markTransportBooked(req, res, next) {
+  try {
+    const data = await marketplaceService.markTransportBooked(req.params.listingId, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest,
   getInterestedBuyers, getMessages, sendMessage,
+  confirmDeal, cancelDeal, markTransportBooked,
 };

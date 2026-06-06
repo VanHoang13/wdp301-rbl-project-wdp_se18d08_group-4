@@ -8,6 +8,13 @@ class PassItemRepository {
   final ApiClient _api = ApiClient.instance;
   final List<PassItemPost> _cache = [];
 
+  // ID user hiện tại — luôn update khi _myId() được gọi
+  static String? _myIdCache;
+  static String? get currentBuyerId => _myIdCache;
+
+  // Xóa cache khi logout (gọi từ auth flow nếu cần)
+  static void clearCache() => _myIdCache = null;
+
   // ── Mapping helpers ───────────────────────────────────────────────────────
 
   static const _categoryToApi = <String, String>{
@@ -68,19 +75,25 @@ class PassItemRepository {
       provinceId: PassItemProvince.detectId(j['area'] as String? ?? ''),
       price: (j['price'] as num?)?.toInt() ?? 0,
       imageUrl: images.isNotEmpty ? images.first : '',
-      usageDuration: '',
+      images: images,
+      usageDuration: j['usage_duration'] as String? ?? '',
       posterName: owner['full_name'] as String? ?? '',
       posterContact: owner['phone'] as String? ?? '',
       status: _statusFromApi(j['status'] as String? ?? 'active'),
       createdAt: DateTime.parse(j['created_at'] as String),
       isMine: myId != null && (j['is_mine'] as bool? ?? owner['id'] == myId),
       interestedCount: (j['interest_count'] as num?)?.toInt() ?? 0,
+      dealConfirmed: j['deal_confirmed'] as bool? ?? false,
+      confirmedPrice: (j['confirmed_price'] as num?)?.toInt(),
+      buyerTransportBooked: j['transport_booked'] as bool? ?? false,
     );
   }
 
   Future<String?> _myId() async {
+    // Luôn re-fetch để tránh dùng ID của user cũ sau khi logout/login
     final user = await AuthTokenStorage.instance.loadUser();
-    return user?['id'] as String?;
+    _myIdCache = user?['id'] as String?;
+    return _myIdCache;
   }
 
   void _updateCache(List<PassItemPost> posts) {
@@ -149,7 +162,7 @@ class PassItemRepository {
     required int price,
     required String usageDuration,
     required bool isNegotiable,
-    required String imageUrl,
+    required List<String> images,
   }) async {
     final myId = await _myId();
     final envelope = await _api.guard(() => _api.post('/marketplace/listings', body: {
@@ -157,9 +170,10 @@ class PassItemRepository {
       'description': description.isEmpty ? null : description,
       'category': _categoryToApi[category] ?? 'other',
       'condition': _conditionToApi(condition),
-      'area': PassItemProvince.formatArea(detail: area, provinceId: provinceId),
+      'area': area.isNotEmpty ? area : PassItemProvince.resolve(provinceId).label,
       'price': price,
-      'images': imageUrl.isNotEmpty ? [imageUrl] : [],
+      'images': images,
+      if (usageDuration.isNotEmpty) 'usage_duration': usageDuration,
     }));
     final post = _fromJson(Map<String, dynamic>.from(envelope['data'] as Map), myId: myId);
     _cache.insert(0, post);
@@ -188,6 +202,7 @@ class PassItemRepository {
   // ── API-066: DS khách quan tâm ───────────────────────────────────────────
 
   Future<List<PassInterestedBuyer>> interestedBuyers(String itemId) async {
+    try {
     final envelope = await _api.guard(() => _api.get('/marketplace/listings/$itemId/interests'));
     final raw = (envelope['data'] as List?) ?? [];
     return raw.map((e) {
@@ -203,34 +218,43 @@ class PassItemRepository {
         unreadForSeller: (m['unread_count'] as num?)?.toInt() ?? 0,
       );
     }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   // ── API-067: Đọc chat ────────────────────────────────────────────────────
 
-  Future<List<PassChatMessage>> messages(String itemId, String buyerId, {bool markRead = false}) async {
-    final envelope = await _api.guard(
-      () => _api.get('/marketplace/listings/$itemId/conversations/$buyerId/messages'),
-    );
-    final raw = (envelope['data']?['messages'] as List?) ?? [];
-    return raw.map((e) {
-      final m = Map<String, dynamic>.from(e as Map);
-      final dt = DateTime.parse(m['created_at'] as String).toLocal();
-      final timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      return PassChatMessage(
-        text:           m['text'] as String,
-        fromBuyer:      m['from_buyer'] as bool? ?? true,
-        time:           timeStr,
-        isOffer:        m['is_offer'] as bool? ?? false,
-        offerAmount:    (m['offer_amount'] as num?)?.toInt(),
-        isDealConfirm:  m['is_deal_confirm'] as bool? ?? false,
-        isDealCancel:   m['is_deal_cancel'] as bool? ?? false,
+  Future<List<PassChatMessage>> messages(String itemId, String? buyerId, {bool markRead = false}) async {
+    if (buyerId == null) return [];
+    try {
+      final envelope = await _api.guard(
+        () => _api.get('/marketplace/listings/$itemId/conversations/$buyerId/messages'),
       );
-    }).toList();
+      final raw = (envelope['data']?['messages'] as List?) ?? [];
+      return raw.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        final dt = DateTime.parse(m['created_at'] as String).toLocal();
+        final timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        return PassChatMessage(
+          text:          m['text'] as String,
+          fromBuyer:     m['from_buyer'] as bool? ?? true,
+          time:          timeStr,
+          isOffer:       m['is_offer'] as bool? ?? false,
+          offerAmount:   (m['offer_amount'] as num?)?.toInt(),
+          isDealConfirm: m['is_deal_confirm'] as bool? ?? false,
+          isDealCancel:  m['is_deal_cancel'] as bool? ?? false,
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   // ── API-068: Gửi chat ────────────────────────────────────────────────────
 
-  Future<void> sendMessageApi(String itemId, String buyerId, PassChatMessage message, {required bool sentBySeller}) async {
+  Future<void> sendMessageApi(String itemId, String? buyerId, PassChatMessage message, {required bool sentBySeller}) async {
+    if (buyerId == null) return;
     await _api.guard(() => _api.post(
       '/marketplace/listings/$itemId/conversations/$buyerId/messages',
       body: {
@@ -245,7 +269,8 @@ class PassItemRepository {
 
   // ── sendMessage (gọi API + update local preview) ─────────────────────────
 
-  void sendMessage(String itemId, String buyerId, PassChatMessage message, {required bool sentBySeller}) {
+  void sendMessage(String itemId, String? buyerId, PassChatMessage message, {required bool sentBySeller}) {
+    if (buyerId == null) return;
     if (message.isDealConfirm || message.isDealCancel) return;
     // Gọi API async, không await (fire-and-forget, UI optimistic update)
     sendMessageApi(itemId, buyerId, message, sentBySeller: sentBySeller);
@@ -262,35 +287,43 @@ class PassItemRepository {
     return filePath;
   }
 
-  // ── confirmDeal / cancelDealConfirmation / markTransportBooked (mock — Batch 4) ──
+  // ── API-069: Chốt đơn ────────────────────────────────────────────────────
 
-  Future<bool> confirmDeal(String itemId, {int? agreedPrice}) async {
-    await Future<void>.delayed(const Duration(milliseconds: 140));
-    final idx = _cache.indexWhere((e) => e.id == itemId);
-    if (idx == -1) return false;
-    final post = _cache[idx];
-    if (!post.isMine || post.dealConfirmed || post.buyerTransportBooked) return false;
-    final price = agreedPrice ?? (post.isFree ? 0 : post.price);
-    _cache[idx] = post.copyWith(dealConfirmed: true, confirmedPrice: post.isFree ? 0 : price, status: PassItemStatus.reserved);
-    return true;
+  Future<bool> confirmDeal(String itemId, {int? agreedPrice, String? buyerId}) async {
+    if (buyerId == null) return false;
+    try {
+      await _api.guard(() => _api.post(
+        '/marketplace/listings/$itemId/conversations/$buyerId/deal',
+        body: {
+          if (agreedPrice != null && agreedPrice > 0) 'agreed_price': agreedPrice,
+        },
+      ));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
+
+  // ── API-070: Huỷ chốt ────────────────────────────────────────────────────
 
   Future<bool> cancelDealConfirmation(String itemId) async {
-    await Future<void>.delayed(const Duration(milliseconds: 140));
-    final idx = _cache.indexWhere((e) => e.id == itemId);
-    if (idx == -1) return false;
-    final post = _cache[idx];
-    if (!post.sellerCanCancelDeal) return false;
-    _cache[idx] = post.copyWith(dealConfirmed: false, clearConfirmedPrice: true, status: PassItemStatus.open);
-    return true;
+    try {
+      await _api.guard(() => _api.delete('/marketplace/listings/$itemId/deal'));
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
+  // ── API-071: Buyer đặt xe ─────────────────────────────────────────────────
+
   Future<void> markTransportBooked(String itemId) async {
-    final idx = _cache.indexWhere((e) => e.id == itemId);
-    if (idx == -1) return;
-    final post = _cache[idx];
-    if (!post.dealConfirmed || post.buyerTransportBooked) return;
-    _cache[idx] = post.copyWith(buyerTransportBooked: true);
+    try {
+      await _api.guard(() => _api.post(
+        '/marketplace/listings/$itemId/transport-booked',
+        body: {},
+      ));
+    } catch (_) {}
   }
 
   // ── Transport quotes (mock — Batch 4) ────────────────────────────────────
