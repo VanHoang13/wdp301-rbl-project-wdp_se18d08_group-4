@@ -29,15 +29,12 @@ export default function DashboardLayout({
           to dynamically apply the correct left-margin offset matching
           the sidebar width, and transitions smoothly on collapse. */}
       <DashboardShell>
-        {/* Fixed top header */}
+        {/* Fixed top header — sticky trong vùng nội dung, không che sidebar */}
         <Header />
 
-        {/* Page content — pushed down by the header height (64px) */}
-        <main
-          className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6"
-          style={{ marginTop: "64px" }}
-        >
-          {children}
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
+          <Suspense fallback={null}>{children}</Suspense>
         </main>
       </DashboardShell>
     </div>

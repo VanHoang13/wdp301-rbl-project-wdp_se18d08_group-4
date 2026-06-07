@@ -1,6 +1,6 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet, serverPut } from "@/lib/server-api";
 import type { DisputeStatus } from "@/lib/types";
 
 export async function getDisputes({
@@ -13,76 +13,58 @@ export async function getDisputes({
   status?: DisputeStatus;
 }) {
   try {
-    const response = await adminApi.getDisputes({ page, pageSize, status });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/disputes", { page, pageSize, status });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: data.meta ?? { page, pageSize, total: 0, totalPages: 0 },
       };
     }
-    throw new Error(response.message || 'Failed to fetch disputes');
+    throw new Error(data.message || "Failed to fetch disputes");
   } catch (error) {
-    console.error('Get disputes error:', error);
+    console.error("Get disputes error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
 export async function getDisputeById(id: string) {
   try {
-    const response = await adminApi.getDisputeDetails(id);
-    if (response.success && response.data) {
+    const data = await serverGet<any>(`/admin/disputes/${id}`);
+    if (data.success && data.data) {
       return {
-        dispute: response.data,
-        messages: response.data.dispute_messages ?? [],
+        dispute: data.data,
+        messages: data.data.dispute_messages ?? [],
         error: null,
       };
     }
-    throw new Error(response.message || 'Failed to fetch dispute');
+    throw new Error(data.message || "Failed to fetch dispute");
   } catch (error) {
-    return {
-      dispute: null,
-      messages: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { dispute: null, messages: [], error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
 export async function resolveDispute(
   disputeId: string,
-  adminId: string, // Auto-handled by backend
+  _adminId: string,
   resolution: string,
   resolutionType: string,
   refundAmount: number | null
 ) {
   try {
-    const response = await adminApi.resolveDispute(disputeId, {
+    const data = await serverPut<any>(`/admin/disputes/${disputeId}/resolve`, {
       resolution,
       resolution_type: resolutionType,
       refund_amount: refundAmount ?? undefined,
     });
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to resolve dispute');
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to resolve dispute");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
@@ -96,45 +78,31 @@ export async function getRefunds({
   status?: string;
 }) {
   try {
-    const response = await adminApi.getRefunds({ page, pageSize, status });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/refunds", { page, pageSize, status });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: data.meta ?? { page, pageSize, total: 0, totalPages: 0 },
       };
     }
-    throw new Error(response.message || 'Failed to fetch refunds');
+    throw new Error(data.message || "Failed to fetch refunds");
   } catch (error) {
-    console.error('Get refunds error:', error);
+    console.error("Get refunds error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
-export async function approveRefund(refundId: string, adminId: string) {
+export async function approveRefund(refundId: string, _adminId: string) {
   try {
-    const response = await adminApi.approveRefund(refundId);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to approve refund');
+    const data = await serverPut<any>(`/admin/refunds/${refundId}/approve`);
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to approve refund");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }

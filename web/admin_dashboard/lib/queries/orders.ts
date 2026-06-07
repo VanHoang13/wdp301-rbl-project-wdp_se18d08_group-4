@@ -1,6 +1,7 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet, serverPut } from "@/lib/server-api";
+import { normalizeMeta } from "@/lib/normalize-meta";
 import type { OrderStatus } from "@/lib/types";
 
 export async function getOrders({
@@ -19,7 +20,7 @@ export async function getOrders({
   dateTo?: string;
 }) {
   try {
-    const response = await adminApi.getOrders({
+    const data = await serverGet<any>("/admin/orders", {
       page,
       pageSize,
       status,
@@ -27,72 +28,52 @@ export async function getOrders({
       dateFrom,
       dateTo,
     });
-
-    if (response.success) {
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: normalizeMeta(data.meta, { page, pageSize }),
       };
     }
-
-    throw new Error(response.message || 'Failed to fetch orders');
+    throw new Error(data.message || "Failed to fetch orders");
   } catch (error) {
-    console.error('Get orders error:', error);
+    console.error("Get orders error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
 export async function getOrderById(id: string) {
   try {
-    const response = await adminApi.getOrderById(id);
-    if (response.success && response.data) {
+    const data = await serverGet<any>(`/admin/orders/${id}`);
+    if (data.success && data.data) {
       return {
-        order: response.data,
-        history: response.data.order_status_history ?? [],
-        payments: response.data.payments ?? [],
+        order: data.data,
+        history: data.data.order_status_history ?? [],
+        payments: data.data.payments ?? [],
         error: null,
       };
     }
-    throw new Error(response.message || 'Failed to fetch order');
+    throw new Error(data.message || "Failed to fetch order");
   } catch (error) {
     return {
       order: null,
       history: [],
       payments: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
+      error: error instanceof Error ? error : new Error("Unknown error"),
     };
   }
 }
 
-export async function forceCancelOrder(
-  orderId: string,
-  adminId: string, // This is automatically handled by backend auth
-  reason: string
-) {
+export async function forceCancelOrder(orderId: string, _adminId: string, reason: string) {
   try {
-    const response = await adminApi.forceCancelOrder(orderId, reason);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to cancel order');
+    const data = await serverPut<any>(`/admin/orders/${orderId}/cancel`, { reason });
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to cancel order");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error')
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }

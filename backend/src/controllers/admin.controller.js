@@ -1,5 +1,7 @@
 const { supabaseAdmin } = require('../services/supabase.service');
 const authService = require('../services/auth.service');
+const customersService = require('../services/customers.service');
+const { normalizePhone } = require('../services/auth.helpers');
 
 /**
  * Admin login — Node JWT (user_credentials), không dùng Supabase Auth.
@@ -74,6 +76,120 @@ async function getProfile(req, res) {
     res.status(500).json({
       success: false,
       message: 'Lỗi server khi lấy thông tin admin',
+    });
+  }
+}
+
+/**
+ * Update admin profile
+ * PATCH /api/admin/auth/profile
+ */
+async function updateProfile(req, res) {
+  try {
+    const { full_name, phone } = req.body || {};
+
+    if (req.body?.email !== undefined || req.body?.role !== undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không được sửa email hoặc role',
+      });
+    }
+
+    const updates = {};
+    if (full_name !== undefined) {
+      const name = String(full_name).trim();
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          message: 'Họ tên không được để trống',
+        });
+      }
+      updates.full_name = name;
+    }
+    if (phone !== undefined) {
+      const raw = String(phone).trim();
+      updates.phone = raw ? normalizePhone(raw) : null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không có trường hợp lệ để cập nhật',
+      });
+    }
+
+    updates.updated_at = new Date().toISOString();
+
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .update(updates)
+      .eq('id', req.user.id)
+      .select('id, email, full_name, role, avatar_url, phone, created_at, updated_at')
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: 'Cập nhật hồ sơ thành công',
+      data: profile,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+      });
+    }
+    console.error('Update admin profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi cập nhật hồ sơ',
+    });
+  }
+}
+
+/**
+ * Upload admin avatar
+ * POST /api/admin/auth/avatar
+ */
+async function uploadAvatar(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không có file được upload (field: avatar)',
+      });
+    }
+
+    await customersService.uploadAvatar(req.user.id, req.file);
+
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, role, avatar_url, phone, created_at, updated_at')
+      .eq('id', req.user.id)
+      .single();
+
+    if (error || !profile) throw error || new Error('Profile not found');
+
+    res.json({
+      success: true,
+      message: 'Cập nhật ảnh đại diện thành công',
+      data: profile,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+      });
+    }
+    console.error('Upload admin avatar error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi upload ảnh đại diện',
     });
   }
 }
@@ -547,15 +663,17 @@ async function getUsers(req, res) {
         status,
         created_at,
         updated_at,
-        customer_profiles (
+        customer_profiles!customer_profiles_id_fkey (
           university,
           total_orders,
           total_spent
         ),
-        provider_profiles (
+        provider_profiles!provider_profiles_id_fkey (
           business_name,
           vehicle_type,
+          vehicle_plate,
           rating,
+          total_reviews,
           total_orders,
           total_earnings,
           verification_status,
@@ -580,6 +698,30 @@ async function getUsers(req, res) {
     const { data: users, error } = await query;
     if (error) throw error;
 
+    const flattened = (users || []).map((user) => {
+      const cp = Array.isArray(user.customer_profiles)
+        ? user.customer_profiles[0]
+        : user.customer_profiles;
+      const pp = Array.isArray(user.provider_profiles)
+        ? user.provider_profiles[0]
+        : user.provider_profiles;
+      const { customer_profiles, provider_profiles, ...base } = user;
+      return {
+        ...base,
+        university: cp?.university ?? null,
+        total_orders: cp?.total_orders ?? pp?.total_orders ?? 0,
+        total_spent: cp?.total_spent ?? 0,
+        business_name: pp?.business_name ?? null,
+        vehicle_type: pp?.vehicle_type ?? null,
+        vehicle_plate: pp?.vehicle_plate ?? null,
+        rating: pp?.rating ?? null,
+        total_reviews: pp?.total_reviews ?? 0,
+        total_earnings: pp?.total_earnings ?? 0,
+        verification_status: pp?.verification_status ?? 'pending',
+        is_verified: pp?.is_verified ?? false,
+      };
+    });
+
     // Get total count for pagination
     let countQuery = supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true });
     if (role !== 'all') countQuery = countQuery.eq('role', role);
@@ -590,7 +732,7 @@ async function getUsers(req, res) {
 
     res.json({
       success: true,
-      data: users || [],
+      data: flattened,
       meta: {
         page: parseInt(page),
         pageSize: parseInt(pageSize),
@@ -1824,25 +1966,33 @@ async function getProviderDocuments(req, res) {
 /** GET /api/admin/dashboard/latest-orders */
 async function getLatestOrders(req, res) {
   try {
-    const { page = 1, pageSize = 5 } = req.query;
+    const { page = 1, pageSize = 10 } = req.query;
     const offset = (page - 1) * pageSize;
 
-    const { data: orders, error } = await supabaseAdmin
+    const { data: orders, error, count } = await supabaseAdmin
       .from('orders')
       .select(`
         id,
         order_number,
         status,
         total_price,
+        pickup_city,
+        delivery_city,
         created_at,
         customer:profiles!orders_customer_id_fkey(
+          id,
           full_name,
           avatar_url
         ),
         provider:provider_profiles!orders_provider_id_fkey(
-          business_name
+          business_name,
+          profiles!provider_profiles_id_fkey(
+            id,
+            full_name,
+            avatar_url
+          )
         )
-      `)
+      `, { count: 'exact' })
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
 
@@ -1850,7 +2000,13 @@ async function getLatestOrders(req, res) {
 
     res.json({
       success: true,
-      data: orders || []
+      data: orders || [],
+      meta: {
+        page: parseInt(page),
+        pageSize: parseInt(pageSize),
+        total: count || 0,
+        pages: Math.ceil((count || 0) / pageSize)
+      }
     });
   } catch (error) {
     console.error('Get latest orders error:', error);
@@ -2140,6 +2296,8 @@ async function rejectWithdrawal(req, res) {
 module.exports = {
   login,
   getProfile,
+  updateProfile,
+  uploadAvatar,
   getDashboard,
   getDashboardStats,
   getPendingProviders,

@@ -1,6 +1,7 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet, serverPut } from "@/lib/server-api";
+import { normalizeMeta } from "@/lib/normalize-meta";
 
 export async function getReviews({
   page = 1,
@@ -14,79 +15,56 @@ export async function getReviews({
   hidden?: boolean;
 }) {
   try {
-    const response = await adminApi.getReviews({
+    const data = await serverGet<any>("/admin/reviews", {
       page,
       pageSize,
-      flagged: flagged === undefined ? 'all' : String(flagged),
-      hidden: hidden === undefined ? 'all' : String(hidden),
+      flagged: flagged === undefined ? "all" : String(flagged),
+      hidden: hidden === undefined ? "all" : String(hidden),
     });
-    
-    if (response.success) {
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: normalizeMeta(data.meta, { page, pageSize }),
       };
     }
-    throw new Error(response.message || 'Failed to fetch reviews');
+    throw new Error(data.message || "Failed to fetch reviews");
   } catch (error) {
-    console.error('Get reviews error:', error);
+    console.error("Get reviews error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
-export async function hideReview(reviewId: string, reason: string, adminId: string) {
+export async function hideReview(reviewId: string, reason: string, _adminId: string) {
   try {
-    const response = await adminApi.hideReview(reviewId, reason);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to hide review');
+    const data = await serverPut<any>(`/admin/reviews/${reviewId}/hide`, { reason });
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to hide review");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
-export async function unhideReview(reviewId: string, adminId: string) {
+export async function unhideReview(reviewId: string, _adminId: string) {
   try {
-    const response = await adminApi.unhideReview(reviewId);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to unhide review');
+    const data = await serverPut<any>(`/admin/reviews/${reviewId}/unhide`);
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to unhide review");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
 export async function flagReview(reviewId: string, reason: string) {
   try {
-    const response = await adminApi.flagReview(reviewId, reason);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to flag review');
+    const data = await serverPut<any>(`/admin/reviews/${reviewId}/flag`, { reason });
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to flag review");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }

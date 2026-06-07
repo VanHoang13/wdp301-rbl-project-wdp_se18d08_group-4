@@ -136,6 +136,24 @@ class ApiClient {
   async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
+
+  // Multipart upload (avatar, etc.)
+  async uploadFormData<T>(endpoint: string, formData: FormData): Promise<ApiResponse<T>> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const headers: HeadersInit = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    const data = await response.json();
+    if (!response.ok) {
+      const error: ApiError = new Error(data.message || 'Upload failed');
+      error.status = response.status;
+      error.code = data.code;
+      throw error;
+    }
+    return data;
+  }
 }
 
 // Export singleton instance
@@ -148,6 +166,15 @@ export const adminApi = {
     apiClient.post('/admin/auth/login', credentials),
   
   getProfile: () => apiClient.get('/admin/auth/profile'),
+
+  updateProfile: (body: { full_name?: string; phone?: string }) =>
+    apiClient.patch('/admin/auth/profile', body),
+
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return apiClient.uploadFormData('/admin/auth/avatar', formData);
+  },
 
   // Dashboard
   getDashboard: () => apiClient.get('/admin/dashboard'),

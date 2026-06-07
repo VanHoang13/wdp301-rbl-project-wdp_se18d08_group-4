@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiClient, adminApi } from "@/lib/api";
+import { normalizeMeta } from "@/lib/normalize-meta";
 import { PageHeader } from "@/components/dashboard/page-header";
 import type { OrderStatus } from "@/lib/types";
 import { OrdersClient } from "./orders-client";
+
+const PAGE_SIZE = 10;
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -14,7 +17,7 @@ export default function OrdersPage() {
   const page = Number(searchParams.get('page') ?? 1);
 
   const [data, setData] = useState<any[]>([]);
-  const [meta, setMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+  const [meta, setMeta] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0 });
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminId, setAdminId] = useState("");
@@ -42,13 +45,13 @@ export default function OrdersPage() {
     try {
       const response = await adminApi.getOrders({
         page,
-        pageSize: 20,
+        pageSize: PAGE_SIZE,
         status: status || undefined,
         search: search || undefined,
       });
       if (response.success) {
         setData(response.data ?? []);
-        setMeta(response.meta ?? { page, pageSize: 20, total: 0, totalPages: 0 });
+        setMeta(normalizeMeta(response.meta, { page, pageSize: PAGE_SIZE }));
       } else {
         throw new Error(response.message || 'Failed to load orders');
       }

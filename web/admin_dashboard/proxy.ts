@@ -1,11 +1,12 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const token = request.cookies.get('admin_token')?.value;
-  const pathname = request.nextUrl.pathname;
+  const { pathname } = request.nextUrl;
+
   const isLoginPage = pathname === '/login';
 
-  // Protected routes
   const protectedRoutes = [
     '/dashboard',
     '/users',
@@ -17,16 +18,17 @@ export function middleware(request: NextRequest) {
     '/notifications',
     '/activity-logs',
     '/settings',
+    '/profile',
   ];
 
-  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route)) || pathname === '/';
+  const isProtectedRoute =
+    protectedRoutes.some((route) => pathname.startsWith(route)) ||
+    pathname === '/';
 
-  // If no token and trying to access protected route, redirect to login
   if (!token && isProtectedRoute) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // If has token and trying to access login page, redirect to dashboard
   if (token && isLoginPage) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
@@ -36,6 +38,18 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    '/dashboard/:path*',
+    '/users/:path*',
+    '/verifications/:path*',
+    '/orders/:path*',
+    '/disputes/:path*',
+    '/reviews/:path*',
+    '/analytics/:path*',
+    '/notifications/:path*',
+    '/activity-logs/:path*',
+    '/settings/:path*',
+    '/profile/:path*',
+    '/login',
+    '/',
   ],
 };

@@ -16,6 +16,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSidebarStore } from "@/lib/stores/sidebar-store";
 import { useTheme } from "@/components/providers/theme-provider";
 import { cn } from "@/lib/utils";
+import { adminApi, apiClient } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -318,7 +319,7 @@ function AdminAvatarDropdown({ profile, onLogout }: AdminAvatarDropdownProps) {
               (e.currentTarget as HTMLDivElement).style.backgroundColor = "";
               (e.currentTarget as HTMLDivElement).style.color = "var(--text)";
             }}
-            onSelect={() => router.push("/settings")}
+            onSelect={() => router.push("/profile")}
           >
             <User size={15} />
             Hồ sơ
@@ -357,17 +358,38 @@ export default function Header() {
   const router = useRouter();
   const { toggleCollapsed, setMobileOpen } = useSidebarStore();
 
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [searchValue, setSearchValue] = useState("");
 
-  // Fetch current admin profile from localStorage (JWT-based auth)
+  // Fetch current admin profile from API
   const fetchProfile = useCallback(async () => {
     try {
-      const userStr = localStorage.getItem('admin_user');
+      const token = localStorage.getItem("admin_token");
+      if (!token) return;
+
+      apiClient.setToken(token);
+      const res = await adminApi.getProfile();
+
+      if (res.success && res.data) {
+        const user = res.data as AdminProfile;
+        setProfile({
+          id: user.id,
+          full_name: user.full_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+          email: user.email ?? null,
+        });
+        localStorage.setItem("admin_user", JSON.stringify(res.data));
+        return;
+      }
+
+      // Fallback: localStorage
+      const userStr = localStorage.getItem("admin_user");
       if (!userStr) return;
-      
       const user = JSON.parse(userStr);
       setProfile({
         id: user.id as string,
@@ -376,14 +398,28 @@ export default function Header() {
         email: user.email ?? null,
       });
     } catch (err) {
-      console.error('Failed to fetch profile:', err);
+      console.error("Failed to fetch profile:", err);
+      const userStr = localStorage.getItem("admin_user");
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          setProfile({
+            id: user.id as string,
+            full_name: user.full_name ?? null,
+            avatar_url: user.avatar_url ?? null,
+            email: user.email ?? null,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
     }
   }, []);
 
   // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/admin/notifications', {
+      const response = await fetch(`${API_URL}/admin/notifications`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -400,16 +436,33 @@ export default function Header() {
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
     }
-  }, []);
+  }, [API_URL]);
 
   useEffect(() => {
     fetchProfile();
     fetchNotifications();
+
+    function onProfileUpdated(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        setProfile({
+          id: detail.id,
+          full_name: detail.full_name ?? null,
+          avatar_url: detail.avatar_url ?? null,
+          email: detail.email ?? null,
+        });
+      } else {
+        void fetchProfile();
+      }
+    }
+
+    window.addEventListener("admin-profile-updated", onProfileUpdated);
+    return () => window.removeEventListener("admin-profile-updated", onProfileUpdated);
   }, [fetchProfile, fetchNotifications]);
 
   const handleMarkRead = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/admin/notifications/mark-read', {
+      const response = await fetch(`${API_URL}/admin/notifications/mark-read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
@@ -423,7 +476,7 @@ export default function Header() {
     } catch (err) {
       console.error('Failed to mark notifications as read:', err);
     }
-  }, []);
+  }, [API_URL]);
 
   const handleLogout = useCallback(async () => {
     // Clear authentication from localStorage
@@ -440,7 +493,7 @@ export default function Header() {
 
   return (
     <header
-      className="fixed top-0 right-0 left-0 z-20 flex items-center gap-3 px-4 border-b"
+      className="sticky top-0 z-20 flex items-center gap-3 px-4 border-b shrink-0"
       style={{
         height: "64px",
         backgroundColor: "var(--card)",
@@ -474,22 +527,27 @@ export default function Header() {
       </button>
 
       {/* Center: search */}
-      <div className="flex-1 flex items-center max-w-sm">
+      <div className="flex-1 flex items-center min-w-0 max-w-md">
         <div className="relative w-full">
           <span
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10"
             style={{ color: "var(--muted)" }}
           >
-            <Search size={15} />
+            <Search size={16} />
           </span>
           <input
             type="search"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            placeholder="Tìm kiếm..."
-            className="w-full h-9 pl-9 pr-4 text-sm rounded-full border outline-none transition-colors"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchValue.trim()) {
+                router.push(`/orders?search=${encodeURIComponent(searchValue.trim())}`);
+              }
+            }}
+            placeholder="Tìm kiếm đơn hàng, người dùng..."
+            className="w-full h-10 pl-10 pr-4 text-sm rounded-xl border outline-none transition-all placeholder:opacity-70"
             style={{
-              backgroundColor: "var(--surface)",
+              backgroundColor: "var(--bg)",
               borderColor: "var(--border)",
               color: "var(--text)",
             }}
@@ -497,7 +555,7 @@ export default function Header() {
               (e.currentTarget as HTMLInputElement).style.borderColor =
                 "var(--primary)";
               (e.currentTarget as HTMLInputElement).style.boxShadow =
-                "0 0 0 2px var(--primary-tint)";
+                "0 0 0 3px var(--primary-tint)";
             }}
             onBlur={(e) => {
               (e.currentTarget as HTMLInputElement).style.borderColor =

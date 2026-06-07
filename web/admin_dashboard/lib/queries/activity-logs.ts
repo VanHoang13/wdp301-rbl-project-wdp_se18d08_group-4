@@ -1,114 +1,85 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet } from "@/lib/server-api";
+import { normalizeMeta } from "@/lib/normalize-meta";
 
 export async function getOrderStatusHistory({
   page = 1,
-  pageSize = 30,
+  pageSize = 10,
 }: {
   page?: number;
   pageSize?: number;
 }) {
   try {
-    const response = await adminApi.getOrderStatusHistory({ page, pageSize });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/activity/orders", { page, pageSize });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: normalizeMeta(data.meta, { page, pageSize }),
       };
     }
-    throw new Error(response.message || 'Failed to fetch order history');
+    throw new Error(data.message || "Failed to fetch order history");
   } catch (error) {
-    console.error('Get order status history error:', error);
+    console.error("Get order status history error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
 export async function getVerificationHistory({
   page = 1,
-  pageSize = 30,
+  pageSize = 10,
 }: {
   page?: number;
   pageSize?: number;
 }) {
   try {
-    const response = await adminApi.getVerificationHistory({ page, pageSize });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/activity/verifications", { page, pageSize });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: normalizeMeta(data.meta, { page, pageSize }),
       };
     }
-    throw new Error(response.message || 'Failed to fetch verification history');
+    throw new Error(data.message || "Failed to fetch verification history");
   } catch (error) {
-    console.error('Get verification history error:', error);
+    console.error("Get verification history error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
 export async function getRefundHistory({
   page = 1,
-  pageSize = 30,
+  pageSize = 10,
 }: {
   page?: number;
   pageSize?: number;
 }) {
   try {
-    const response = await adminApi.getRefundHistory({ page, pageSize });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/activity/refunds", { page, pageSize });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: normalizeMeta(data.meta, { page, pageSize }),
       };
     }
-    throw new Error(response.message || 'Failed to fetch refund history');
+    throw new Error(data.message || "Failed to fetch refund history");
   } catch (error) {
-    console.error('Get refund history error:', error);
+    console.error("Get refund history error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
