@@ -1,7 +1,6 @@
 ﻿export const dynamic = "force-dynamic";
 
 import { PageHeader } from "@/components/dashboard/page-header";
-import { ProfileSection } from "./profile-section";
 import { ThemeSection } from "./theme-section";
 import { PlatformSettingsSection } from "./platform-settings-section";
 import { DangerZoneSection } from "./danger-zone-section";
@@ -22,7 +21,6 @@ export default function SettingsPage() {
       />
 
       <div className="space-y-6">
-        <ProfileSection />
         <ThemeSection />
         <PlatformSettingsSection />
         <DangerZoneSection />

@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth.middleware');
+const { handleAvatarUpload } = require('../middleware/upload.middleware');
 const adminController = require('../controllers/admin.controller');
 
 const router = express.Router();
@@ -13,6 +14,8 @@ router.use(requireRole('admin'));
 
 // Dashboard
 router.get('/auth/profile', adminController.getProfile);
+router.patch('/auth/profile', adminController.updateProfile);
+router.post('/auth/avatar', handleAvatarUpload, adminController.uploadAvatar);
 router.get('/dashboard', adminController.getDashboard);
 router.get('/dashboard/stats', adminController.getDashboardStats);
 

@@ -1,6 +1,6 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet, serverPost, serverPut } from "@/lib/server-api";
 import type { NotificationPriority } from "@/lib/types";
 
 export async function getAnnouncements({
@@ -11,31 +11,21 @@ export async function getAnnouncements({
   pageSize?: number;
 }) {
   try {
-    const response = await adminApi.getAnnouncements({ page, pageSize });
-    if (response.success) {
+    const data = await serverGet<any>("/admin/announcements", { page, pageSize });
+    if (data.success) {
       return {
-        data: response.data ?? [],
+        data: data.data ?? [],
         error: null,
-        meta: response.meta ?? {
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        },
+        meta: data.meta ?? { page, pageSize, total: 0, totalPages: 0 },
       };
     }
-    throw new Error(response.message || 'Failed to fetch announcements');
+    throw new Error(data.message || "Failed to fetch announcements");
   } catch (error) {
-    console.error('Get announcements error:', error);
+    console.error("Get announcements error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
@@ -47,7 +37,7 @@ export async function createAnnouncement({
   targetCities,
   priority,
   scheduledAt,
-  createdBy, // Auto-handled by backend auth
+  createdBy: _createdBy,
 }: {
   title: string;
   body: string;
@@ -58,7 +48,7 @@ export async function createAnnouncement({
   createdBy: string;
 }) {
   try {
-    const response = await adminApi.createAnnouncement({
+    const data = await serverPost<any>("/admin/announcements", {
       title,
       body,
       targetAudience,
@@ -66,43 +56,27 @@ export async function createAnnouncement({
       priority,
       scheduledAt,
     });
-    
-    if (response.success) {
-      return { data: response.data, error: null };
-    }
-    throw new Error(response.message || 'Failed to create announcement');
+    if (data.success) return { data: data.data, error: null };
+    throw new Error(data.message || "Failed to create announcement");
   } catch (error) {
-    return {
-      data: null,
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { data: null, error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
 export async function publishAnnouncement(id: string) {
   try {
-    const response = await adminApi.publishAnnouncement(id);
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to publish announcement');
+    const data = await serverPut<any>(`/admin/announcements/${id}/publish`);
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to publish announcement");
   } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
-// Note: These notification functions would require additional backend endpoints
-export async function getAdminNotifications(userId: string, limit = 5) {
-  // TODO: Implement backend endpoint for admin notifications
-  return {
-    notifications: [],
-    unreadCount: 0,
-  };
+export async function getAdminNotifications(_userId: string, _limit = 5) {
+  return { notifications: [], unreadCount: 0 };
 }
 
-export async function markNotificationRead(id: string) {
-  // TODO: Implement backend endpoint for marking notifications as read
+export async function markNotificationRead(_id: string) {
   return null;
 }

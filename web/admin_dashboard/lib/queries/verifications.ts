@@ -1,6 +1,6 @@
 "use server";
 
-import { adminApi } from "@/lib/api";
+import { serverGet, serverPut } from "@/lib/server-api";
 import type { VerificationStatus } from "@/lib/types";
 
 export async function getPendingProviders({
@@ -13,65 +13,37 @@ export async function getPendingProviders({
   status?: VerificationStatus;
 }) {
   try {
-    // For pending providers, we use the specific endpoint
-    if (status === "pending") {
-      const response = await adminApi.getPendingProviders();
-      if (response.success) {
-        return {
-          data: response.data ?? [],
-          error: null,
-          meta: {
-            page: 1,
-            pageSize: response.data?.length ?? 0,
-            total: response.data?.length ?? 0,
-            totalPages: 1,
-          },
-        };
-      }
+    const data = await serverGet<any>("/admin/providers/pending");
+    if (data.success) {
+      return {
+        data: data.data ?? [],
+        error: null,
+        meta: {
+          page: 1,
+          pageSize: data.data?.length ?? 0,
+          total: data.data?.length ?? 0,
+          totalPages: 1,
+        },
+      };
     }
-
-    // For other statuses, we'd need to create a generic endpoint
-    // For now, return empty data
-    return {
-      data: [],
-      error: null,
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
-    };
+    throw new Error(data.message || "Failed to fetch pending providers");
   } catch (error) {
-    console.error('Get pending providers error:', error);
+    console.error("Get pending providers error:", error);
     return {
       data: [],
-      error: error instanceof Error ? error : new Error('Unknown error'),
-      meta: {
-        page,
-        pageSize,
-        total: 0,
-        totalPages: 0,
-      },
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      meta: { page, pageSize, total: 0, totalPages: 0 },
     };
   }
 }
 
 export async function getProviderDocuments(providerId: string) {
   try {
-    const response = await adminApi.getProviderDocuments(providerId);
-    if (response.success) {
-      return { 
-        data: response.data ?? [], 
-        error: null 
-      };
-    }
-    throw new Error(response.message || 'Failed to fetch provider documents');
+    const data = await serverGet<any>(`/admin/providers/${providerId}/documents`);
+    if (data.success) return { data: data.data ?? [], error: null };
+    throw new Error(data.message || "Failed to fetch provider documents");
   } catch (error) {
-    return { 
-      data: [], 
-      error: error instanceof Error ? error : new Error('Unknown error') 
-    };
+    return { data: [], error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
 
@@ -79,19 +51,17 @@ export async function updateVerificationStatus(
   providerId: string,
   status: VerificationStatus,
   notes: string,
-  adminId: string // This is automatically handled by backend auth
+  _adminId: string
 ) {
   try {
     const action = status === "approved" ? "approve" : "reject";
-    const response = await adminApi.verifyProvider(providerId, { action, notes });
-    
-    if (response.success) {
-      return { error: null };
-    }
-    throw new Error(response.message || 'Failed to update verification status');
+    const data = await serverPut<any>(`/admin/providers/${providerId}/verify`, {
+      action,
+      notes,
+    });
+    if (data.success) return { error: null };
+    throw new Error(data.message || "Failed to update verification status");
   } catch (error) {
-    return { 
-      error: error instanceof Error ? error : new Error('Unknown error') 
-    };
+    return { error: error instanceof Error ? error : new Error("Unknown error") };
   }
 }
