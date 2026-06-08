@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
+const { ensurePublicImageBucket } = require('./storage.helpers');
 
 const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', 'books', 'other'];
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
@@ -767,6 +768,19 @@ async function uploadListingImage(userId, file) {
 
   const objectPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 
+  try {
+    await ensurePublicImageBucket(MARKETPLACE_IMAGES_BUCKET, {
+      fileSizeLimit: 5242880,
+      allowedMimeTypes: ['image/jpeg', 'image/png'],
+    });
+  } catch (bucketError) {
+    throw httpError(
+      500,
+      `Không tạo được bucket ${MARKETPLACE_IMAGES_BUCKET}: ${bucketError.message}`,
+      'storage_bucket_missing',
+    );
+  }
+
   const { error: uploadError } = await supabaseAdmin.storage
     .from(MARKETPLACE_IMAGES_BUCKET)
     .upload(objectPath, file.buffer, {
@@ -776,13 +790,6 @@ async function uploadListingImage(userId, file) {
     });
 
   if (uploadError) {
-    if (uploadError.message?.includes('Bucket not found')) {
-      throw httpError(
-        500,
-        'Chưa có bucket marketplace-images. Chạy migration 20240125000000_marketplace_images_storage.sql.',
-        'storage_bucket_missing',
-      );
-    }
     throw httpError(500, uploadError.message, 'storage_error');
   }
 
