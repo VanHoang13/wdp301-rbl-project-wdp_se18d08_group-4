@@ -616,6 +616,8 @@ async function removeInterest(listingId, userId) {
   return { listing_id: listingId };
 }
 
+// ── Bump listing ──────────────────────────────────────────────────────────────
+
 /** Xem tin của 1 seller cụ thể (seller profile page) */
 async function browseByOwner(sellerId) {
   const { data, error } = await supabaseAdmin
@@ -637,19 +639,20 @@ async function browseByOwner(sellerId) {
 async function bumpListing(listingId, userId) {
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
-    .select('id, owner_id, bumped_at')
+    .select('id, owner_id, status, bumped_at')
     .eq('id', listingId)
     .single();
 
   if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
-  if (listing.owner_id !== userId) throw httpError(403, 'Không có quyền đẩy tin này', 'forbidden');
+  if (listing.owner_id !== userId) throw httpError(403, 'Chỉ người đăng mới đẩy được tin', 'forbidden');
+  if (!['active', 'reserved'].includes(listing.status)) throw httpError(400, 'Chỉ đẩy được tin đang mở hoặc đang giữ', 'invalid_status');
 
+  // Giới hạn 1 lần bump / 24h
   if (listing.bumped_at) {
-    const lastBump = new Date(listing.bumped_at);
-    const diff = Date.now() - lastBump.getTime();
-    if (diff < 24 * 60 * 60 * 1000) {
-      const hoursLeft = Math.ceil((24 * 60 * 60 * 1000 - diff) / (60 * 60 * 1000));
-      throw httpError(429, `Chờ ${hoursLeft} tiếng nữa mới đẩy được`, 'rate_limited');
+    const hoursSince = (Date.now() - new Date(listing.bumped_at).getTime()) / 3_600_000;
+    if (hoursSince < 24) {
+      const hoursLeft = Math.ceil(24 - hoursSince);
+      throw httpError(429, `Bạn chỉ được đẩy tin 1 lần / 24h. Còn ${hoursLeft} giờ nữa.`, 'too_many_requests');
     }
   }
 

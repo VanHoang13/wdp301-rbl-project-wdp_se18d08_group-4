@@ -12,6 +12,7 @@ class NotificationsRepository {
         'marketplace_deal_confirmed'   => AppNotificationType.marketplaceDealConfirmed,
         'marketplace_deal_cancelled'   => AppNotificationType.marketplaceDealCancelled,
         'marketplace_transport_booked' => AppNotificationType.marketplaceTransportBooked,
+        'marketplace_interest'         => AppNotificationType.marketplaceInterest,
         'order_created' ||
         'order_accepted' ||
         'order_started' ||
