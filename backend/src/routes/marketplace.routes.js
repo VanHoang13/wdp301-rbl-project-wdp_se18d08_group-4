@@ -1,6 +1,7 @@
 const express = require('express');
 const marketplaceController = require('../controllers/marketplace.controller');
 const { requireAuth } = require('../middleware/auth.middleware');
+const { handleMarketplaceImageUpload } = require('../middleware/upload.middleware');
 
 const router = express.Router();
 
@@ -11,6 +12,13 @@ router.get('/listings', requireAuth, marketplaceController.browseListings);
 router.get('/my-listings', requireAuth, marketplaceController.getMyListings);
 // API-062 — Đăng tin
 router.post('/listings', requireAuth, marketplaceController.createListing);
+// API-073 — Upload ảnh tin (đặt trước /listings/:id)
+router.post(
+  '/listings/images',
+  requireAuth,
+  handleMarketplaceImageUpload,
+  marketplaceController.uploadListingImage,
+);
 
 // ── Batch 2 ──────────────────────────────────────────────────────────────────
 // API-061 — Chi tiết tin

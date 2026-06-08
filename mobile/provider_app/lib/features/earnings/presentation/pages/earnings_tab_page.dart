@@ -11,12 +11,10 @@ import '../../../orders/presentation/providers/orders_providers.dart';
 class EarningsTabPage extends ConsumerWidget {
   const EarningsTabPage({super.key});
 
-  static const _platformRate = 0.15; // phí nền tảng 15%
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final c = UniMoveColors.of(context);
     final ordersAsync = ref.watch(providerOrdersListProvider);
+    final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
       builder: (_, theme) {
@@ -25,16 +23,19 @@ class EarningsTabPage extends ConsumerWidget {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('Lỗi: $e', style: TextStyle(color: c.onSurface))),
             data: (orders) {
-              final completed = orders.where((o) => o.isCompleted).toList();
-              final active = orders.where((o) => o.isActive || o.isPending).toList();
-              final gross = completed.fold<int>(0, (s, o) => s + o.totalPrice);
-              final fee = (gross * _platformRate).round();
-              final net = gross - fee;
-
               final now = DateTime.now();
-              final monthGross = completed
-                  .where((o) => o.createdAt != null && o.createdAt!.year == now.year && o.createdAt!.month == now.month)
-                  .fold<int>(0, (s, o) => s + o.totalPrice);
+              final monthOrders = orders.where((o) {
+                final d = o.createdAt;
+                return d != null && d.year == now.year && d.month == now.month;
+              }).toList();
+              final completed = monthOrders.where((o) => o.isCompleted).toList();
+              final gross = completed.fold<int>(0, (s, o) => s + o.totalPrice);
+              final net = completed.fold<int>(0, (s, o) => s + o.netEarnings);
+              final fee = (gross * 0.15).round();
+              final recent = orders
+                  .where((o) => o.isCompleted)
+                  .toList()
+                ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
 
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(providerOrdersListProvider),
@@ -45,64 +46,128 @@ class EarningsTabPage extends ConsumerWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Thu nhập', style: theme.textTheme.h3.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tổng hợp từ ${completed.length} đơn đã hoàn thành.',
-                                style: theme.textTheme.muted.copyWith(color: c.onSurfaceMuted),
-                              ),
-                            ],
+                          child: Text(
+                            'Thu nhập',
+                            style: theme.textTheme.h3.copyWith(fontWeight: FontWeight.w800, color: c.onSurface),
                           ),
                         ),
-                        TextButton(
+                        TextButton.icon(
+                          onPressed: () => context.push('/payout/settings'),
+                          icon: Icon(LucideIcons.landmark, size: 18, color: c.primaryLight),
+                          label: Text(
+                            'Nhận tiền',
+                            style: theme.textTheme.small.copyWith(
+                              color: c.primaryLight,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
                           onPressed: () => context.push('/earnings/history'),
-                          child: const Text('Lịch sử chuyến'),
+                          icon: Icon(LucideIcons.history, size: 18, color: c.primaryLight),
+                          label: Text(
+                            'Lịch sử',
+                            style: theme.textTheme.small.copyWith(
+                              color: c.primaryLight,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // Thẻ thực nhận
-                    GlassCard(
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tháng ${now.month}/${now.year} · sau phí nền tảng 15%',
+                      style: theme.textTheme.muted.copyWith(color: c.onSurfaceMuted),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [c.primary, c.primaryLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Icon(LucideIcons.wallet, color: c.primary, size: 20),
-                              const SizedBox(width: 8),
-                              Text('Thực nhận (sau phí)', style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
-                            ],
+                          Text(
+                            'Thực nhận tháng này',
+                            style: theme.textTheme.small.copyWith(color: Colors.white70, fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _money(net),
-                            style: theme.textTheme.h2.copyWith(fontWeight: FontWeight.w800, color: c.onSurface),
+                            ProviderOrder.formatMoney(net),
+                            style: theme.textTheme.h2.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
                           ),
-                          const SizedBox(height: 16),
-                          const Divider(height: 1),
-                          const SizedBox(height: 16),
-                          _row(theme, c, 'Tổng doanh thu', _money(gross)),
-                          _row(theme, c, 'Phí nền tảng (15%)', '- ${_money(fee)}'),
-                          _row(theme, c, 'Tháng này', _money(monthGross)),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    // Thống kê nhanh
-                    Row(
-                      children: [
-                        Expanded(child: _miniStat(theme, c, LucideIcons.circleCheck, '${completed.length}', 'Hoàn thành')),
-                        const SizedBox(width: 12),
-                        Expanded(child: _miniStat(theme, c, LucideIcons.truck, '${active.length}', 'Đang/đang chờ')),
-                      ],
+                    const SizedBox(height: 12),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => context.push('/payout/settings'),
+                        borderRadius: BorderRadius.circular(16),
+                        child: GlassCard(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: c.iconBgTertiary,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(LucideIcons.wallet, color: c.primaryLight, size: 22),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Phương thức nhận tiền',
+                                      style: theme.textTheme.p.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: c.onSurface,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Ngân hàng, MoMo, ZaloPay · quản lý giải ngân',
+                                      style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(LucideIcons.chevronRight, size: 18, color: c.onSurfaceMuted),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 20),
-                    Text('Đơn gần đây', style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700, color: c.onSurface)),
-                    const SizedBox(height: 10),
-                    if (completed.isEmpty)
+                    const SizedBox(height: 16),
+                    GlassCard(
+                      child: Column(
+                        children: [
+                          _row(theme, c, 'Đơn hoàn thành', '${completed.length}'),
+                          _row(theme, c, 'Doanh thu gộp', ProviderOrder.formatMoney(gross)),
+                          _row(theme, c, 'Phí nền tảng', ProviderOrder.formatMoney(fee)),
+                          _row(theme, c, 'Đang xử lý', '${monthOrders.where((o) => o.isActive).length}'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Đơn gần đây',
+                      style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700, color: c.onSurface),
+                    ),
+                    const SizedBox(height: 12),
+                    if (recent.isEmpty)
                       GlassCard(
                         child: Text(
                           'Chưa có đơn hoàn thành.',
@@ -110,7 +175,7 @@ class EarningsTabPage extends ConsumerWidget {
                         ),
                       )
                     else
-                      ...completed.map((o) => _payoutTile(context, theme, c, o)),
+                      ...recent.take(5).map((o) => _payoutTile(context, theme, c, o)),
                   ],
                 ),
               );
@@ -121,10 +186,23 @@ class EarningsTabPage extends ConsumerWidget {
     );
   }
 
+  Widget _row(ShadThemeData theme, UniMoveColors c, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: theme.textTheme.p.copyWith(color: c.onSurfaceMuted)),
+          Text(value, style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w700, color: c.onSurface)),
+        ],
+      ),
+    );
+  }
+
   Widget _payoutTile(BuildContext context, ShadThemeData theme, UniMoveColors c, ProviderOrder o) {
-    final net = (o.totalPrice * (1 - _platformRate)).round();
     final d = o.createdAt;
     final dateStr = d == null ? '' : '${d.day}/${d.month}/${d.year}';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -148,64 +226,38 @@ class EarningsTabPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('#${o.orderNumber ?? o.id}', style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w700, color: c.onSurface)),
-                      Text(dateStr, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
+                      Text(
+                        '#${o.orderNumber ?? o.id.substring(0, 8)}',
+                        style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w700, color: c.onSurface),
+                      ),
+                      if (dateStr.isNotEmpty)
+                        Text(dateStr, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('+ ${_money(net)}', style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800, color: c.success)),
-                    Text(_money(o.totalPrice), style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, decoration: TextDecoration.lineThrough)),
+                    Text(
+                      ProviderOrder.formatMoney(o.netEarnings),
+                      style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800, color: c.success),
+                    ),
+                    Text(
+                      ProviderOrder.formatMoney(o.totalPrice),
+                      style: theme.textTheme.small.copyWith(
+                        color: c.onSurfaceMuted,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
                   ],
                 ),
+                const SizedBox(width: 4),
+                Icon(LucideIcons.chevronRight, size: 18, color: c.onSurfaceMuted),
               ],
             ),
           ),
         ),
       ),
     );
-  }
-
-  Widget _miniStat(ShadThemeData theme, UniMoveColors c, IconData icon, String value, String label) {
-    return GlassCard(
-      padding: const EdgeInsets.all(14),
-      radius: 16,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: c.primary),
-          const SizedBox(height: 8),
-          Text(value, style: theme.textTheme.h4.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
-          Text(label, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(ShadThemeData theme, UniMoveColors c, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: theme.textTheme.p.copyWith(color: c.onSurfaceMuted)),
-          Text(value, style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w700, color: c.onSurface)),
-        ],
-      ),
-    );
-  }
-
-  static String _money(int amount) {
-    if (amount == 0) return '0đ';
-    final neg = amount < 0;
-    final s = amount.abs().toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return '${neg ? '-' : ''}${buf.toString()}đ';
   }
 }

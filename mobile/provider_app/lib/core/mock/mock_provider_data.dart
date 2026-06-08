@@ -1,31 +1,50 @@
-import '../../features/auth/domain/provider_profile.dart';
-import '../../features/messages/domain/chat_models.dart';
 import '../../features/orders/domain/provider_order.dart';
-/// Dữ liệu mẫu cho phiên đăng nhập demo của đối tác (provider).
+
+/// Dữ liệu demo cho provider (không cần backend).
 abstract final class MockProviderData {
   static const providerId = 'p1000000-0000-4000-8000-000000000001';
 
-  /// User JSON lưu vào storage khi đăng nhập demo (khớp schema `profiles`).
-  static const Map<String, dynamic> userJson = {
+  /// Tài khoản provider demo — đã xác thực đủ giấy tờ, có thể nhận đơn.
+  static const Map<String, dynamic> verifiedProviderUserJson = {
     'id': providerId,
     'email': 'partner@unimove.vn',
     'full_name': 'Minh Quân',
     'role': 'provider',
     'business_name': 'Nhà xe Minh Quân',
     'is_verified': true,
+    'verification_status': 'approved',
+    'kyc_completed': true,
     'rating': 4.9,
+    'phone': '0903 456 789',
+    'address': '45 Đường số 10, KDC Him Lam',
+    'city': 'TP. Hồ Chí Minh',
+    'bio': 'Chuyên chuyển phòng sinh viên & C2C pass đồ. Đội xe 3 tải, bốc xếp có bảo hiểm.',
+    'license_plate': '51C-123.45',
+    'vehicle_model': 'Hyundai Porter 1.5 tấn',
+    'vehicle_size': 'medium_truck',
+    'total_reviews': 128,
+    'completed_trips': 342,
+    'member_since': '2024-03-15T00:00:00.000Z',
+    'bank_name': 'Vietcombank',
+    'bank_account_number': '0123456789',
+    'bank_account_name': 'MINH QUAN',
+    'tax_code': '0312789456',
   };
 
-  static final ProviderProfile profile = ProviderProfile.fromJson(userJson);
+  /// Alias — luôn trỏ tới provider đã duyệt KYC.
+  static const Map<String, dynamic> userJson = verifiedProviderUserJson;
 
-  /// Tên khách theo id (hiển thị ở chi tiết đơn / tin nhắn).
-  static const Map<String, String> customerNames = {
+  static const customerNames = <String, String>{
     'c1000000-0000-4000-8000-000000000001': 'Lê Nhật Nam',
     'c1000000-0000-4000-8000-000000000002': 'Trần Thu Hà',
     'c1000000-0000-4000-8000-000000000003': 'Phạm Minh Đức',
   };
 
-  /// Danh sách đơn — **mutable** để demo nhận/từ chối cập nhật trực tiếp.
+  static String customerNameOf(String? id) => customerNames[id] ?? 'Khách UniMove';
+
+  /// Thread chat theo đơn (ưu tiên đơn đang mở).
+  static String? chatThreadIdForOrder(String orderId) => 'order-$orderId';
+
   static final List<ProviderOrder> orders = [
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000001',
@@ -37,10 +56,7 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'medium_truck',
       customerId: 'c1000000-0000-4000-8000-000000000001',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 8)),
-      distanceKm: 8,
-      etaMinutes: 25,
-      itemSummary: '3 thùng carton, 1 tủ lạnh nhỏ',
+      createdAt: DateTime(2026, 6, 3, 14, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000005',
@@ -52,10 +68,7 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'small_truck',
       customerId: 'c1000000-0000-4000-8000-000000000003',
-      createdAt: DateTime.now().subtract(const Duration(minutes: 21)),
-      distanceKm: 5.2,
-      etaMinutes: 18,
-      itemSummary: '5 thùng đồ, 1 kệ sách',
+      createdAt: DateTime(2026, 6, 3, 13, 40),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000002',
@@ -67,7 +80,7 @@ abstract final class MockProviderData {
       serviceType: 'premium',
       vehicleSize: 'large_truck',
       customerId: 'c1000000-0000-4000-8000-000000000002',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      createdAt: DateTime(2026, 6, 3, 10, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000003',
@@ -79,7 +92,7 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'small_truck',
       customerId: 'c1000000-0000-4000-8000-000000000003',
-      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
+      createdAt: DateTime(2026, 6, 3, 8, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000004',
@@ -91,7 +104,7 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'medium_truck',
       customerId: 'c1000000-0000-4000-8000-000000000001',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      createdAt: DateTime(2026, 6, 2, 9, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000006',
@@ -103,19 +116,7 @@ abstract final class MockProviderData {
       serviceType: 'premium',
       vehicleSize: 'large_truck',
       customerId: 'c1000000-0000-4000-8000-000000000002',
-      createdAt: DateTime.now().subtract(const Duration(days: 3)),
-    ),
-    ProviderOrder(
-      id: 'a1000000-0000-4000-8000-000000000007',
-      status: 'completed',
-      orderNumber: 'UM-28705',
-      pickupAddress: 'Làng đại học, Dĩ An',
-      deliveryAddress: 'Quận 1, TP.HCM',
-      totalPrice: 310000,
-      serviceType: 'standard',
-      vehicleSize: 'small_truck',
-      customerId: 'c1000000-0000-4000-8000-000000000003',
-      createdAt: DateTime.now().subtract(const Duration(days: 6)),
+      createdAt: DateTime(2026, 5, 31, 15, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000008',
@@ -127,8 +128,7 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'medium_truck',
       customerId: 'c1000000-0000-4000-8000-000000000001',
-      createdAt: DateTime.now().subtract(const Duration(days: 4)),
-      cancellationReason: 'Không còn slot trong khung giờ',
+      createdAt: DateTime(2026, 5, 30, 11, 0),
     ),
     ProviderOrder(
       id: 'a1000000-0000-4000-8000-000000000009',
@@ -140,13 +140,9 @@ abstract final class MockProviderData {
       serviceType: 'standard',
       vehicleSize: 'small_truck',
       customerId: 'c1000000-0000-4000-8000-000000000002',
-      createdAt: DateTime.now().subtract(const Duration(days: 8)),
-      cancellationReason: 'Khách hủy đơn',
-      cancelledAt: DateTime.now().subtract(const Duration(days: 7, hours: 20)),
+      createdAt: DateTime(2026, 5, 28, 16, 0),
     ),
   ];
-
-  static String customerNameOf(String? id) => customerNames[id] ?? 'Khách UniMove';
 
   static ProviderOrder? orderById(String id) {
     try {
@@ -242,93 +238,9 @@ abstract final class MockProviderData {
     );
   }
 
-  /// Cập nhật trạng thái 1 đơn (demo nhận/từ chối/hoàn thành).
   static void updateStatus(String id, String status) {
     final i = orders.indexWhere((o) => o.id == id);
-    if (i != -1) orders[i] = orders[i].copyWith(status: status);
+    if (i == -1) return;
+    orders[i] = orders[i].copyWith(status: status);
   }
-
-  /// Khách có đang thực hiện chuyến (đơn active) hay không → quyết định được chat.
-  static bool customerHasActiveTrip(String? customerId) {
-    if (customerId == null) return false;
-    return orders.any((o) => o.isActive && o.customerId == customerId);
-  }
-
-  // ----- Tin nhắn demo -----
-  static final List<ChatThread> chatThreads = [
-    ChatThread(
-      id: 't1',
-      name: 'Lê Nhật Nam',
-      customerId: 'c1000000-0000-4000-8000-000000000001',
-      time: '2 phút',
-      unread: true,
-      messages: [
-        ChatMessage(text: 'Chào anh, em vừa đặt chuyến chuyển trọ ạ.', fromProvider: false, time: '09:10'),
-        ChatMessage(text: 'Anh nhận đơn rồi nhé, em chuẩn bị đồ giúp anh.', fromProvider: true, time: '09:12'),
-        ChatMessage(text: 'Anh ơi tới chưa ạ? Em đợi ở cổng KTX B nhé.', fromProvider: false, time: '09:20'),
-      ],
-    ),
-    ChatThread(
-      id: 't2',
-      name: 'Trần Thu Hà',
-      customerId: 'c1000000-0000-4000-8000-000000000002',
-      time: '1 giờ',
-      unread: true,
-      messages: [
-        ChatMessage(text: 'Anh ơi đồ em hơi nhiều, có cần thêm người không?', fromProvider: false, time: '08:02'),
-        ChatMessage(text: 'Anh đi 2 người và xe lớn rồi, em yên tâm nhé.', fromProvider: true, time: '08:05'),
-        ChatMessage(text: 'Đồ em hơi nhiều, anh mang thêm dây ràng giúp em.', fromProvider: false, time: '08:30'),
-      ],
-    ),
-    ChatThread(
-      id: 't3',
-      name: 'Phạm Minh Đức',
-      customerId: 'c1000000-0000-4000-8000-000000000003',
-      time: 'Hôm qua',
-      unread: false,
-      messages: [
-        ChatMessage(text: 'Anh đang trên đường tới điểm giao nhé.', fromProvider: true, time: 'Hôm qua'),
-        ChatMessage(text: 'Dạ vâng, em đợi ở sảnh ạ.', fromProvider: false, time: 'Hôm qua'),
-        ChatMessage(text: 'Cảm ơn anh, chuyến vừa rồi nhanh gọn ạ!', fromProvider: false, time: 'Hôm qua'),
-      ],
-    ),
-    ChatThread(
-      id: 't4',
-      name: 'Hỗ trợ UniMove',
-      customerId: null,
-      time: '2 ngày',
-      unread: false,
-      messages: [
-        ChatMessage(text: 'Chào bạn, giấy tờ của bạn đã được duyệt.', fromProvider: false, time: '2 ngày trước'),
-        ChatMessage(text: 'Cảm ơn đội ngũ UniMove ạ!', fromProvider: true, time: '2 ngày trước'),
-      ],
-    ),
-  ];
-
-  static ChatThread? chatThreadById(String id) {
-    try {
-      return chatThreads.firstWhere((t) => t.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Tìm hội thoại theo khách (để mở từ chi tiết đơn).
-  static ChatThread? chatThreadByCustomer(String? customerId) {
-    if (customerId == null) return null;
-    try {
-      return chatThreads.firstWhere((t) => t.customerId == customerId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // ----- Giấy tờ demo -----
-  /// (tiêu đề, yêu cầu, trạng thái: verified | pending | missing)
-  static const List<({String title, String requirement, String status})> documents = [
-    (title: 'Giấy phép lái xe', requirement: 'Bắt buộc', status: 'verified'),
-    (title: 'Đăng ký phương tiện', requirement: 'Bắt buộc', status: 'verified'),
-    (title: 'Bảo hiểm vận tải', requirement: 'Khuyến nghị', status: 'pending'),
-    (title: 'Giấy phép kinh doanh', requirement: 'Tùy loại hình', status: 'missing'),
-  ];
 }
