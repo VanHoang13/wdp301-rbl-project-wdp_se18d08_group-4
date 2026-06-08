@@ -5,13 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../../../core/theme/uni_move_colors.dart';
-import '../../data/pass_item_location_prefs.dart';
 import '../../data/pass_item_repository.dart';
 import '../../domain/pass_item.dart';
 import '../../domain/pass_item_provinces.dart';
 import '../pass_item_format.dart';
 import '../widgets/pass_item_image.dart';
-import '../widgets/pass_item_province_picker_sheet.dart';
 
 class PassItemsPage extends StatefulWidget {
   const PassItemsPage({super.key});
@@ -28,19 +26,17 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   Timer? _debounce;
 
   String _category = 'Tất cả';
-  String _provinceId = PassItemProvince.defaultId;
+  static const _provinceId = 'dn';
   String _keyword = '';
   bool _loading = true;
   List<PassItemPost> _browse = const [];
   List<PassItemPost> _mine = const [];
   List<PassItemPost> _favorites = const [];
 
-  PassItemProvince get _province => PassItemProvince.resolve(_provinceId);
-
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _load();
   }
 
   @override
@@ -50,13 +46,6 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
     _searchCtrl.dispose();
     _categoryScrollCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _bootstrap() async {
-    final saved = await loadPassItemsProvinceId();
-    if (!mounted) return;
-    setState(() => _provinceId = saved);
-    await _load();
   }
 
   Future<void> _load() async {
@@ -73,15 +62,6 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
       _favorites  = results[2];
       _loading    = false;
     });
-  }
-
-  Future<void> _pickProvince() async {
-    final picked = await showPassItemProvincePicker(context, selectedId: _provinceId);
-    if (picked == null || picked == _provinceId) return;
-    await savePassItemsProvinceId(picked);
-    if (!mounted) return;
-    setState(() => _provinceId = picked);
-    _load();
   }
 
   Future<void> _openCreate() async {
@@ -104,7 +84,19 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         elevation: 0,
         scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: c.onSurface),
-        title: Text('Chợ sinh viên', style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w800)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Chợ sinh viên', style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w800, fontSize: 18)),
+            Row(
+              children: [
+                Icon(Icons.location_on, size: 12, color: c.primary),
+                const SizedBox(width: 3),
+                Text('Đà Nẵng', style: TextStyle(color: c.primary, fontWeight: FontWeight.w600, fontSize: 12)),
+              ],
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tab,
           labelColor: c.primary,
@@ -141,15 +133,6 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   Widget _browseTab(UniMoveColors c) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-          child: Row(
-            children: [
-              _provinceSelector(c),
-              const Spacer(),
-            ],
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: ShadInput(
@@ -205,33 +188,6 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                     ),
         ),
       ],
-    );
-  }
-
-  Widget _provinceSelector(UniMoveColors c) {
-    return GestureDetector(
-      onTap: _pickProvince,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: c.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.location_on, color: c.primary, size: 16),
-            const SizedBox(width: 6),
-            Text(
-              _province.label,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.onSurface),
-            ),
-            const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down, color: c.primary, size: 18),
-          ],
-        ),
-      ),
     );
   }
 
@@ -488,15 +444,11 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              'Chưa có tin tại ${_province.label}.\nThử đổi tỉnh/thành phố hoặc đăng tin mới.',
+              'Chưa có tin nào tại Đà Nẵng.\nHãy là người đầu tiên đăng tin!',
               textAlign: TextAlign.center,
               style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w600, height: 1.4),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Center(
-          child: TextButton(onPressed: _pickProvince, child: const Text('Chọn tỉnh / thành phố khác')),
         ),
       ],
     );

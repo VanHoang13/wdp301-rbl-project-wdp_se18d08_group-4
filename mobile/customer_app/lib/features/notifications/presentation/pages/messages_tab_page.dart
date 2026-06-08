@@ -64,7 +64,7 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
             child: Builder(
               builder: (_) {
                 final displayItems = widget.showTitle
-                    ? _items
+                    ? _items.where((n) => n.type == AppNotificationType.marketplaceMessage).toList()
                     : _items.where((n) => n.type != AppNotificationType.marketplaceMessage).toList();
                 return displayItems.isEmpty
                 ? _emptyState(c)
