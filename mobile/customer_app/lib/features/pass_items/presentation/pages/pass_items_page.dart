@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -23,6 +25,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   late final TabController _tab = TabController(length: 3, vsync: this);
   final _searchCtrl = TextEditingController();
   final _categoryScrollCtrl = ScrollController();
+  Timer? _debounce;
 
   String _category = 'Tất cả';
   String _provinceId = PassItemProvince.defaultId;
@@ -42,6 +45,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _tab.dispose();
     _searchCtrl.dispose();
     _categoryScrollCtrl.dispose();
@@ -154,7 +158,8 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
             leading: Icon(LucideIcons.search, size: 18, color: c.primary),
             onChanged: (v) {
               _keyword = v;
-              _load();
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 400), _load);
             },
           ),
         ),
@@ -661,18 +666,36 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                 ],
                 const Spacer(),
                 _statusBadge(c, post.status),
-                const SizedBox(width: 8),
-                PopupMenuButton<PassItemStatus>(
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
                   icon: Icon(Icons.more_horiz, color: c.onSurfaceMuted),
-                  onSelected: (s) async {
-                    await _repo.updateStatus(post.id, s);
-                    _load();
+                  onSelected: (action) async {
+                    if (action == 'bump') {
+                      _bumpListing(post);
+                    } else {
+                      final s = {
+                        'reserved': PassItemStatus.reserved,
+                        'completed': PassItemStatus.completed,
+                        'hidden': PassItemStatus.hidden,
+                        'open': PassItemStatus.open,
+                      }[action];
+                      if (s != null) { await _repo.updateStatus(post.id, s); _load(); }
+                    }
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: PassItemStatus.reserved, child: Text('Đang chờ chốt đơn')),
-                    PopupMenuItem(value: PassItemStatus.completed, child: Text('Đã hoàn tất giao dịch')),
-                    PopupMenuItem(value: PassItemStatus.hidden, child: Text('Ẩn tin đăng')),
-                    PopupMenuItem(value: PassItemStatus.open, child: Text('Đăng lại tin')),
+                  itemBuilder: (_) => [
+                    if (post.status == PassItemStatus.open || post.status == PassItemStatus.reserved)
+                      const PopupMenuItem(
+                        value: 'bump',
+                        child: Row(children: [
+                          Icon(Icons.rocket_launch_rounded, size: 16),
+                          SizedBox(width: 8),
+                          Text('Đẩy tin lên đầu'),
+                        ]),
+                      ),
+                    const PopupMenuItem(value: 'reserved', child: Text('Đang chờ chốt đơn')),
+                    const PopupMenuItem(value: 'completed', child: Text('Đã hoàn tất giao dịch')),
+                    const PopupMenuItem(value: 'hidden', child: Text('Ẩn tin đăng')),
+                    const PopupMenuItem(value: 'open', child: Text('Đăng lại tin')),
                   ],
                 ),
               ],
@@ -743,6 +766,22 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
       decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
       child: Text(status.label, style: TextStyle(color: tint, fontWeight: FontWeight.w700, fontSize: 12)),
     );
+  }
+
+  Future<void> _bumpListing(PassItemPost post) async {
+    final err = await _repo.bumpListing(post.id);
+    if (!mounted) return;
+    if (err != null) {
+      final msg = err.contains('too_many_requests') || err.contains('24h')
+          ? 'Chỉ được đẩy tin 1 lần / 24 giờ'
+          : 'Không thể đẩy tin lúc này';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('🚀 Đã đẩy tin lên đầu!')),
+      );
+      _load();
+    }
   }
 
   Widget _empty(UniMoveColors c, String text) {

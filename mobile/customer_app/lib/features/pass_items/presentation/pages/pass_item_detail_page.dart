@@ -53,6 +53,7 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
     setState(() {
       _post = post;
       _interestedBuyers = buyers;
+      _interested = post?.isInterested ?? false;
       _loading = false;
     });
   }
@@ -146,6 +147,18 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
                       _buyerTransportCard(c, post)
                     else
                       _buyerAwaitDealCard(c),
+                    if (post.buyerTransportBooked && post.status == PassItemStatus.reserved) ...[
+                      const SizedBox(height: 12),
+                      _confirmReceivedCard(c, post),
+                    ],
+                    if (post.status == PassItemStatus.completed && !post.isRated) ...[
+                      const SizedBox(height: 12),
+                      _ratingCard(c, post),
+                    ],
+                    if (post.status == PassItemStatus.completed && post.isRated) ...[
+                      const SizedBox(height: 12),
+                      _ratedDoneCard(c),
+                    ],
                     const SizedBox(height: 18),
                     _sellerCard(c, post),
                   ],
@@ -654,6 +667,203 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
     }
   }
 
+  Widget _confirmReceivedCard(UniMoveColors c, PassItemPost post) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.primary.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.inventory_2_outlined, color: c.primary, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Xe đang trên đường',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: c.onSurface)),
+                const SizedBox(height: 2),
+                Text('Nhấn khi bạn đã nhận được đồ để hoàn tất giao dịch',
+                    style: TextStyle(fontSize: 12, color: c.onSurfaceMuted)),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => _confirmReceived(post),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: c.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Đã nhận đồ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmReceived(PassItemPost post) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Xác nhận đã nhận đồ?'),
+        content: const Text('Thao tác này sẽ hoàn tất giao dịch và thông báo cho người bán. Không thể hoàn tác.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xác nhận'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.confirmReceived(post.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Giao dịch hoàn tất! Hãy để lại đánh giá cho người bán.')),
+        );
+        _load();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể xác nhận — thử lại sau')),
+        );
+      }
+    }
+  }
+
+  Widget _ratingCard(UniMoveColors c, PassItemPost post) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.success.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.star_rounded, color: Colors.amber, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Giao dịch hoàn tất!',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: c.onSurface)),
+                const SizedBox(height: 2),
+                Text('Đánh giá trải nghiệm với ${post.posterName}',
+                    style: TextStyle(fontSize: 12, color: c.onSurfaceMuted)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _showRatingDialog(post),
+            child: Text('Đánh giá', style: TextStyle(color: c.primary, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ratedDoneCard(UniMoveColors c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.success.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_rounded, color: c.success, size: 20),
+          const SizedBox(width: 10),
+          Text('Bạn đã đánh giá giao dịch này',
+              style: TextStyle(fontSize: 13, color: c.success, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRatingDialog(PassItemPost post) async {
+    int stars = 0;
+    final commentCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text('Đánh giá ${post.posterName}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Chọn số sao:', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (i) => GestureDetector(
+                  onTap: () => setS(() => stars = i + 1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      i < stars ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: Colors.amber, size: 36,
+                    ),
+                  ),
+                )),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: commentCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Nhận xét (tuỳ chọn)...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.all(10),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Bỏ qua'),
+            ),
+            ElevatedButton(
+              onPressed: stars == 0 ? null : () async {
+                Navigator.pop(ctx);
+                try {
+                  await _repo.rateTransaction(post.id, stars, commentCtrl.text);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('✅ Cảm ơn bạn đã đánh giá!')),
+                    );
+                    _load();
+                  }
+                } catch (_) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Không thể gửi đánh giá')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Gửi đánh giá'),
+            ),
+          ],
+        ),
+      ),
+    );
+    commentCtrl.dispose();
+  }
+
   Widget _sellerCard(UniMoveColors c, PassItemPost post) {
     final hasAvatar = post.posterAvatarUrl != null && post.posterAvatarUrl!.isNotEmpty;
     return Container(
@@ -831,7 +1041,6 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
     }
 
     final available = post.status == PassItemStatus.open || post.status == PassItemStatus.reserved;
-    final ctaLabel = _interested ? 'Đã quan tâm' : 'Tôi muốn nhận';
 
     return SafeArea(
       top: false,
@@ -863,52 +1072,76 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
             Expanded(
               child: SizedBox(
                 height: 44,
-                child: ElevatedButton(
-                  onPressed: available && !_interested
-                      ? () async {
-                          await _repo.expressInterest(post.id);
-                          if (!mounted) return;
-                          setState(() => _interested = true);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Đã gửi quan tâm — người đăng sẽ liên hệ bạn')),
-                          );
-                          _load();
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: c.primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: c.border,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _interested ? LucideIcons.check : LucideIcons.heart,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          ctaLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                child: _interested
+                    ? OutlinedButton.icon(
+                        onPressed: () => _toggleInterest(post, remove: true),
+                        icon: Icon(Icons.favorite_rounded, size: 16, color: c.primary),
+                        label: const Text('Đã quan tâm', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: c.primary,
+                          side: BorderSide(color: c.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      )
+                    : ElevatedButton(
+                        onPressed: available ? () => _toggleInterest(post, remove: false) : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: c.primary,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: c.border,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.favorite_border_rounded, size: 16, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Tôi muốn nhận',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _toggleInterest(PassItemPost post, {required bool remove}) async {
+    try {
+      if (remove) {
+        await _repo.removeInterest(post.id);
+        if (!mounted) return;
+        setState(() => _interested = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã bỏ quan tâm')),
+        );
+      } else {
+        await _repo.expressInterest(post.id);
+        if (!mounted) return;
+        setState(() => _interested = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã gửi quan tâm — người đăng sẽ liên hệ bạn')),
+        );
+      }
+      _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Thao tác thất bại — thử lại sau')),
+        );
+      }
+    }
   }
 
   Widget _compactIconBtn(UniMoveColors c, IconData icon, {required VoidCallback onTap}) {

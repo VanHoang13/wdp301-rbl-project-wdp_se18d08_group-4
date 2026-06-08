@@ -7,6 +7,8 @@ import '../../../orders/data/customer_orders_repository.dart';
 import '../../../orders/domain/order_models.dart';
 import '../../../../core/auth/auth_token_storage.dart';
 import '../../../auth/data/customer_auth_repository.dart';
+import '../../../notifications/data/notifications_repository.dart';
+import '../../../notifications/presentation/pages/messages_tab_page.dart';
 import '../../../booking/presentation/cubit/booking_flow_cubit.dart';
 import '../../../chat/domain/active_chat_context.dart';
 import '../../../../core/mock/mock_auth_session.dart';
@@ -25,11 +27,19 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String _userName = '';
+  int _unreadCount = 0;
+  final _notifRepo = NotificationsRepository();
 
   @override
   void initState() {
     super.initState();
     _loadProfileName();
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final count = await _notifRepo.unreadCount();
+    if (mounted) setState(() => _unreadCount = count);
   }
 
   static String _greetingFirstName(String fullName) {
@@ -135,12 +145,56 @@ class _HomePageState extends State<HomePage> {
             Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () {},
+                onTap: () async {
+                  await Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        backgroundColor: c.background,
+                        appBar: AppBar(
+                          backgroundColor: c.background,
+                          elevation: 0,
+                          scrolledUnderElevation: 0,
+                          surfaceTintColor: Colors.transparent,
+                          iconTheme: IconThemeData(color: c.onSurface),
+                          title: Text('Thông báo',
+                              style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w700)),
+                        ),
+                        body: const MessagesTabPage(showTitle: false),
+                      ),
+                    ),
+                  );
+                  _loadUnreadCount();
+                },
                 customBorder: const CircleBorder(),
                 child: SizedBox(
                   width: 40,
                   height: 40,
-                  child: Icon(Icons.notifications_outlined, color: c.primary),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Center(child: Icon(Icons.notifications_outlined, color: c.primary)),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _unreadCount > 99 ? '99+' : '$_unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -150,22 +150,67 @@ async function getListing(listingId, userId) {
     .eq('listing_id', listingId);
 
   let isInterested = false;
+  let isRated = false;
   if (userId) {
-    const { data: mine } = await supabaseAdmin
-      .from('marketplace_interests')
-      .select('id')
-      .eq('listing_id', listingId)
-      .eq('buyer_id', userId)
-      .single();
+    const [{ data: mine }, { data: rating }] = await Promise.all([
+      supabaseAdmin.from('marketplace_interests').select('id').eq('listing_id', listingId).eq('buyer_id', userId).single(),
+      supabaseAdmin.from('marketplace_ratings').select('id').eq('listing_id', listingId).eq('buyer_id', userId).single(),
+    ]);
     isInterested = !!mine;
+    isRated      = !!rating;
   }
 
   return {
     ...data,
     interest_count: interestCount || 0,
     is_interested:  isInterested,
+    is_rated:       isRated,
     is_mine:        data.profiles?.id === userId,
   };
+}
+
+/** POST /api/marketplace/listings/:id/rating */
+async function createRating(listingId, buyerId, ratingValue, comment) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, deal_confirmed, confirmed_buyer_id, transport_booked')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id === buyerId) throw httpError(400, 'Không thể tự đánh giá', 'validation_error');
+  if (!listing.deal_confirmed || listing.confirmed_buyer_id !== buyerId) {
+    throw httpError(403, 'Chỉ người mua được chốt đơn mới đánh giá được', 'forbidden');
+  }
+  if (!listing.transport_booked) {
+    throw httpError(400, 'Cần đặt xe trước khi đánh giá', 'validation_error');
+  }
+  if (ratingValue < 1 || ratingValue > 5) throw httpError(400, 'Rating phải từ 1–5', 'validation_error');
+
+  const { error } = await supabaseAdmin
+    .from('marketplace_ratings')
+    .upsert(
+      { listing_id: listingId, buyer_id: buyerId, seller_id: listing.owner_id,
+        rating: ratingValue, comment: comment || null },
+      { onConflict: 'listing_id,buyer_id' }
+    );
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return { listing_id: listingId, rating: ratingValue };
+}
+
+/** GET /api/marketplace/seller/:sellerId/stats */
+async function getSellerStats(sellerId) {
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_ratings')
+    .select('rating')
+    .eq('seller_id', sellerId);
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  if (!data || data.length === 0) return { avg_rating: null, review_count: 0 };
+
+  const avg = data.reduce((s, r) => s + r.rating, 0) / data.length;
+  return { avg_rating: Math.round(avg * 10) / 10, review_count: data.length };
 }
 
 /** API-064 — PATCH /api/marketplace/listings/:id/status */
@@ -219,6 +264,24 @@ async function expressInterest(listingId, userId, body) {
     .from('marketplace_interests')
     .select('id', { count: 'exact', head: true })
     .eq('listing_id', listingId);
+
+  // Lấy tên buyer để gửi thông báo cho seller
+  const { data: buyer } = await supabaseAdmin
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .single();
+
+  const buyerName = buyer?.full_name || 'Ai đó';
+
+  // Notify seller
+  createNotification(
+    listing.owner_id,
+    'marketplace_interest',
+    `❤️ ${buyerName} quan tâm tin của bạn`,
+    `${buyerName} vừa bấm "Tôi muốn nhận". Hãy nhắn tin để thỏa thuận!`,
+    { listingId, actionData: { listing_id: listingId, buyer_id: userId }, priority: 'normal' },
+  );
 
   return { listing_id: listingId, interest_count: count || 0 };
 }
@@ -554,6 +617,38 @@ async function markTransportBooked(listingId, buyerId) {
   return updated;
 }
 
+/** POST /api/marketplace/listings/:id/confirm-received */
+async function confirmReceived(listingId, buyerId) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, status, deal_confirmed, confirmed_buyer_id, transport_booked')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.confirmed_buyer_id !== buyerId) throw httpError(403, 'Chỉ người mua được chốt đơn mới xác nhận nhận đồ được', 'forbidden');
+  if (!listing.transport_booked) throw httpError(400, 'Cần đặt xe trước khi xác nhận nhận đồ', 'validation_error');
+  if (listing.status === 'closed') return { listing_id: listingId, status: 'closed' };
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({ status: 'closed' })
+    .eq('id', listingId)
+    .select('id, status')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  // Notify seller
+  createNotification(listing.owner_id, 'marketplace_item_received',
+    '✅ Người mua đã nhận đồ!',
+    'Giao dịch hoàn tất. Bạn có thể đăng tin mới hoặc chờ đánh giá từ người mua.',
+    { listingId, actionData: { listing_id: listingId }, priority: 'high' },
+  );
+
+  return updated;
+}
+
 // ── Batch 5 — Yêu thích ──────────────────────────────────────────────────────
 
 /** GET /api/marketplace/my-interests */
@@ -592,10 +687,44 @@ async function removeInterest(listingId, userId) {
   return { listing_id: listingId };
 }
 
+// ── Bump listing ──────────────────────────────────────────────────────────────
+
+/** POST /api/marketplace/listings/:id/bump */
+async function bumpListing(listingId, userId) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, status, bumped_at')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id !== userId) throw httpError(403, 'Chỉ người đăng mới đẩy được tin', 'forbidden');
+  if (!['active', 'reserved'].includes(listing.status)) throw httpError(400, 'Chỉ đẩy được tin đang mở hoặc đang giữ', 'invalid_status');
+
+  // Giới hạn 1 lần bump / 24h
+  if (listing.bumped_at) {
+    const hoursSince = (Date.now() - new Date(listing.bumped_at).getTime()) / 3_600_000;
+    if (hoursSince < 24) {
+      const hoursLeft = Math.ceil(24 - hoursSince);
+      throw httpError(429, `Bạn chỉ được đẩy tin 1 lần / 24h. Còn ${hoursLeft} giờ nữa.`, 'too_many_requests');
+    }
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({ created_at: now, bumped_at: now })
+    .eq('id', listingId);
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return { listing_id: listingId, bumped_at: now };
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
-  confirmDeal, cancelDeal, markTransportBooked,
-  getMyInterests,
+  confirmDeal, cancelDeal, markTransportBooked, confirmReceived,
+  getMyInterests, bumpListing,
+  createRating, getSellerStats,
 };

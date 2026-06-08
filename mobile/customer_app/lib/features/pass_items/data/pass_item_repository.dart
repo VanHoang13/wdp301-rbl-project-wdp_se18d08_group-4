@@ -88,6 +88,8 @@ class PassItemRepository {
       dealConfirmed: j['deal_confirmed'] as bool? ?? false,
       confirmedPrice: (j['confirmed_price'] as num?)?.toInt(),
       buyerTransportBooked: j['transport_booked'] as bool? ?? false,
+      isRated: j['is_rated'] as bool? ?? false,
+      isInterested: j['is_interested'] as bool? ?? false,
     );
   }
 
@@ -191,6 +193,39 @@ class PassItemRepository {
     final post = _fromJson(Map<String, dynamic>.from(envelope['data'] as Map), myId: myId);
     _cache.insert(0, post);
     return post;
+  }
+
+  // ── Rating ───────────────────────────────────────────────────────────────
+
+  Future<void> rateTransaction(String listingId, int rating, String? comment) async {
+    await _api.guard(() => _api.post('/marketplace/listings/$listingId/rating', body: {
+      'rating': rating,
+      if (comment != null && comment.isNotEmpty) 'comment': comment,
+    }));
+  }
+
+  Future<void> confirmReceived(String listingId) async {
+    await _api.guard(() => _api.post('/marketplace/listings/$listingId/confirm-received', body: {}));
+  }
+
+  Future<Map<String, dynamic>> sellerStats(String sellerId) async {
+    try {
+      final envelope = await _api.guard(() => _api.get('/marketplace/seller/$sellerId/stats'));
+      return (envelope['data'] as Map?)?.cast<String, dynamic>() ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ── Bump listing ─────────────────────────────────────────────────────────
+
+  Future<String?> bumpListing(String id) async {
+    try {
+      await _api.guard(() => _api.post('/marketplace/listings/$id/bump', body: {}));
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   // ── API-064: Đổi trạng thái tin ──────────────────────────────────────────

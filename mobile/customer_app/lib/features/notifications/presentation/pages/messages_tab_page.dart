@@ -10,7 +10,9 @@ import '../../domain/notification_models.dart';
 import 'notification_detail_page.dart';
 /// Tab Tin nhắn — thông báo ưu đãi / voucher / hệ thống (Grab-style).
 class MessagesTabPage extends StatefulWidget {
-  const MessagesTabPage({super.key});
+  const MessagesTabPage({super.key, this.showTitle = true});
+
+  final bool showTitle;
 
   @override
   State<MessagesTabPage> createState() => _MessagesTabPageState();
@@ -50,15 +52,21 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 8.h),
-            child: Text(
-              'Tin nhắn',
-              style: theme.textTheme.h2.copyWith(fontWeight: FontWeight.w800),
+          if (widget.showTitle)
+            Padding(
+              padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 8.h),
+              child: Text(
+                'Tin nhắn',
+                style: theme.textTheme.h2.copyWith(fontWeight: FontWeight.w800),
+              ),
             ),
-          ),
           Expanded(
-            child: _items.isEmpty
+            child: Builder(
+              builder: (_) {
+                final displayItems = widget.showTitle
+                    ? _items
+                    : _items.where((n) => n.type != AppNotificationType.marketplaceMessage).toList();
+                return displayItems.isEmpty
                 ? _emptyState(c)
                 : RefreshIndicator(
                     color: c.primary,
@@ -66,10 +74,10 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
                     child: ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                       padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 120.h),
-                      itemCount: _items.length,
+                      itemCount: displayItems.length,
                       separatorBuilder: (_, __) => Divider(height: 1, color: c.glassBorder),
                       itemBuilder: (context, i) {
-                        final n = _items[i];
+                        final n = displayItems[i];
                         return _NotificationTile(
                           notification: n,
                           onTap: () async {
@@ -77,11 +85,14 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
                             if (!n.isRead) {
                               _repo.markAsRead(n.id);
                               setState(() {
-                                _items[i] = AppNotification(
-                                  id: n.id, type: n.type, title: n.title,
-                                  body: n.body, createdAt: n.createdAt, isRead: true,
-                                  icon: n.icon, listingId: n.listingId, buyerId: n.buyerId,
-                                );
+                                final idx = _items.indexWhere((x) => x.id == n.id);
+                                if (idx != -1) {
+                                  _items[idx] = AppNotification(
+                                    id: n.id, type: n.type, title: n.title,
+                                    body: n.body, createdAt: n.createdAt, isRead: true,
+                                    icon: n.icon, listingId: n.listingId, buyerId: n.buyerId,
+                                  );
+                                }
                               });
                             }
                             if (!context.mounted) return;
@@ -90,7 +101,7 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
                               final route = n.type == AppNotificationType.marketplaceMessage && n.buyerId != null
                                   ? '/pass-items/${n.listingId}/chat?buyer=${n.buyerId}'
                                   : '/pass-items/${n.listingId}';
-                              context.push(route);
+                              if (context.mounted) context.push(route);
                             } else {
                               await Navigator.of(context, rootNavigator: true).push<void>(
                                 MaterialPageRoute(
@@ -103,7 +114,9 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
                         );
                       },
                     ),
-                  ),
+                  );
+              },
+            ),
           ),
         ],
       ),
@@ -161,6 +174,7 @@ class _NotificationTile extends StatelessWidget {
     if (n.type == AppNotificationType.marketplaceDealConfirmed) return Icons.handshake_outlined;
     if (n.type == AppNotificationType.marketplaceDealCancelled) return Icons.cancel_outlined;
     if (n.type == AppNotificationType.marketplaceTransportBooked) return Icons.local_shipping_outlined;
+    if (n.type == AppNotificationType.marketplaceInterest) return Icons.favorite_rounded;
     return switch (n.icon) {
       'gift'   => Icons.card_giftcard_rounded,
       'star'   => Icons.star_rounded,
@@ -177,6 +191,7 @@ class _NotificationTile extends StatelessWidget {
         AppNotificationType.marketplaceDealConfirmed    => c.success,
         AppNotificationType.marketplaceDealCancelled    => c.accentGreen,
         AppNotificationType.marketplaceTransportBooked  => c.primary,
+        AppNotificationType.marketplaceInterest         => Colors.pinkAccent,
         _                                               => c.onSurfaceMuted,
       };
 

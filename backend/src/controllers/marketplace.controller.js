@@ -122,10 +122,44 @@ async function removeInterest(req, res, next) {
   } catch (error) { next(error); }
 }
 
+/** POST /api/marketplace/listings/:id/rating */
+async function createRating(req, res, next) {
+  try {
+    const { rating, comment } = req.body;
+    const data = await marketplaceService.createRating(req.params.id, req.user.id, rating, comment);
+    res.status(201).json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** GET /api/marketplace/seller/:sellerId/stats */
+async function getSellerStats(req, res, next) {
+  try {
+    const data = await marketplaceService.getSellerStats(req.params.sellerId);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** POST /api/marketplace/listings/:id/confirm-received */
+async function confirmReceived(req, res, next) {
+  try {
+    const data = await marketplaceService.confirmReceived(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** POST /api/marketplace/listings/:id/bump */
+async function bumpListing(req, res, next) {
+  try {
+    const data = await marketplaceService.bumpListing(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
-  confirmDeal, cancelDeal, markTransportBooked,
-  getMyInterests,
+  confirmDeal, cancelDeal, markTransportBooked, confirmReceived,
+  getMyInterests, bumpListing,
+  createRating, getSellerStats,
 };
