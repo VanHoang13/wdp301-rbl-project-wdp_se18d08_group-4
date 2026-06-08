@@ -30,6 +30,7 @@ class PassItemPost {
     this.provinceId = '',
     required this.price,
     required this.imageUrl,
+    this.images = const [],
     required this.usageDuration,
     required this.posterName,
     required this.posterContact,
@@ -58,6 +59,9 @@ class PassItemPost {
   /// 0 = tặng miễn phí.
   final int price;
   final String imageUrl;
+
+  /// Tất cả ảnh; [imageUrl] là ảnh bìa (phần tử đầu tiên).
+  final List<String> images;
 
   /// Thời gian đã sử dụng (vd "6 tháng").
   final String usageDuration;
@@ -93,6 +97,7 @@ class PassItemPost {
     String? provinceId,
     int? price,
     String? imageUrl,
+    List<String>? images,
     String? usageDuration,
     PassItemStatus? status,
     bool? isNegotiable,
@@ -112,6 +117,7 @@ class PassItemPost {
       provinceId: provinceId ?? this.provinceId,
       price: price ?? this.price,
       imageUrl: imageUrl ?? this.imageUrl,
+      images: images ?? this.images,
       usageDuration: usageDuration ?? this.usageDuration,
       posterName: posterName,
       posterContact: posterContact,

@@ -5,11 +5,14 @@ const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', '
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
 
+const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
 /** API-062 — POST /api/marketplace/listings */
 async function createListing(userId, body) {
-  const { title, description, category, condition, area, price, images } = body || {};
+  const { title, description, category, condition, area, price, images, usage_duration } = body || {};
 
   if (!title || !category || !condition || price === undefined) {
     throw httpError(400, 'Thiếu field bắt buộc: title, category, condition, price', 'validation_error');
@@ -32,9 +35,10 @@ async function createListing(userId, body) {
       description: description ? String(description).trim() : null,
       category,
       condition,
-      area:        area ? String(area).trim() : null,
-      price:       Number(price),
-      images:      Array.isArray(images) ? images : [],
+      area:           area ? String(area).trim() : null,
+      price:          Number(price),
+      images:         Array.isArray(images) ? images : [],
+      usage_duration: usage_duration ? String(usage_duration).trim() : null,
       status:      'active',
       fee_paid:    false,
     }])
@@ -50,13 +54,15 @@ async function createListing(userId, body) {
 }
 
 /** API-059 — GET /api/marketplace/listings */
-async function browseListings(query) {
+async function browseListings(query, userId) {
   const { keyword, category, condition, area, min_price, max_price, page = 1, limit = 20 } = query || {};
 
   const pageNum  = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
   const from = (pageNum - 1) * limitNum;
   const to   = from + limitNum - 1;
+
+  const uid = String(userId || '').trim();
 
   let q = supabaseAdmin
     .from('marketplace_listings')
@@ -66,9 +72,17 @@ async function browseListings(query) {
        profiles:owner_id ( id, full_name, avatar_url )`,
       { count: 'exact' }
     )
-    .eq('status', 'active')
     .order('created_at', { ascending: false })
     .range(from, to);
+
+  // active: mọi user; reserved: chỉ người đăng hoặc người mua đã được chốt
+  if (uid) {
+    q = q.or(
+      `status.eq.active,and(status.eq.reserved,or(owner_id.eq.${uid},confirmed_buyer_id.eq.${uid}))`,
+    );
+  } else {
+    q = q.eq('status', 'active');
+  }
 
   if (keyword) q = q.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`);
   if (category && VALID_CATEGORIES.includes(category)) q = q.eq('category', category);
@@ -107,8 +121,19 @@ async function getMyListings(userId, query) {
   const { data, error, count } = await q;
   if (error) throw httpError(500, error.message, 'db_error');
 
+  const listings = data || [];
+
+  // Đếm số khách quan tâm cho từng tin
+  const withCounts = await Promise.all(listings.map(async (l) => {
+    const { count: interestCount } = await supabaseAdmin
+      .from('marketplace_interests')
+      .select('id', { count: 'exact', head: true })
+      .eq('listing_id', l.id);
+    return { ...l, interest_count: interestCount || 0 };
+  }));
+
   return {
-    listings: data || [],
+    listings: withCounts,
     pagination: { total: count || 0, page: pageNum, limit: limitNum, pages: Math.ceil((count || 0) / limitNum) },
   };
 }
@@ -121,7 +146,8 @@ async function getListing(listingId, userId) {
     .from('marketplace_listings')
     .select(`
       id, title, description, category, condition, area,
-      price, images, status, fee_paid, created_at, updated_at,
+      price, images, status, fee_paid, usage_duration, created_at, updated_at,
+      deal_confirmed, confirmed_price, confirmed_buyer_id, transport_booked,
       profiles:owner_id ( id, full_name, avatar_url, phone )
     `)
     .eq('id', listingId)
@@ -389,8 +415,180 @@ async function sendMessage(listingId, buyerId, userId, body) {
   };
 }
 
+// ── Batch 4 ──────────────────────────────────────────────────────────────────
+
+/** API-069 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+async function confirmDeal(listingId, sellerId, buyerId, body) {
+  const { agreed_price } = body || {};
+
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, status, deal_confirmed, transport_booked, price')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id !== sellerId) throw httpError(403, 'Chỉ người đăng mới chốt được', 'forbidden');
+  if (listing.deal_confirmed) throw httpError(400, 'Tin đã được chốt đơn rồi', 'already_confirmed');
+  if (listing.status === 'closed') throw httpError(400, 'Tin đã đóng', 'listing_closed');
+
+  const { data: interest } = await supabaseAdmin
+    .from('marketplace_interests')
+    .select('id')
+    .eq('listing_id', listingId)
+    .eq('buyer_id', buyerId)
+    .single();
+  if (!interest) throw httpError(400, 'Người mua chưa quan tâm tin này', 'buyer_not_interested');
+
+  const confirmedPrice = agreed_price != null && !isNaN(Number(agreed_price)) && Number(agreed_price) > 0
+    ? Number(agreed_price)
+    : null;
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({
+      deal_confirmed:      true,
+      confirmed_buyer_id:  buyerId,
+      confirmed_price:     confirmedPrice,
+      status:              'reserved',
+    })
+    .eq('id', listingId)
+    .select('id, title, status, deal_confirmed, confirmed_price, confirmed_buyer_id, transport_booked')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const conv = await getOrCreateConversation(listingId, buyerId, sellerId);
+  const priceNote = confirmedPrice
+    ? ` — Giá chốt: ${Number(confirmedPrice).toLocaleString('vi-VN')}đ`
+    : '';
+  await supabaseAdmin
+    .from('marketplace_messages')
+    .insert([{
+      conversation_id: conv.id,
+      sender_id:       sellerId,
+      text:            `Người bán đã chốt đơn — bạn có thể đặt xe lấy đồ${priceNote}.`,
+      is_deal_confirm: true,
+    }]);
+
+  return updated;
+}
+
+/** API-070 — DELETE /api/marketplace/listings/:listingId/deal */
+async function cancelDeal(listingId, sellerId) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, deal_confirmed, confirmed_buyer_id, transport_booked')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id !== sellerId) throw httpError(403, 'Chỉ người đăng mới huỷ được', 'forbidden');
+  if (!listing.deal_confirmed) throw httpError(400, 'Tin chưa được chốt đơn', 'not_confirmed');
+  if (listing.transport_booked) throw httpError(400, 'Khách đã đặt xe — không thể huỷ chốt', 'transport_already_booked');
+
+  const buyerId = listing.confirmed_buyer_id;
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({
+      deal_confirmed:     false,
+      confirmed_buyer_id: null,
+      confirmed_price:    null,
+      status:             'active',
+    })
+    .eq('id', listingId)
+    .select('id, title, status, deal_confirmed, confirmed_price, confirmed_buyer_id, transport_booked')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  if (buyerId) {
+    const conv = await getOrCreateConversation(listingId, buyerId, sellerId);
+    await supabaseAdmin
+      .from('marketplace_messages')
+      .insert([{
+        conversation_id: conv.id,
+        sender_id:       sellerId,
+        text:            'Người bán đã huỷ chốt đơn.',
+        is_deal_cancel:  true,
+      }]);
+  }
+
+  return updated;
+}
+
+/** API-071 — POST /api/marketplace/listings/:listingId/transport-booked */
+async function markTransportBooked(listingId, buyerId) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, deal_confirmed, confirmed_buyer_id, transport_booked')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (!listing.deal_confirmed) throw httpError(400, 'Tin chưa được chốt đơn', 'not_confirmed');
+  if (listing.confirmed_buyer_id !== buyerId) throw httpError(403, 'Chỉ người được chốt mới đặt xe được', 'forbidden');
+  if (listing.transport_booked) return { listing_id: listingId, transport_booked: true };
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({ transport_booked: true })
+    .eq('id', listingId)
+    .select('id, transport_booked')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return updated;
+}
+
+/** API-073 — POST /api/marketplace/listings/images (Supabase Storage) */
+async function uploadListingImage(userId, file) {
+  if (!file?.buffer?.length) {
+    throw httpError(400, 'Thiếu file ảnh (field: image)', 'validation_error');
+  }
+
+  const ext = EXT_BY_MIME[file.mimetype];
+  if (!ext) {
+    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+  }
+
+  const objectPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(MARKETPLACE_IMAGES_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+      cacheControl: '3600',
+    });
+
+  if (uploadError) {
+    if (uploadError.message?.includes('Bucket not found')) {
+      throw httpError(
+        500,
+        'Chưa có bucket marketplace-images. Chạy migration 20240125000000_marketplace_images_storage.sql.',
+        'storage_bucket_missing',
+      );
+    }
+    throw httpError(500, uploadError.message, 'storage_error');
+  }
+
+  const { data: urlData } = supabaseAdmin.storage
+    .from(MARKETPLACE_IMAGES_BUCKET)
+    .getPublicUrl(objectPath);
+  const url = urlData?.publicUrl;
+  if (!url) {
+    throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+  }
+
+  return { url };
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest,
   getInterestedBuyers, getMessages, sendMessage,
+  confirmDeal, cancelDeal, markTransportBooked,
+  uploadListingImage,
 };

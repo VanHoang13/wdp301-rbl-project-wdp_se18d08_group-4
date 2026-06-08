@@ -1,4 +1,5 @@
 const marketplaceService = require('../services/marketplace.service');
+const { httpError } = require('../services/auth.helpers');
 
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,7 @@ async function createListing(req, res, next) {
 /** API-059 — GET /api/marketplace/listings */
 async function browseListings(req, res, next) {
   try {
-    const data = await marketplaceService.browseListings(req.query);
+    const data = await marketplaceService.browseListings(req.query, req.user.id);
     res.json({ success: true, ...data });
   } catch (error) { next(error); }
 }
@@ -78,8 +79,47 @@ async function sendMessage(req, res, next) {
   } catch (error) { next(error); }
 }
 
+// ── Batch 4 ──────────────────────────────────────────────────────────────────
+
+/** API-069 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+async function confirmDeal(req, res, next) {
+  try {
+    const data = await marketplaceService.confirmDeal(req.params.listingId, req.user.id, req.params.buyerId, req.body);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-070 — DELETE /api/marketplace/listings/:listingId/deal */
+async function cancelDeal(req, res, next) {
+  try {
+    const data = await marketplaceService.cancelDeal(req.params.listingId, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-071 — POST /api/marketplace/listings/:listingId/transport-booked */
+async function markTransportBooked(req, res, next) {
+  try {
+    const data = await marketplaceService.markTransportBooked(req.params.listingId, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-073 — POST /api/marketplace/listings/images */
+async function uploadListingImage(req, res, next) {
+  try {
+    if (!req.file) {
+      return next(httpError(400, 'Không có file được upload (field: image)', 'missing_file'));
+    }
+    const data = await marketplaceService.uploadListingImage(req.user.id, req.file);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest,
   getInterestedBuyers, getMessages, sendMessage,
+  confirmDeal, cancelDeal, markTransportBooked,
+  uploadListingImage,
 };

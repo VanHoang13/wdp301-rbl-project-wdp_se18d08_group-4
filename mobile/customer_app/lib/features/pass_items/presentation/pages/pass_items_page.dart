@@ -97,7 +97,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         elevation: 0,
         scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: c.onSurface),
-        title: Text('Chợ pass đồ cũ', style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w800)),
+        title: Text('Chợ sinh viên', style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w800)),
         bottom: TabBar(
           controller: _tab,
           labelColor: c.primary,
@@ -132,8 +132,13 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: _provinceSelector(c),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Row(
+            children: [
+              _provinceSelector(c),
+              const Spacer(),
+            ],
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -169,10 +174,16 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                   ? _emptyBrowse(c)
                   : RefreshIndicator(
                       onRefresh: _load,
-                      child: ListView.builder(
+                      child: GridView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.58,
+                        ),
                         itemCount: _browse.length,
-                        itemBuilder: (_, i) => _listingCard(c, _browse[i]),
+                        itemBuilder: (_, i) => _gridCard(c, _browse[i]),
                       ),
                     ),
         ),
@@ -181,38 +192,27 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   }
 
   Widget _provinceSelector(UniMoveColors c) {
-    return Material(
-      color: c.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: _pickProvince,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.border),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.location_on_outlined, color: c.primary, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Đang xem tin tại', style: TextStyle(fontSize: 11, color: c.onSurfaceMuted)),
-                    Text(
-                      _province.label,
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: c.onSurface),
-                    ),
-                  ],
-                ),
-              ),
-              Text('Đổi', style: TextStyle(fontWeight: FontWeight.w700, color: c.primary)),
-              Icon(Icons.chevron_right, color: c.primary, size: 20),
-            ],
-          ),
+    return GestureDetector(
+      onTap: _pickProvince,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: c.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.location_on, color: c.primary, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              _province.label,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: c.onSurface),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down, color: c.primary, size: 18),
+          ],
         ),
       ),
     );
@@ -356,6 +356,83 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
     );
   }
 
+  Widget _gridCard(UniMoveColors c, PassItemPost post) {
+    return Material(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
+          await context.push('/pass-items/${post.id}');
+          _load();
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Ảnh
+            AspectRatio(
+              aspectRatio: 1,
+              child: PassItemImage(
+                imageUrl: post.imageUrl,
+                fit: BoxFit.cover,
+                errorPlaceholder: Container(
+                  color: c.surfaceTint,
+                  child: Icon(Icons.inventory_2_outlined, color: c.onSurfaceMuted, size: 32),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.onSurface, height: 1.3),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    passItemPriceLabel(post),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: post.isFree ? c.success : c.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Flexible(child: _tag(c, post.condition.label)),
+                      const SizedBox(width: 4),
+                      Flexible(child: _tag(c, post.category)),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Icon(Icons.place_outlined, size: 11, color: c.onSurfaceMuted),
+                      const SizedBox(width: 2),
+                      Expanded(
+                        child: Text(
+                          post.area,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: c.onSurfaceMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _tag(UniMoveColors c, String text, {bool accent = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -473,10 +550,10 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                     _load();
                   },
                   itemBuilder: (_) => const [
-                    PopupMenuItem(value: PassItemStatus.reserved, child: Text('Đánh dấu đang giữ chỗ')),
-                    PopupMenuItem(value: PassItemStatus.completed, child: Text('Đã pass xong')),
-                    PopupMenuItem(value: PassItemStatus.hidden, child: Text('Ẩn tin')),
-                    PopupMenuItem(value: PassItemStatus.open, child: Text('Mở lại tin')),
+                    PopupMenuItem(value: PassItemStatus.reserved, child: Text('Đang chờ chốt đơn')),
+                    PopupMenuItem(value: PassItemStatus.completed, child: Text('Đã hoàn tất giao dịch')),
+                    PopupMenuItem(value: PassItemStatus.hidden, child: Text('Ẩn tin đăng')),
+                    PopupMenuItem(value: PassItemStatus.open, child: Text('Đăng lại tin')),
                   ],
                 ),
               ],

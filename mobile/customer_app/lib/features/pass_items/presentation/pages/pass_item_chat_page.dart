@@ -215,7 +215,7 @@ class _PassItemChatPageState extends State<PassItemChatPage> {
     if (agreed == null || !mounted) return;
 
     final price = agreed == -1 ? null : agreed;
-    final ok = await _repo.confirmDeal(widget.id, agreedPrice: price);
+    final ok = await _repo.confirmDeal(widget.id, agreedPrice: price, buyerId: widget.buyerId);
     if (!mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(

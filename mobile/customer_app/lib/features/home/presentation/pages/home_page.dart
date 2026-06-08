@@ -252,10 +252,10 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: _SmallServiceCard(
                           colors: c,
-                          icon: Icons.recycling_outlined,
-                          useSecondaryIconBg: true,
-                          title: 'Pass đồ cũ',
-                          subtitle: 'Đăng tin · đối tác đến lấy',
+                          icon: Icons.storefront,
+                          useSecondaryIconBg: false,
+                          title: 'Chợ sinh viên',
+                          subtitle: 'Mua bán đồ · sinh viên tin nhau',
                           onTap: () => context.push('/pass-items'),
                         ),
                       ),

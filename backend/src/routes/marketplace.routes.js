@@ -1,6 +1,7 @@
 const express = require('express');
 const marketplaceController = require('../controllers/marketplace.controller');
 const { requireAuth } = require('../middleware/auth.middleware');
+const { handleMarketplaceImageUpload } = require('../middleware/upload.middleware');
 
 const router = express.Router();
 
@@ -11,6 +12,13 @@ router.get('/listings', requireAuth, marketplaceController.browseListings);
 router.get('/my-listings', requireAuth, marketplaceController.getMyListings);
 // API-062 — Đăng tin
 router.post('/listings', requireAuth, marketplaceController.createListing);
+// API-073 — Upload ảnh tin (đặt trước /listings/:id)
+router.post(
+  '/listings/images',
+  requireAuth,
+  handleMarketplaceImageUpload,
+  marketplaceController.uploadListingImage,
+);
 
 // ── Batch 2 ──────────────────────────────────────────────────────────────────
 // API-061 — Chi tiết tin
@@ -27,5 +35,13 @@ router.get('/listings/:id/interests', requireAuth, marketplaceController.getInte
 router.get('/listings/:listingId/conversations/:buyerId/messages', requireAuth, marketplaceController.getMessages);
 // API-068 — Gửi chat
 router.post('/listings/:listingId/conversations/:buyerId/messages', requireAuth, marketplaceController.sendMessage);
+
+// ── Batch 4 ──────────────────────────────────────────────────────────────────
+// API-069 — Chốt đơn
+router.post('/listings/:listingId/conversations/:buyerId/deal', requireAuth, marketplaceController.confirmDeal);
+// API-070 — Huỷ chốt
+router.delete('/listings/:listingId/deal', requireAuth, marketplaceController.cancelDeal);
+// API-071 — Buyer đã đặt xe
+router.post('/listings/:listingId/transport-booked', requireAuth, marketplaceController.markTransportBooked);
 
 module.exports = router;
