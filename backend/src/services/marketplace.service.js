@@ -5,6 +5,9 @@ const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', '
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
 
+const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
 /** API-062 — POST /api/marketplace/listings */
@@ -51,13 +54,15 @@ async function createListing(userId, body) {
 }
 
 /** API-059 — GET /api/marketplace/listings */
-async function browseListings(query) {
+async function browseListings(query, userId) {
   const { keyword, category, condition, area, min_price, max_price, page = 1, limit = 20 } = query || {};
 
   const pageNum  = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
   const from = (pageNum - 1) * limitNum;
   const to   = from + limitNum - 1;
+
+  const uid = String(userId || '').trim();
 
   let q = supabaseAdmin
     .from('marketplace_listings')
@@ -67,9 +72,17 @@ async function browseListings(query) {
        profiles:owner_id ( id, full_name, avatar_url )`,
       { count: 'exact' }
     )
-    .in('status', ['active', 'reserved'])
     .order('created_at', { ascending: false })
     .range(from, to);
+
+  // active: mọi user; reserved: chỉ người đăng hoặc người mua đã được chốt
+  if (uid) {
+    q = q.or(
+      `status.eq.active,and(status.eq.reserved,or(owner_id.eq.${uid},confirmed_buyer_id.eq.${uid}))`,
+    );
+  } else {
+    q = q.eq('status', 'active');
+  }
 
   if (keyword) q = q.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`);
   if (category && VALID_CATEGORIES.includes(category)) q = q.eq('category', category);
@@ -461,7 +474,7 @@ async function confirmDeal(listingId, sellerId, buyerId, body) {
   return updated;
 }
 
-/** API-070 — DELETE /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+/** API-070 — DELETE /api/marketplace/listings/:listingId/deal */
 async function cancelDeal(listingId, sellerId) {
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
@@ -529,9 +542,53 @@ async function markTransportBooked(listingId, buyerId) {
   return updated;
 }
 
+/** API-073 — POST /api/marketplace/listings/images (Supabase Storage) */
+async function uploadListingImage(userId, file) {
+  if (!file?.buffer?.length) {
+    throw httpError(400, 'Thiếu file ảnh (field: image)', 'validation_error');
+  }
+
+  const ext = EXT_BY_MIME[file.mimetype];
+  if (!ext) {
+    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+  }
+
+  const objectPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(MARKETPLACE_IMAGES_BUCKET)
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+      cacheControl: '3600',
+    });
+
+  if (uploadError) {
+    if (uploadError.message?.includes('Bucket not found')) {
+      throw httpError(
+        500,
+        'Chưa có bucket marketplace-images. Chạy migration 20240125000000_marketplace_images_storage.sql.',
+        'storage_bucket_missing',
+      );
+    }
+    throw httpError(500, uploadError.message, 'storage_error');
+  }
+
+  const { data: urlData } = supabaseAdmin.storage
+    .from(MARKETPLACE_IMAGES_BUCKET)
+    .getPublicUrl(objectPath);
+  const url = urlData?.publicUrl;
+  if (!url) {
+    throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+  }
+
+  return { url };
+}
+
 module.exports = {
   createListing, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
+  uploadListingImage,
 };
