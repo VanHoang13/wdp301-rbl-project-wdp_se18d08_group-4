@@ -24,6 +24,7 @@ import '../../features/payments/presentation/pages/payment_methods_page.dart';
 import '../../features/pass_items/presentation/pages/create_pass_item_page.dart';
 import '../../features/pass_items/presentation/pages/pass_item_chat_page.dart';
 import '../../features/pass_items/presentation/pages/pass_item_detail_page.dart';
+import '../../features/pass_items/presentation/pages/pass_item_seller_page.dart';
 import '../../features/pass_items/presentation/pages/pass_items_page.dart';
 import '../../features/auth/data/customer_auth_repository.dart';
 import '../../features/auth/presentation/pages/forgot_password_page.dart';
@@ -81,6 +82,13 @@ abstract final class AppRouter {
       GoRoute(path: '/booking/partners', builder: (_, __) => const ChoosePartnerPage()),
       GoRoute(path: '/pass-items', builder: (_, __) => const PassItemsPage()),
       GoRoute(path: '/pass-items/new', builder: (_, __) => const CreatePassItemPage()),
+      GoRoute(
+        path: '/pass-items/seller/:sellerId',
+        builder: (_, state) => PassItemSellerPage(
+          sellerId: state.pathParameters['sellerId']!,
+          sellerName: state.uri.queryParameters['name'],
+        ),
+      ),
       GoRoute(
         path: '/pass-items/:id',
         builder: (_, state) => PassItemDetailPage(id: state.pathParameters['id']!),

@@ -79,6 +79,8 @@ class PassItemRepository {
       usageDuration: j['usage_duration'] as String? ?? '',
       posterName: owner['full_name'] as String? ?? '',
       posterContact: owner['phone'] as String? ?? '',
+      posterId: owner['id'] as String? ?? '',
+      posterAvatarUrl: owner['avatar_url'] as String?,
       status: _statusFromApi(j['status'] as String? ?? 'active'),
       createdAt: DateTime.parse(j['created_at'] as String),
       isMine: myId != null && (j['is_mine'] as bool? ?? owner['id'] == myId),
@@ -123,6 +125,17 @@ class PassItemRepository {
     final posts = raw.map((e) => _fromJson(Map<String, dynamic>.from(e as Map), myId: myId)).toList();
     _updateCache(posts);
     return posts;
+  }
+
+  // ── Seller profile: Tin của người bán ───────────────────────────────────
+
+  Future<List<PassItemPost>> browseByOwner(String sellerId) async {
+    final myId = await _myId();
+    final envelope = await _api.guard(
+      () => _api.get('/marketplace/listings', queryParameters: {'seller_id': sellerId}),
+    );
+    final raw = (envelope['listings'] as List?) ?? [];
+    return raw.map((e) => _fromJson(Map<String, dynamic>.from(e as Map), myId: myId)).toList();
   }
 
   // ── API-060: Tin của tôi ─────────────────────────────────────────────────

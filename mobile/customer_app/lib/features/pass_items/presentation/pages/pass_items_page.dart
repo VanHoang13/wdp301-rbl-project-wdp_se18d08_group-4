@@ -22,6 +22,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   final _repo = PassItemRepository();
   late final TabController _tab = TabController(length: 3, vsync: this);
   final _searchCtrl = TextEditingController();
+  final _categoryScrollCtrl = ScrollController();
 
   String _category = 'Tất cả';
   String _provinceId = PassItemProvince.defaultId;
@@ -43,6 +44,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   void dispose() {
     _tab.dispose();
     _searchCtrl.dispose();
+    _categoryScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -122,6 +124,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
       ),
       body: TabBarView(
         controller: _tab,
+        physics: const NeverScrollableScrollPhysics(),
         children: [
           _browseTab(c),
           _favoritesTab(c),
@@ -157,16 +160,22 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         ),
         _filterLabel(c, 'Danh mục'),
         SizedBox(
-          height: 40,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: PassItemCategories.all.length + 1,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final label = i == 0 ? 'Tất cả' : PassItemCategories.all[i - 1];
-              return _categoryChip(c, label);
-            },
+          height: 52,
+          child: Scrollbar(
+            controller: _categoryScrollCtrl,
+            thumbVisibility: true,
+            trackVisibility: true,
+            child: ListView.separated(
+              controller: _categoryScrollCtrl,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+              itemCount: PassItemCategories.all.length + 1,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final label = i == 0 ? 'Tất cả' : PassItemCategories.all[i - 1];
+                return _categoryChip(c, label);
+              },
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -425,6 +434,15 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                           style: TextStyle(fontSize: 11, color: c.onSurfaceMuted),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time_rounded, size: 11, color: c.onSurfaceMuted),
+                      const SizedBox(width: 2),
+                      Text(passItemTimeAgo(post.createdAt),
+                          style: TextStyle(fontSize: 11, color: c.onSurfaceMuted)),
                     ],
                   ),
                 ],

@@ -53,7 +53,7 @@ async function createListing(userId, body) {
 
 /** API-059 — GET /api/marketplace/listings */
 async function browseListings(query) {
-  const { keyword, category, condition, area, min_price, max_price, page = 1, limit = 20 } = query || {};
+  const { keyword, category, condition, area, min_price, max_price, seller_id, page = 1, limit = 20 } = query || {};
 
   const pageNum  = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
@@ -78,6 +78,7 @@ async function browseListings(query) {
   if (area) q = q.ilike('area', `%${area}%`);
   if (min_price !== undefined && !isNaN(Number(min_price))) q = q.gte('price', Number(min_price));
   if (max_price !== undefined && !isNaN(Number(max_price))) q = q.lte('price', Number(max_price));
+  if (seller_id) q = q.eq('owner_id', seller_id);
 
   const { data, error, count } = await q;
   if (error) throw httpError(500, error.message, 'db_error');
