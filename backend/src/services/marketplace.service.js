@@ -630,7 +630,6 @@ async function markTransportBooked(listingId, buyerId) {
   return updated;
 }
 
-<<<<<<< HEAD
 /** POST /api/marketplace/listings/:id/confirm-received */
 async function confirmReceived(listingId, buyerId) {
   const { data: listing } = await supabaseAdmin
