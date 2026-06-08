@@ -8,13 +8,6 @@ class PassItemRepository {
   final ApiClient _api = ApiClient.instance;
   final List<PassItemPost> _cache = [];
 
-  // ID user hiện tại — luôn update khi _myId() được gọi
-  static String? _myIdCache;
-  static String? get currentBuyerId => _myIdCache;
-
-  // Xóa cache khi logout (gọi từ auth flow nếu cần)
-  static void clearCache() => _myIdCache = null;
-
   // ── Mapping helpers ───────────────────────────────────────────────────────
 
   static const _categoryToApi = <String, String>{
@@ -92,11 +85,11 @@ class PassItemRepository {
   }
 
   Future<String?> _myId() async {
-    // Luôn re-fetch để tránh dùng ID của user cũ sau khi logout/login
     final user = await AuthTokenStorage.instance.loadUser();
-    _myIdCache = user?['id'] as String?;
-    return _myIdCache;
+    return user?['id'] as String?;
   }
+
+  Future<String?> currentUserId() => _myId();
 
   void _updateCache(List<PassItemPost> posts) {
     for (final p in posts) {
@@ -312,11 +305,17 @@ class PassItemRepository {
     // Handled server-side khi gọi getMessages
   }
 
-  // ── Upload ảnh (mock — API-073 Batch 5) ──────────────────────────────────
+  // ── API-073: Upload ảnh tin ──────────────────────────────────────────────
 
   Future<String> uploadImage({required String filePath}) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    return filePath;
+    final envelope = await _api.guard(
+      () => _api.uploadFile('/marketplace/listings/images', filePath: filePath, field: 'image'),
+    );
+    final url = envelope['data']?['url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw Exception('Không nhận được URL ảnh từ server');
+    }
+    return url;
   }
 
   // ── API-069: Chốt đơn ────────────────────────────────────────────────────

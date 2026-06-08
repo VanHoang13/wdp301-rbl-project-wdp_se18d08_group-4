@@ -1,4 +1,5 @@
 const marketplaceService = require('../services/marketplace.service');
+const { httpError } = require('../services/auth.helpers');
 
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,7 @@ async function createListing(req, res, next) {
 /** API-059 — GET /api/marketplace/listings */
 async function browseListings(req, res, next) {
   try {
-    const data = await marketplaceService.browseListings(req.query);
+    const data = await marketplaceService.browseListings(req.query, req.user.id);
     res.json({ success: true, ...data });
   } catch (error) { next(error); }
 }
@@ -48,6 +49,14 @@ async function updateListingStatus(req, res, next) {
 async function expressInterest(req, res, next) {
   try {
     const data = await marketplaceService.expressInterest(req.params.id, req.user.id, req.body);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-065b — DELETE /api/marketplace/listings/:id/interest */
+async function removeInterest(req, res, next) {
+  try {
+    const data = await marketplaceService.removeInterest(req.params.id, req.user.id);
     res.json({ success: true, data });
   } catch (error) { next(error); }
 }
@@ -88,7 +97,7 @@ async function confirmDeal(req, res, next) {
   } catch (error) { next(error); }
 }
 
-/** API-070 — DELETE /api/marketplace/listings/:listingId/conversations/:buyerId/deal */
+/** API-070 — DELETE /api/marketplace/listings/:listingId/deal */
 async function cancelDeal(req, res, next) {
   try {
     const data = await marketplaceService.cancelDeal(req.params.listingId, req.user.id);
@@ -114,10 +123,47 @@ async function getMyInterests(req, res, next) {
   } catch (error) { next(error); }
 }
 
-/** DELETE /api/marketplace/listings/:id/interest */
-async function removeInterest(req, res, next) {
+/** POST /api/marketplace/listings/:id/bump */
+async function bumpListing(req, res, next) {
   try {
-    const data = await marketplaceService.removeInterest(req.params.id, req.user.id);
+    const data = await marketplaceService.bumpListing(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** POST /api/marketplace/listings/:id/rating */
+async function createRating(req, res, next) {
+  try {
+    const data = await marketplaceService.createRating(req.params.id, req.user.id, req.body);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** GET /api/marketplace/seller/:sellerId/stats */
+async function getSellerStats(req, res, next) {
+  try {
+    const data = await marketplaceService.getSellerStats(req.params.sellerId);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+// ── UX Improvements ──────────────────────────────────────────────────────────
+
+/** POST /api/marketplace/listings/:id/confirm-received */
+async function confirmReceived(req, res, next) {
+  try {
+    const data = await marketplaceService.confirmReceived(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
+/** API-072 — POST /api/marketplace/listings/images */
+async function uploadListingImage(req, res, next) {
+  try {
+    if (!req.file) {
+      return next(httpError(400, 'Không có file được upload (field: image)', 'missing_file'));
+    }
+    const data = await marketplaceService.uploadListingImage(req.user.id, req.file);
     res.json({ success: true, data });
   } catch (error) { next(error); }
 }
@@ -127,5 +173,6 @@ module.exports = {
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
-  getMyInterests,
+  getMyInterests, bumpListing, createRating, getSellerStats,
+  confirmReceived, uploadListingImage,
 };

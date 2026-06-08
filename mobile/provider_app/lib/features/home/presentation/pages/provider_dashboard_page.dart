@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../../../core/dev/dev_session_bootstrap.dart';
 import '../../../../core/mock/mock_provider_data.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../auth/data/auth_repository.dart';
+import '../../../documents/presentation/providers/documents_providers.dart';
+import '../../../notifications/presentation/providers/notifications_providers.dart';
 import '../../../orders/domain/provider_order.dart';
 import '../../../orders/presentation/providers/orders_providers.dart';
 
@@ -24,6 +28,9 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(providerProfileProvider);
     final ordersAsync = ref.watch(providerOrdersListProvider);
+    final verification = ref.watch(providerVerificationProvider).asData?.value;
+    final canGoOnline = verification?.canGoOnline ?? false;
+    final unreadNotifications = ref.watch(providerUnreadNotificationsProvider).asData?.value ?? 0;
     final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
@@ -31,7 +38,31 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
         return SafeArea(
           child: profileAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Lỗi: $e', style: TextStyle(color: c.onSurface))),
+            error: (e, _) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('Lỗi: $e', textAlign: TextAlign.center, style: TextStyle(color: c.onSurface)),
+                    const SizedBox(height: 16),
+                    ShadButton(
+                      onPressed: () async {
+                        await DevSessionBootstrap.apply();
+                        ref.invalidate(providerProfileProvider);
+                        ref.invalidate(providerOrdersListProvider);
+                      },
+                      child: const Text('Thử lại (phiên demo)'),
+                    ),
+                    const SizedBox(height: 8),
+                    ShadButton.outline(
+                      onPressed: () => context.go('/login'),
+                      child: const Text('Đăng nhập lại'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             data: (profile) {
               final orders = ordersAsync.asData?.value ?? const <ProviderOrder>[];
               final completed = orders.where((o) => o.isCompleted).toList();
@@ -48,9 +79,19 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
                   physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                   children: [
-                    _header(theme, c, profile?.fullName ?? 'Đối tác', profile?.businessName),
+                    _header(
+                      theme,
+                      c,
+                      profile?.fullName ?? 'Đối tác',
+                      profile?.businessName,
+                      unreadNotifications,
+                    ),
+                    if (!canGoOnline) ...[
+                      const SizedBox(height: 12),
+                      _kycBanner(theme, c, verification?.kycStatus.label ?? 'Chưa xác thực'),
+                    ],
                     const SizedBox(height: 16),
-                    _onlineCard(theme, c),
+                    _onlineCard(theme, c, canGoOnline: canGoOnline),
                     const SizedBox(height: 16),
                     _earningsHero(theme, c, earnings, completed.length),
                     const SizedBox(height: 12),
@@ -105,7 +146,13 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
   }
 
   // ---------- Header ----------
-  Widget _header(ShadThemeData theme, UniMoveColors c, String name, String? business) {
+  Widget _header(
+    ShadThemeData theme,
+    UniMoveColors c,
+    String name,
+    String? business,
+    int unreadNotifications,
+  ) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'P';
     return Row(
       children: [
@@ -134,13 +181,39 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
             ],
           ),
         ),
-        _iconButton(c, LucideIcons.calendarClock, () => context.push('/schedule')),
-        const SizedBox(width: 10),
-        _iconButton(c, LucideIcons.bell, () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Chưa có thông báo mới')),
-          );
-        }),
+        _notificationButton(c, unreadNotifications),
+      ],
+    );
+  }
+
+  Widget _notificationButton(UniMoveColors c, int unread) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _iconButton(c, LucideIcons.bell, () => context.push('/notifications')),
+        if (unread > 0)
+          Positioned(
+            right: 2,
+            top: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              decoration: BoxDecoration(
+                color: AppColors.error,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.surface, width: 1.5),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                unread > 9 ? '9+' : '$unread',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -163,8 +236,45 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
     );
   }
 
+  Widget _kycBanner(ShadThemeData theme, UniMoveColors c, String statusLabel) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.push('/documents'),
+        borderRadius: BorderRadius.circular(16),
+        child: GlassCard(
+          padding: const EdgeInsets.all(14),
+          radius: 16,
+          child: Row(
+            children: [
+              Icon(LucideIcons.shieldAlert, color: Colors.orange.shade700, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hoàn tất xác thực giấy tờ',
+                      style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800, color: c.onSurface),
+                    ),
+                    Text(
+                      '$statusLabel · Nhấn để nộp hồ sơ',
+                      style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, color: c.onSurfaceMuted, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ---------- Online toggle ----------
-  Widget _onlineCard(ShadThemeData theme, UniMoveColors c) {
+  Widget _onlineCard(ShadThemeData theme, UniMoveColors c, {required bool canGoOnline}) {
+    final effectiveOnline = canGoOnline && _online;
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       radius: 18,
@@ -174,7 +284,7 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: _online ? c.success : c.onSurfaceMuted,
+              color: effectiveOnline ? c.success : c.onSurfaceMuted,
               shape: BoxShape.circle,
             ),
           ),
@@ -184,25 +294,34 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _online ? 'Đang nhận đơn' : 'Đang nghỉ',
+                  effectiveOnline ? 'Đang nhận đơn' : 'Đang nghỉ',
                   style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w700, color: c.onSurface),
                 ),
                 Text(
-                  _online ? 'Khách có thể thấy và đặt bạn' : 'Bạn sẽ không nhận đơn mới',
+                  canGoOnline
+                      ? (effectiveOnline ? 'Khách có thể thấy và đặt bạn' : 'Bạn sẽ không nhận đơn mới')
+                      : 'Cần xác thực giấy tờ trước khi nhận đơn',
                   style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
                 ),
               ],
             ),
           ),
           Switch.adaptive(
-            value: _online,
+            value: effectiveOnline,
             activeThumbColor: c.primary,
-            onChanged: (v) {
-              setState(() => _online = v);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(v ? 'Đã bật nhận đơn' : 'Đã tạm nghỉ')),
-              );
-            },
+            onChanged: canGoOnline
+                ? (v) {
+                    setState(() => _online = v);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(v ? 'Đã bật nhận đơn' : 'Đã tạm nghỉ')),
+                    );
+                  }
+                : (_) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Hoàn tất xác thực giấy tờ để bật nhận đơn')),
+                    );
+                    context.push('/documents');
+                  },
           ),
         ],
       ),
@@ -361,19 +480,35 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
               const SizedBox(height: 8),
               _routeLine(theme, LucideIcons.mapPin, 'Điểm giao', o.deliveryAddress),
               const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: c.primary,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: c.primary,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => context.push('/orders/${o.id}/tracking'),
+                      child: const Text('Theo dõi GPS', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
                   ),
-                  onPressed: () => context.push('/orders/${o.id}'),
-                  child: const Text('Xem chi tiết đơn', style: TextStyle(fontWeight: FontWeight.w800)),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white70),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => context.push('/orders/${o.id}'),
+                      child: const Text('Chi tiết', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -414,7 +549,7 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: () => context.push('/request/${o.id}'),
+          onTap: () => context.push('/orders/${o.id}'),
           child: GlassCard(
             padding: const EdgeInsets.all(16),
             radius: 18,
