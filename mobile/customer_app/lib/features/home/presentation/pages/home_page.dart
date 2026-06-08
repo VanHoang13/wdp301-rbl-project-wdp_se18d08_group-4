@@ -167,7 +167,7 @@ class _HomePageState extends State<HomePage> {
               FadeSlideIn(
                 delay: const Duration(milliseconds: 140),
                 child: Text(
-                  'So sánh báo giá nhà xe · Đặt cọc an toàn qua UniMove',
+                  'Chuyển trọ thông minh · Mô tả trọ, nhận báo giá minh bạch',
                   style: TextStyle(fontSize: 16, color: c.onSurfaceMuted),
                 ),
               ),
@@ -192,8 +192,8 @@ class _HomePageState extends State<HomePage> {
                 child: _MainServiceCard(
                   colors: c,
                   onTap: () {
-                    context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                    context.push('/booking/packages');
+                    context.read<BookingFlowCubit>().startFullMoveBooking();
+                    context.push('/booking/location');
                   },
                 ),
               ),
@@ -219,8 +219,8 @@ class _HomePageState extends State<HomePage> {
                           colors: c,
                           icon: Icons.route_outlined,
                           useSecondaryIconBg: true,
-                          title: 'Đặt chuyến',
-                          subtitle: 'Chọn điểm đón & đến',
+                          title: 'Gửi yêu cầu',
+                          subtitle: 'Trọ cũ → trọ mới',
                           onTap: () {
                             context.read<BookingFlowCubit>().startFullMoveBooking();
                             context.push('/booking/location');
@@ -263,14 +263,11 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: _SmallServiceCard(
                           colors: c,
-                          icon: Icons.local_shipping_outlined,
+                          icon: Icons.receipt_long_outlined,
                           useSecondaryIconBg: false,
-                          title: 'So sánh nhà xe',
-                          subtitle: 'Xem giá & đánh giá',
-                          onTap: () {
-                            context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                            context.push('/booking/partners');
-                          },
+                          title: 'Bảng phụ phí',
+                          subtitle: 'Tham khảo minh bạch',
+                          onTap: () => context.push('/booking/reference-prices'),
                         ),
                       ),
                     ],
@@ -317,7 +314,7 @@ class _SearchBar extends StatelessWidget {
       },
       child: AbsorbPointer(
         child: ShadInput(
-          placeholder: const Text('Bạn muốn chuyển đến đâu?'),
+          placeholder: const Text('Trọ mới của bạn ở đâu?'),
           leading: Icon(LucideIcons.search, size: 18, color: colors.primary),
         ),
       ),
@@ -367,7 +364,7 @@ class _MainServiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Marketplace · Đã xác minh',
+                    'Chuyển trọ thông minh',
                     style: TextStyle(
                       color: isDark ? colors.onPrimaryContainer : colors.primary,
                       fontSize: 12,
@@ -376,7 +373,7 @@ class _MainServiceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Combo chuyển trọ',
+                    'Gửi yêu cầu báo giá',
                     style: TextStyle(
                       color: isDark ? AppColors.onPrimary : colors.onSurface,
                       fontSize: 20,
@@ -386,7 +383,7 @@ class _MainServiceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Xe + khuân vác gộp · Thêm người giá ưu đãi',
+                    'Mô tả trọ → nhà xe báo giá, so sánh & chốt trên app',
                     style: TextStyle(
                       color: isDark ? colors.onPrimaryContainer : colors.onSurfaceMuted,
                       fontSize: 14,
@@ -547,7 +544,7 @@ class _FlashSaleBanner extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          'Nhà xe báo giá — bạn chọn',
+                          'Phụ phí minh bạch',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -559,7 +556,7 @@ class _FlashSaleBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'UniMove giữ cọc · Cọc an toàn, hoàn tiền rõ',
+                          'Hẻm hẹp · tầng · đồ thêm — báo trước khi chốt',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.25),
@@ -569,15 +566,12 @@ class _FlashSaleBanner extends StatelessWidget {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(99),
                           child: InkWell(
-                            onTap: () {
-                              context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                              context.push('/booking/packages');
-                            },
+                            onTap: () => context.push('/booking/reference-prices'),
                             borderRadius: BorderRadius.circular(99),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                               child: Text(
-                                'Nhận báo giá',
+                                'Xem bảng phụ phí',
                                 style: TextStyle(
                                   color: colors.primary,
                                   fontWeight: FontWeight.w600,
