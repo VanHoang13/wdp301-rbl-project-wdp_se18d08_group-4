@@ -179,22 +179,11 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
               FadeSlideIn(
                 delay: const Duration(milliseconds: 260),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Dịch vụ chính',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.onSurface),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {},
-                      style: TextButton.styleFrom(foregroundColor: c.primary),
-                      child: const Text('Xem tất cả', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                    ),
-                  ],
+                child: Text(
+                  'Dịch vụ chính',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.onSurface),
                 ),
               ),
               const SizedBox(height: 12),
@@ -208,36 +197,84 @@ class _HomePageState extends State<HomePage> {
                   },
                 ),
               ),
+              const SizedBox(height: 16),
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 360),
+                child: Text(
+                  'Tất cả dịch vụ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.onSurface),
+                ),
+              ),
               const SizedBox(height: 12),
               FadeSlideIn(
-                delay: const Duration(milliseconds: 380),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SmallServiceCard(
-                        colors: c,
-                        icon: Icons.route_outlined,
-                        useSecondaryIconBg: true,
-                        title: 'Đặt chuyến chuyển trọ',
-                        subtitle: 'Bước 1: Chọn điểm đón & đến',
-                        onTap: () {
-                          context.read<BookingFlowCubit>().startFullMoveBooking();
-                          context.push('/booking/location');
-                        },
+                delay: const Duration(milliseconds: 400),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _SmallServiceCard(
+                          colors: c,
+                          icon: Icons.route_outlined,
+                          useSecondaryIconBg: true,
+                          title: 'Đặt chuyến',
+                          subtitle: 'Chọn điểm đón & đến',
+                          onTap: () {
+                            context.read<BookingFlowCubit>().startFullMoveBooking();
+                            context.push('/booking/location');
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _SmallServiceCard(
-                        colors: c,
-                        icon: Icons.groups_outlined,
-                        useSecondaryIconBg: false,
-                        title: 'Khuân vác đối tác',
-                        subtitle: 'Thuê đội · So sánh giờ',
-                        onTap: () => context.push('/booking/labor'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SmallServiceCard(
+                          colors: c,
+                          icon: Icons.groups_outlined,
+                          useSecondaryIconBg: false,
+                          title: 'Khuân vác',
+                          subtitle: 'Thuê đội · so sánh giờ',
+                          onTap: () => context.push('/booking/labor'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 440),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _SmallServiceCard(
+                          colors: c,
+                          icon: Icons.recycling_outlined,
+                          useSecondaryIconBg: true,
+                          title: 'Pass đồ cũ',
+                          subtitle: 'Đăng tin · đối tác đến lấy',
+                          onTap: () => context.push('/pass-items'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SmallServiceCard(
+                          colors: c,
+                          icon: Icons.local_shipping_outlined,
+                          useSecondaryIconBg: false,
+                          title: 'So sánh nhà xe',
+                          subtitle: 'Xem giá & đánh giá',
+                          onTap: () {
+                            context.read<BookingFlowCubit>().startCompareQuotesFlow();
+                            context.push('/booking/partners');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 24),

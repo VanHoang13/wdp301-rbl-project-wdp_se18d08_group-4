@@ -27,6 +27,8 @@ class BookingFlowState {
     this.linkedOrderNumber,
     this.linkedProviderName,
     this.quickCompareEntry = false,
+    this.passItemDelivery = false,
+    this.passItemId,
     this.extraComboLaborCount = 0,
     this.insurancePlans = const [],
     this.selectedInsurancePlanId,
@@ -60,6 +62,12 @@ class BookingFlowState {
 
   /// Vào từ "So sánh báo giá" trên Home — đã có địa điểm mẫu, bỏ qua bước chọn điểm.
   final bool quickCompareEntry;
+
+  /// Đặt xe lấy đồ từ tin pass đồ — điểm lấy đã là khu vực người bán.
+  final bool passItemDelivery;
+
+  /// Tin pass đồ liên kết (khóa huỷ chốt khi khách đã đặt xe).
+  final String? passItemId;
 
   /// Số người khuân vác thêm (ngoài số đã có trong combo).
   final int extraComboLaborCount;
@@ -179,7 +187,10 @@ class BookingFlowState {
     String? linkedOrderNumber,
     String? linkedProviderName,
     bool? quickCompareEntry,
+    bool? passItemDelivery,
+    String? passItemId,
     int? extraComboLaborCount,
+    bool clearPassItemId = false,
     List<CargoInsurancePlan>? insurancePlans,
     String? selectedInsurancePlanId,
     bool? loadingInsurancePlans,
@@ -213,6 +224,8 @@ class BookingFlowState {
       linkedProviderName:
           clearLinkedOrder ? null : (linkedProviderName ?? this.linkedProviderName),
       quickCompareEntry: quickCompareEntry ?? this.quickCompareEntry,
+      passItemDelivery: passItemDelivery ?? this.passItemDelivery,
+      passItemId: clearPassItemId ? null : (passItemId ?? this.passItemId),
       extraComboLaborCount: extraComboLaborCount ?? this.extraComboLaborCount,
       insurancePlans: insurancePlans ?? this.insurancePlans,
       selectedInsurancePlanId: selectedInsurancePlanId ?? this.selectedInsurancePlanId,

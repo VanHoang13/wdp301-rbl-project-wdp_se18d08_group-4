@@ -1,0 +1,396 @@
+const { supabaseAdmin } = require('./supabase.service');
+const { httpError } = require('./auth.helpers');
+
+const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', 'books', 'other'];
+const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
+const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
+
+// ── Batch 1 ──────────────────────────────────────────────────────────────────
+
+/** API-062 — POST /api/marketplace/listings */
+async function createListing(userId, body) {
+  const { title, description, category, condition, area, price, images } = body || {};
+
+  if (!title || !category || !condition || price === undefined) {
+    throw httpError(400, 'Thiếu field bắt buộc: title, category, condition, price', 'validation_error');
+  }
+  if (!VALID_CATEGORIES.includes(category)) {
+    throw httpError(400, `category không hợp lệ. Chọn: ${VALID_CATEGORIES.join(', ')}`, 'validation_error');
+  }
+  if (!VALID_CONDITIONS.includes(condition)) {
+    throw httpError(400, `condition không hợp lệ. Chọn: ${VALID_CONDITIONS.join(', ')}`, 'validation_error');
+  }
+  if (isNaN(Number(price)) || Number(price) < 0) {
+    throw httpError(400, 'price phải là số không âm', 'validation_error');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .insert([{
+      owner_id:    userId,
+      title:       String(title).trim(),
+      description: description ? String(description).trim() : null,
+      category,
+      condition,
+      area:        area ? String(area).trim() : null,
+      price:       Number(price),
+      images:      Array.isArray(images) ? images : [],
+      status:      'active',
+      fee_paid:    false,
+    }])
+    .select(`
+      id, title, description, category, condition, area,
+      price, images, status, fee_paid, created_at, updated_at,
+      profiles:owner_id ( id, full_name, avatar_url, phone )
+    `)
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return data;
+}
+
+/** API-059 — GET /api/marketplace/listings */
+async function browseListings(query) {
+  const { keyword, category, condition, area, min_price, max_price, page = 1, limit = 20 } = query || {};
+
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+  const from = (pageNum - 1) * limitNum;
+  const to   = from + limitNum - 1;
+
+  let q = supabaseAdmin
+    .from('marketplace_listings')
+    .select(
+      `id, title, description, category, condition, area,
+       price, images, status, created_at,
+       profiles:owner_id ( id, full_name, avatar_url )`,
+      { count: 'exact' }
+    )
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (keyword) q = q.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`);
+  if (category && VALID_CATEGORIES.includes(category)) q = q.eq('category', category);
+  if (condition && VALID_CONDITIONS.includes(condition)) q = q.eq('condition', condition);
+  if (area) q = q.ilike('area', `%${area}%`);
+  if (min_price !== undefined && !isNaN(Number(min_price))) q = q.gte('price', Number(min_price));
+  if (max_price !== undefined && !isNaN(Number(max_price))) q = q.lte('price', Number(max_price));
+
+  const { data, error, count } = await q;
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  return {
+    listings: data || [],
+    pagination: { total: count || 0, page: pageNum, limit: limitNum, pages: Math.ceil((count || 0) / limitNum) },
+  };
+}
+
+/** API-060 — GET /api/marketplace/my-listings */
+async function getMyListings(userId, query) {
+  const { status, page = 1, limit = 20 } = query || {};
+
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+  const from = (pageNum - 1) * limitNum;
+  const to   = from + limitNum - 1;
+
+  let q = supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, title, description, category, condition, area, price, images, status, fee_paid, created_at, updated_at', { count: 'exact' })
+    .eq('owner_id', userId)
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (status && VALID_STATUSES.includes(status)) q = q.eq('status', status);
+
+  const { data, error, count } = await q;
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  return {
+    listings: data || [],
+    pagination: { total: count || 0, page: pageNum, limit: limitNum, pages: Math.ceil((count || 0) / limitNum) },
+  };
+}
+
+// ── Batch 2 ──────────────────────────────────────────────────────────────────
+
+/** API-061 — GET /api/marketplace/listings/:id */
+async function getListing(listingId, userId) {
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select(`
+      id, title, description, category, condition, area,
+      price, images, status, fee_paid, created_at, updated_at,
+      profiles:owner_id ( id, full_name, avatar_url, phone )
+    `)
+    .eq('id', listingId)
+    .single();
+
+  if (error || !data) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+
+  const { count: interestCount } = await supabaseAdmin
+    .from('marketplace_interests')
+    .select('id', { count: 'exact', head: true })
+    .eq('listing_id', listingId);
+
+  let isInterested = false;
+  if (userId) {
+    const { data: mine } = await supabaseAdmin
+      .from('marketplace_interests')
+      .select('id')
+      .eq('listing_id', listingId)
+      .eq('buyer_id', userId)
+      .single();
+    isInterested = !!mine;
+  }
+
+  return {
+    ...data,
+    interest_count: interestCount || 0,
+    is_interested:  isInterested,
+    is_mine:        data.profiles?.id === userId,
+  };
+}
+
+/** API-064 — PATCH /api/marketplace/listings/:id/status */
+async function updateListingStatus(listingId, userId, status) {
+  if (!VALID_STATUSES.includes(status)) {
+    throw httpError(400, `status không hợp lệ. Chọn: ${VALID_STATUSES.join(', ')}`, 'validation_error');
+  }
+
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id !== userId) throw httpError(403, 'Không có quyền chỉnh sửa tin này', 'forbidden');
+
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({ status })
+    .eq('id', listingId)
+    .select('id, title, status, updated_at')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return data;
+}
+
+/** API-065 — POST /api/marketplace/listings/:id/interest */
+async function expressInterest(listingId, userId, body) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, status')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.status !== 'active') throw httpError(400, 'Tin không còn nhận quan tâm', 'listing_unavailable');
+  if (listing.owner_id === userId) throw httpError(400, 'Không thể quan tâm tin của chính mình', 'validation_error');
+
+  const { error } = await supabaseAdmin
+    .from('marketplace_interests')
+    .upsert(
+      { listing_id: listingId, buyer_id: userId, note: body?.note || null },
+      { onConflict: 'listing_id,buyer_id', ignoreDuplicates: true }
+    );
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const { count } = await supabaseAdmin
+    .from('marketplace_interests')
+    .select('id', { count: 'exact', head: true })
+    .eq('listing_id', listingId);
+
+  return { listing_id: listingId, interest_count: count || 0 };
+}
+
+// ── Batch 3 ──────────────────────────────────────────────────────────────────
+
+/** API-066 — GET /api/marketplace/listings/:id/interests */
+async function getInterestedBuyers(listingId, userId) {
+  // Chỉ seller mới xem được
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  if (listing.owner_id !== userId) throw httpError(403, 'Chỉ người đăng mới xem được', 'forbidden');
+
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_interests')
+    .select(`
+      id, created_at, note,
+      profiles:buyer_id ( id, full_name, avatar_url, phone )
+    `)
+    .eq('listing_id', listingId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  // Lấy last message của mỗi conversation
+  const buyers = await Promise.all((data || []).map(async (row) => {
+    const buyerId = row.profiles?.id;
+    if (!buyerId) return null;
+
+    const { data: conv } = await supabaseAdmin
+      .from('marketplace_conversations')
+      .select('id, last_message_text, last_message_at, seller_unread')
+      .eq('listing_id', listingId)
+      .eq('buyer_id', buyerId)
+      .single();
+
+    return {
+      id:            buyerId,
+      name:          row.profiles?.full_name || '',
+      avatar_url:    row.profiles?.avatar_url || null,
+      contact:       row.profiles?.phone || '',
+      interested_at: row.created_at,
+      note:          row.note || '',
+      last_message:  conv?.last_message_text || null,
+      unread_count:  conv?.seller_unread || 0,
+      conversation_id: conv?.id || null,
+    };
+  }));
+
+  return buyers.filter(Boolean);
+}
+
+/** Tạo hoặc lấy conversation giữa seller và buyer cho 1 listing */
+async function getOrCreateConversation(listingId, buyerId, sellerId) {
+  const { data: existing } = await supabaseAdmin
+    .from('marketplace_conversations')
+    .select('id, seller_id, buyer_id')
+    .eq('listing_id', listingId)
+    .eq('buyer_id', buyerId)
+    .single();
+
+  if (existing) return existing;
+
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_conversations')
+    .insert([{ listing_id: listingId, seller_id: sellerId, buyer_id: buyerId }])
+    .select('id, seller_id, buyer_id')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return data;
+}
+
+/** API-067 — GET /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
+async function getMessages(listingId, buyerId, userId) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+
+  const isSeller = listing.owner_id === userId;
+  const isBuyer  = userId === buyerId;
+  if (!isSeller && !isBuyer) throw httpError(403, 'Không có quyền xem chat này', 'forbidden');
+
+  const conv = await getOrCreateConversation(listingId, buyerId, listing.owner_id);
+
+  // Đánh dấu đã đọc
+  const unreadField = isSeller ? { seller_unread: 0 } : { buyer_unread: 0 };
+  await supabaseAdmin
+    .from('marketplace_conversations')
+    .update(unreadField)
+    .eq('id', conv.id);
+
+  const { data: messages, error } = await supabaseAdmin
+    .from('marketplace_messages')
+    .select(`
+      id, text, is_offer, offer_amount,
+      is_deal_confirm, is_deal_cancel, created_at,
+      profiles:sender_id ( id, full_name )
+    `)
+    .eq('conversation_id', conv.id)
+    .order('created_at', { ascending: true });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  return {
+    conversation_id: conv.id,
+    messages: (messages || []).map((m) => ({
+      id:              m.id,
+      text:            m.text,
+      from_buyer:      m.profiles?.id === buyerId,
+      is_offer:        m.is_offer,
+      offer_amount:    m.offer_amount,
+      is_deal_confirm: m.is_deal_confirm,
+      is_deal_cancel:  m.is_deal_cancel,
+      created_at:      m.created_at,
+    })),
+  };
+}
+
+/** API-068 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
+async function sendMessage(listingId, buyerId, userId, body) {
+  const { text, is_offer = false, offer_amount } = body || {};
+
+  if (!text || !String(text).trim()) {
+    throw httpError(400, 'text không được để trống', 'validation_error');
+  }
+
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id')
+    .eq('id', listingId)
+    .single();
+
+  if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
+
+  const isSeller = listing.owner_id === userId;
+  const isBuyer  = userId === buyerId;
+  if (!isSeller && !isBuyer) throw httpError(403, 'Không có quyền chat này', 'forbidden');
+
+  const conv = await getOrCreateConversation(listingId, buyerId, listing.owner_id);
+
+  const { data: msg, error } = await supabaseAdmin
+    .from('marketplace_messages')
+    .insert([{
+      conversation_id: conv.id,
+      sender_id:       userId,
+      text:            String(text).trim(),
+      is_offer:        is_offer && !!offer_amount,
+      offer_amount:    is_offer && offer_amount ? Number(offer_amount) : null,
+    }])
+    .select('id, text, is_offer, offer_amount, created_at')
+    .single();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  // Cập nhật last_message + unread count cho bên kia
+  const unreadIncrement = isSeller
+    ? { buyer_unread: supabaseAdmin.rpc('increment', { x: 1 }) }
+    : { seller_unread: supabaseAdmin.rpc('increment', { x: 1 }) };
+
+  // Update last message preview
+  await supabaseAdmin
+    .from('marketplace_conversations')
+    .update({
+      last_message_text: msg.text,
+      last_message_at:   msg.created_at,
+      ...(isSeller ? { buyer_unread: 1 } : { seller_unread: 1 }),
+    })
+    .eq('id', conv.id);
+
+  return {
+    ...msg,
+    from_buyer: isBuyer,
+  };
+}
+
+module.exports = {
+  createListing, browseListings, getMyListings,
+  getListing, updateListingStatus, expressInterest,
+  getInterestedBuyers, getMessages, sendMessage,
+};

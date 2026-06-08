@@ -117,6 +117,16 @@ class _ServicePackagesPageState extends State<ServicePackagesPage> {
                       color: c.onSurface,
                     ),
                   ),
+                  if (selected != null)
+                    Padding(
+                      padding: EdgeInsets.only(top: 2.h),
+                      child: Text(
+                        'Gồm ${selected.includedKm} km di chuyển · ${selected.laborIncluded} người khuân vác',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.sp, color: c.onSurfaceMuted),
+                      ),
+                    ),
                   if (state.extraComboLaborCount > 0)
                     Padding(
                       padding: EdgeInsets.only(top: 2.h),
@@ -220,9 +230,23 @@ class _ServicePackagesPageState extends State<ServicePackagesPage> {
               style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
             ),
             SizedBox(height: 10.h),
-            _laborChip(
-              c,
-              '${pkg.laborIncluded} người khuân vác trong combo',
+            Text(
+              'Mức giá này đã bao gồm',
+              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w700, color: c.onSurface),
+            ),
+            SizedBox(height: 8.h),
+            Wrap(
+              spacing: 8.w,
+              runSpacing: 8.h,
+              children: [
+                _includeChip(c, Icons.route_outlined, '${pkg.includedKm} km di chuyển'),
+                _includeChip(c, Icons.groups_outlined, '${pkg.laborIncluded} người khuân vác'),
+              ],
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              'Vượt ${pkg.includedKm} km: +${_formatPrice(pkg.extraKmPrice)}/km · Thêm người từ ${_formatPrice(pkg.extraLaborComboPrice)}/người',
+              style: TextStyle(fontSize: 11.sp, color: c.onSurfaceMuted, height: 1.35),
             ),
             SizedBox(height: 12.h),
             ...pkg.features.map(
@@ -326,7 +350,7 @@ class _ServicePackagesPageState extends State<ServicePackagesPage> {
     );
   }
 
-  Widget _laborChip(UniMoveColors c, String text) {
+  Widget _includeChip(UniMoveColors c, IconData icon, String text) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
       decoration: BoxDecoration(
@@ -335,14 +359,13 @@ class _ServicePackagesPageState extends State<ServicePackagesPage> {
         border: Border.all(color: c.success.withValues(alpha: 0.35)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.groups_outlined, size: 16.sp, color: c.success),
+          Icon(icon, size: 16.sp, color: c.success),
           SizedBox(width: 6.w),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: c.success),
-            ),
+          Text(
+            text,
+            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: c.success),
           ),
         ],
       ),
@@ -474,10 +497,11 @@ class _ComboPricingTable extends StatelessWidget {
           SizedBox(height: 10.h),
           Row(
             children: [
-              Expanded(flex: 2, child: _th('Combo', c)),
-              Expanded(child: _th('Từ', c)),
-              Expanded(child: _th('Kèm', c)),
-              Expanded(child: _th('Thêm/người', c)),
+              Expanded(flex: 5, child: _th('Combo', c)),
+              Expanded(flex: 3, child: _th('Từ', c, center: true)),
+              Expanded(flex: 2, child: _th('Km', c, center: true)),
+              Expanded(flex: 2, child: _th('Người', c, center: true)),
+              Expanded(flex: 3, child: _th('Thêm/ng', c, right: true)),
             ],
           ),
           Divider(height: 12.h, color: c.border),
@@ -485,22 +509,33 @@ class _ComboPricingTable extends StatelessWidget {
             return Padding(
               padding: EdgeInsets.only(bottom: 8.h),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    flex: 2,
+                    flex: 5,
                     child: Text(
                       p.label,
                       style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w600, color: c.onSurface),
                     ),
                   ),
                   Expanded(
+                    flex: 3,
                     child: Text(
                       _shortPrice(p.price),
+                      textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 11.sp, color: c.primary, fontWeight: FontWeight.w700),
                     ),
                   ),
                   Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${p.includedKm}',
+                      style: TextStyle(fontSize: 11.sp, color: c.onSurface),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
                     child: Text(
                       '${p.laborIncluded}',
                       style: TextStyle(fontSize: 11.sp, color: c.onSurface),
@@ -508,6 +543,7 @@ class _ComboPricingTable extends StatelessWidget {
                     ),
                   ),
                   Expanded(
+                    flex: 3,
                     child: Text(
                       _shortPrice(p.extraLaborComboPrice),
                       style: TextStyle(fontSize: 11.sp, color: c.onSurfaceMuted),
@@ -518,18 +554,20 @@ class _ComboPricingTable extends StatelessWidget {
               ),
             );
           }),
+          SizedBox(height: 2.h),
           Text(
-            'Thuê riêng ~120k/người (tham chiếu)',
-            style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted),
+            'Km = số km di chuyển đã bao gồm · Người = số khuân vác kèm · Thuê riêng ~120k/người',
+            style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted, height: 1.3),
           ),
         ],
       ),
     );
   }
 
-  Widget _th(String text, UniMoveColors c) {
+  Widget _th(String text, UniMoveColors c, {bool center = false, bool right = false}) {
     return Text(
       text,
+      textAlign: right ? TextAlign.right : (center ? TextAlign.center : TextAlign.left),
       style: TextStyle(fontSize: 10.sp, fontWeight: FontWeight.w700, color: c.onSurfaceMuted),
     );
   }

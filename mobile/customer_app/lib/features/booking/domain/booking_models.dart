@@ -25,6 +25,8 @@ class ServicePackage {
     required this.features,
     required this.popular,
     required this.laborIncluded,
+    required this.includedKm,
+    required this.extraKmPrice,
     required this.extraLaborComboPrice,
     required this.extraLaborRetailPrice,
     this.subtitle = '',
@@ -39,6 +41,12 @@ class ServicePackage {
 
   /// Số người khuân vác đã gộp trong combo.
   final int laborIncluded;
+
+  /// Số km di chuyển đã bao gồm trong giá combo.
+  final int includedKm;
+
+  /// Giá mỗi km vượt quá [includedKm] (tham chiếu).
+  final int extraKmPrice;
 
   /// Giá thêm 1 người khi đã chọn combo (ưu đãi).
   final int extraLaborComboPrice;
@@ -64,18 +72,38 @@ class PartnerOffer {
     required this.name,
     required this.distanceKm,
     required this.rating,
+    required this.reviewCount,
     required this.price,
     required this.imageUrl,
     required this.vehicleLabel,
+    this.completedTrips = 0,
+    this.recentReviews = const [],
   });
 
   final String id;
   final String name;
   final double distanceKm;
   final double rating;
+  final int reviewCount;
   final int price;
   final String imageUrl;
   final String vehicleLabel;
+  final int completedTrips;
+  final List<ProviderReview> recentReviews;
+}
+
+class ProviderReview {
+  const ProviderReview({
+    required this.author,
+    required this.rating,
+    required this.comment,
+    required this.timeAgoLabel,
+  });
+
+  final String author;
+  final double rating;
+  final String comment;
+  final String timeAgoLabel;
 }
 
 enum PaymentMethod { payos, momo, otherWallet }
