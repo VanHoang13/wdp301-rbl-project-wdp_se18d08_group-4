@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -72,12 +73,32 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
                         return _NotificationTile(
                           notification: n,
                           onTap: () async {
-                            await Navigator.of(context, rootNavigator: true).push<void>(
-                              MaterialPageRoute(
-                                builder: (_) => NotificationDetailPage(notificationId: n.id),
-                              ),
-                            );
-                            if (mounted) _load();
+                            // Mark as read
+                            if (!n.isRead) {
+                              _repo.markAsRead(n.id);
+                              setState(() {
+                                _items[i] = AppNotification(
+                                  id: n.id, type: n.type, title: n.title,
+                                  body: n.body, createdAt: n.createdAt, isRead: true,
+                                  icon: n.icon, listingId: n.listingId, buyerId: n.buyerId,
+                                );
+                              });
+                            }
+                            if (!context.mounted) return;
+                            // Navigate
+                            if (n.isMarketplace && n.listingId != null) {
+                              final route = n.type == AppNotificationType.marketplaceMessage && n.buyerId != null
+                                  ? '/pass-items/${n.listingId}/chat?buyer=${n.buyerId}'
+                                  : '/pass-items/${n.listingId}';
+                              context.push(route);
+                            } else {
+                              await Navigator.of(context, rootNavigator: true).push<void>(
+                                MaterialPageRoute(
+                                  builder: (_) => NotificationDetailPage(notificationId: n.id),
+                                ),
+                              );
+                              if (mounted) _load();
+                            }
                           },
                         );
                       },
@@ -135,18 +156,28 @@ class _NotificationTile extends StatelessWidget {
     return '${dt.day}/${dt.month}';
   }
 
-  IconData _iconFor(String? key) => switch (key) {
-        'gift' => Icons.card_giftcard_rounded,
-        'star' => Icons.star_rounded,
-        'ticket' => Icons.confirmation_number_outlined,
-        'bell' => Icons.notifications_rounded,
-        _ => Icons.local_offer_outlined,
-      };
+  IconData _iconFor(AppNotification n) {
+    if (n.type == AppNotificationType.marketplaceMessage) return Icons.chat_bubble_outline_rounded;
+    if (n.type == AppNotificationType.marketplaceDealConfirmed) return Icons.handshake_outlined;
+    if (n.type == AppNotificationType.marketplaceDealCancelled) return Icons.cancel_outlined;
+    if (n.type == AppNotificationType.marketplaceTransportBooked) return Icons.local_shipping_outlined;
+    return switch (n.icon) {
+      'gift'   => Icons.card_giftcard_rounded,
+      'star'   => Icons.star_rounded,
+      'ticket' => Icons.confirmation_number_outlined,
+      'bell'   => Icons.notifications_rounded,
+      _        => Icons.local_offer_outlined,
+    };
+  }
 
   Color _iconColor(AppNotificationType type, UniMoveColors c) => switch (type) {
-        AppNotificationType.promotion => c.primaryLight,
-        AppNotificationType.systemAnnouncement => c.primary,
-        _ => c.onSurfaceMuted,
+        AppNotificationType.promotion                   => c.primaryLight,
+        AppNotificationType.systemAnnouncement          => c.primary,
+        AppNotificationType.marketplaceMessage          => c.primary,
+        AppNotificationType.marketplaceDealConfirmed    => c.success,
+        AppNotificationType.marketplaceDealCancelled    => c.accentGreen,
+        AppNotificationType.marketplaceTransportBooked  => c.primary,
+        _                                               => c.onSurfaceMuted,
       };
 
   @override
@@ -157,6 +188,7 @@ class _NotificationTile extends StatelessWidget {
     final isPromo = n.type == AppNotificationType.promotion;
     final title = isPromo ? 'Ưu đãi UniMove' : n.title;
     final preview = isPromo ? (n.subtitle ?? n.preview) : n.preview;
+    final iconColor = isPromo ? AppColors.accentOrange : _iconColor(n.type, c);
 
     return Material(
       color: Colors.transparent,
@@ -173,14 +205,12 @@ class _NotificationTile extends StatelessWidget {
                 width: 48.w,
                 height: 48.w,
                 decoration: BoxDecoration(
-                  color: isPromo
-                      ? AppColors.accentOrange.withValues(alpha: 0.18)
-                      : _iconColor(n.type, c).withValues(alpha: 0.12),
+                  color: iconColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  isPromo ? Icons.local_offer_rounded : _iconFor(n.icon),
-                  color: isPromo ? AppColors.accentOrange : _iconColor(n.type, c),
+                  isPromo ? Icons.local_offer_rounded : _iconFor(n),
+                  color: iconColor,
                   size: 24.sp,
                 ),
               ),

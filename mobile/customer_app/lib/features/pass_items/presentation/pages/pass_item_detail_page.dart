@@ -11,6 +11,7 @@ import '../../domain/pass_item.dart';
 import '../pass_item_format.dart';
 import '../widgets/pass_item_image.dart';
 import '../widgets/pass_interested_buyer_tile.dart';
+import 'pass_item_seller_page.dart';
 
 class PassItemDetailPage extends StatefulWidget {
   const PassItemDetailPage({super.key, required this.id});
@@ -654,6 +655,7 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
   }
 
   Widget _sellerCard(UniMoveColors c, PassItemPost post) {
+    final hasAvatar = post.posterAvatarUrl != null && post.posterAvatarUrl!.isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -666,10 +668,13 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
           CircleAvatar(
             radius: 22,
             backgroundColor: c.iconBgSecondary,
-            child: Text(
-              post.posterName.substring(0, 1).toUpperCase(),
-              style: TextStyle(color: c.primary, fontWeight: FontWeight.w800),
-            ),
+            backgroundImage: hasAvatar ? NetworkImage(post.posterAvatarUrl!) : null,
+            child: hasAvatar
+                ? null
+                : Text(
+                    post.posterName.isEmpty ? '?' : post.posterName.substring(0, 1).toUpperCase(),
+                    style: TextStyle(color: c.primary, fontWeight: FontWeight.w800),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -683,7 +688,23 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
               ],
             ),
           ),
-          Icon(Icons.verified, color: c.primary, size: 20),
+          if (!post.isMine && post.posterId.isNotEmpty)
+            GestureDetector(
+              onTap: () => Navigator.of(context, rootNavigator: true).push(
+                MaterialPageRoute(
+                  builder: (_) => PassItemSellerPage(
+                    sellerId: post.posterId,
+                    sellerName: post.posterName,
+                  ),
+                ),
+              ),
+              child: Text(
+                'Xem trang →',
+                style: TextStyle(fontSize: 13, color: c.primary, fontWeight: FontWeight.w700),
+              ),
+            )
+          else
+            Icon(Icons.verified, color: c.primary, size: 20),
         ],
       ),
     );

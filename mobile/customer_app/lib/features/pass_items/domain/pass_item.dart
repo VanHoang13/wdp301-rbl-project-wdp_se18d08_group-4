@@ -34,6 +34,8 @@ class PassItemPost {
     required this.usageDuration,
     required this.posterName,
     required this.posterContact,
+    this.posterId = '',
+    this.posterAvatarUrl,
     required this.status,
     required this.createdAt,
     this.isNegotiable = false,
@@ -67,6 +69,8 @@ class PassItemPost {
   final String usageDuration;
   final String posterName;
   final String posterContact;
+  final String posterId;
+  final String? posterAvatarUrl;
   final PassItemStatus status;
   final DateTime createdAt;
   final bool isNegotiable;
@@ -121,6 +125,8 @@ class PassItemPost {
       usageDuration: usageDuration ?? this.usageDuration,
       posterName: posterName,
       posterContact: posterContact,
+      posterId: posterId,
+      posterAvatarUrl: posterAvatarUrl,
       status: status ?? this.status,
       createdAt: createdAt,
       isNegotiable: isNegotiable ?? this.isNegotiable,
