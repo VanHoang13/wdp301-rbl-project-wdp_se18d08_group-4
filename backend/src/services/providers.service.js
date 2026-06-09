@@ -1,5 +1,16 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
+const { ensurePublicImageBucket } = require('./storage.helpers');
+
+const PROVIDER_DOCS_BUCKET = 'provider-documents';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+const FIELD_TO_DOC_TYPE = {
+  cccd_front: 'id_card',
+  cccd_back: 'id_card',
+  vehicle_registration: 'vehicle_registration',
+  driver_license: 'license',
+  vehicle_photo: 'insurance',
+};
 
 const PROVIDER_SELECT = `
   id,
@@ -238,4 +249,60 @@ async function getProviderById(providerId, { reviewsLimit = 5 } = {}) {
   };
 }
 
-module.exports = { browseProviders, getProviderById };
+async function uploadProviderDocuments(providerId, filesMap) {
+  if (!filesMap || !Object.keys(filesMap).length) {
+    throw httpError(400, 'Không có file được upload', 'validation_error');
+  }
+
+  await ensurePublicImageBucket(PROVIDER_DOCS_BUCKET, {
+    fileSizeLimit: 5242880,
+    allowedMimeTypes: ['image/jpeg', 'image/png'],
+  });
+
+  const uploaded = [];
+
+  for (const [field, files] of Object.entries(filesMap)) {
+    const file = Array.isArray(files) ? files[0] : files;
+    if (!file?.buffer?.length) continue;
+
+    const ext = EXT_BY_MIME[file.mimetype];
+    if (!ext) throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+
+    const objectPath = `${providerId}/${field}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(PROVIDER_DOCS_BUCKET)
+      .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (uploadError) throw httpError(500, uploadError.message, 'storage_error');
+
+    const { data: urlData } = supabaseAdmin.storage.from(PROVIDER_DOCS_BUCKET).getPublicUrl(objectPath);
+    const url = urlData?.publicUrl;
+    if (!url) throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+
+    const docType = FIELD_TO_DOC_TYPE[field] || field;
+    const { error: dbError } = await supabaseAdmin.from('provider_documents').insert({
+      provider_id: providerId,
+      document_type: `${docType}_${field}`,
+      document_url: url,
+      is_verified: false,
+      notes: field,
+    });
+
+    if (dbError) throw httpError(500, dbError.message, 'db_error');
+
+    uploaded.push({ field, url, document_type: docType });
+  }
+
+  if (!uploaded.length) {
+    throw httpError(400, 'Không có file hợp lệ', 'validation_error');
+  }
+
+  await supabaseAdmin
+    .from('profiles')
+    .update({ status: 'pending_verification' })
+    .eq('id', providerId);
+
+  return { uploaded: uploaded.length, documents: uploaded };
+}
+
+module.exports = { browseProviders, getProviderById, uploadProviderDocuments };
