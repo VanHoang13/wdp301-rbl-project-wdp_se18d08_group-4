@@ -20,6 +20,8 @@ class PassItemSellerPage extends StatefulWidget {
 class _PassItemSellerPageState extends State<PassItemSellerPage> {
   final _repo = PassItemRepository();
   List<PassItemPost> _posts = [];
+  double? _avgRating;
+  int _reviewCount = 0;
   bool _loading = true;
 
   String get _name => _posts.isNotEmpty ? _posts.first.posterName : (widget.sellerName ?? '');
@@ -32,8 +34,17 @@ class _PassItemSellerPageState extends State<PassItemSellerPage> {
   }
 
   Future<void> _load() async {
-    final posts = await _repo.browseByOwner(widget.sellerId);
-    if (mounted) setState(() { _posts = posts; _loading = false; });
+    final postsF = _repo.browseByOwner(widget.sellerId);
+    final statsF = _repo.sellerStats(widget.sellerId);
+    final posts = await postsF;
+    final stats = await statsF;
+    if (!mounted) return;
+    setState(() {
+      _posts = posts;
+      _avgRating = (stats['avg_rating'] as num?)?.toDouble();
+      _reviewCount = (stats['review_count'] as num?)?.toInt() ?? 0;
+      _loading = false;
+    });
   }
 
   @override
@@ -132,6 +143,19 @@ class _PassItemSellerPageState extends State<PassItemSellerPage> {
                     ),
                   ],
                 ),
+                if (_avgRating != null && _reviewCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.star_rounded, size: 14, color: Colors.amber),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${_avgRating!.toStringAsFixed(1)} ($_reviewCount đánh giá)',
+                        style: TextStyle(fontSize: 13, color: c.onSurfaceMuted),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

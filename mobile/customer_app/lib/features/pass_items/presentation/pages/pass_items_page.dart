@@ -160,22 +160,17 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
         ),
         _filterLabel(c, 'Danh mục'),
         SizedBox(
-          height: 52,
-          child: Scrollbar(
+          height: 44,
+          child: ListView.separated(
             controller: _categoryScrollCtrl,
-            thumbVisibility: true,
-            trackVisibility: true,
-            child: ListView.separated(
-              controller: _categoryScrollCtrl,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
-              itemCount: PassItemCategories.all.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final label = i == 0 ? 'Tất cả' : PassItemCategories.all[i - 1];
-                return _categoryChip(c, label);
-              },
-            ),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+            itemCount: PassItemCategories.all.length + 1,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              final label = i == 0 ? 'Tất cả' : PassItemCategories.all[i - 1];
+              return _categoryChip(c, label);
+            },
           ),
         ),
         const SizedBox(height: 8),
@@ -191,8 +186,8 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 0.58,
+                          mainAxisSpacing: 14,
+                          mainAxisExtent: 236,
                         ),
                         itemCount: _browse.length,
                         itemBuilder: (_, i) => _gridCard(c, _browse[i]),
@@ -369,86 +364,148 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   }
 
   Widget _gridCard(UniMoveColors c, PassItemPost post) {
-    return Material(
-      color: c.surface,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () async {
-          await context.push('/pass-items/${post.id}');
-          _load();
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Ảnh
-            AspectRatio(
-              aspectRatio: 1,
-              child: PassItemImage(
-                imageUrl: post.imageUrl,
-                fit: BoxFit.cover,
-                errorPlaceholder: Container(
-                  color: c.surfaceTint,
-                  child: Icon(Icons.inventory_2_outlined, color: c.onSurfaceMuted, size: 32),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    post.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c.onSurface, height: 1.3),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    passItemPriceLabel(post),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                      color: post.isFree ? c.success : c.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
+    const textHeight = TextHeightBehavior(
+      applyHeightToFirstAscent: false,
+      applyHeightToLastDescent: false,
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border.withValues(alpha: 0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: c.navBarShadow.withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.hardEdge,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () async {
+              await context.push('/pass-items/${post.id}');
+              _load();
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 13,
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Flexible(child: _tag(c, post.condition.label)),
-                      const SizedBox(width: 4),
-                      Flexible(child: _tag(c, post.category)),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      Icon(Icons.place_outlined, size: 11, color: c.onSurfaceMuted),
-                      const SizedBox(width: 2),
-                      Expanded(
-                        child: Text(
-                          post.area,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: c.onSurfaceMuted),
+                      PassItemImage(
+                        imageUrl: post.imageUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorPlaceholder: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                c.surfaceTint,
+                                c.primary.withValues(alpha: 0.08),
+                              ],
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.photo_outlined,
+                            color: c.onSurfaceMuted.withValues(alpha: 0.5),
+                            size: 36,
+                          ),
                         ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: _imageBadge(c, post.condition.label),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Icon(Icons.access_time_rounded, size: 11, color: c.onSurfaceMuted),
-                      const SizedBox(width: 2),
-                      Text(passItemTimeAgo(post.createdAt),
-                          style: TextStyle(fontSize: 11, color: c.onSurfaceMuted)),
-                    ],
+                ),
+                Expanded(
+                  flex: 11,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 5),
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            post.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textHeightBehavior: textHeight,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              height: 1.15,
+                              color: c.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            passItemPriceLabel(post),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textHeightBehavior: textHeight,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              height: 1.1,
+                              color: post.isFree ? c.success : c.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          _tag(c, post.category),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${post.area} · ${passItemTimeAgo(post.createdAt)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textHeightBehavior: textHeight,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1.1,
+                              color: c.onSurfaceMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _imageBadge(UniMoveColors c, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -456,16 +513,18 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
 
   Widget _tag(UniMoveColors c, String text, {bool accent = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
       decoration: BoxDecoration(
         color: accent ? c.primary.withValues(alpha: 0.12) : c.surfaceTint,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         border: accent ? Border.all(color: c.primary.withValues(alpha: 0.35)) : null,
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 10,
           color: accent ? c.primary : c.onSurface,
           fontWeight: FontWeight.w600,
         ),
@@ -510,7 +569,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 0.58,
+          mainAxisExtent: 236,
         ),
         itemCount: _favorites.length,
         itemBuilder: (_, i) => _favoriteCard(c, _favorites[i]),

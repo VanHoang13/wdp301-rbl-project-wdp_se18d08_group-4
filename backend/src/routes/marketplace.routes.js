@@ -49,5 +49,15 @@ router.post('/listings/:listingId/conversations/:buyerId/deal', requireAuth, mar
 router.delete('/listings/:listingId/deal', requireAuth, marketplaceController.cancelDeal);
 // API-071 — Buyer đã đặt xe
 router.post('/listings/:listingId/transport-booked', requireAuth, marketplaceController.markTransportBooked);
+// Buyer xác nhận đã nhận đồ
+router.post('/listings/:id/confirm-received', requireAuth, marketplaceController.confirmReceived);
+
+// ── UX Improvements ───────────────────────────────────────────────────────────
+// Đẩy tin lên đầu (1 lần / 24h)
+router.post('/listings/:id/bump', requireAuth, marketplaceController.bumpListing);
+// Đánh giá seller sau giao dịch
+router.post('/listings/:id/rating', requireAuth, marketplaceController.createRating);
+// Thống kê & rating của seller
+router.get('/seller/:sellerId/stats', requireAuth, marketplaceController.getSellerStats);
 
 module.exports = router;

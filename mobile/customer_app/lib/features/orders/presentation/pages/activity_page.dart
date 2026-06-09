@@ -192,8 +192,15 @@ class _ActiveOrderCard extends StatelessWidget {
           ),
           SizedBox(height: 10.h),
           Text(
-            '#${order.orderNumber} · ${order.packageDisplay}',
-            style: TextStyle(fontSize: 13.sp, color: c.onSurfaceMuted),
+            order.activityRouteTitle,
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp, color: c.onSurface),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            order.activityMetaLine,
+            style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
           ),
           SizedBox(height: 14.h),
           PressableScale(
@@ -332,13 +339,17 @@ class _ActivityOrderRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    order.providerName ?? order.packageDisplay,
+                    order.activityRouteTitle,
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.sp, color: c.onSurface),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 4.h),
                   Text(
-                    '${time.day}/${time.month}/${time.year} · ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                    '${order.activityMetaLine} · ${time.day}/${time.month}/${time.year} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
                     style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 8.h),
                   GestureDetector(

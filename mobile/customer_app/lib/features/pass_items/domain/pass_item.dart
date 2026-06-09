@@ -44,6 +44,8 @@ class PassItemPost {
     this.dealConfirmed = false,
     this.confirmedPrice,
     this.buyerTransportBooked = false,
+    this.isRated = false,
+    this.isInterested = false,
   });
 
   final String id;
@@ -86,6 +88,12 @@ class PassItemPost {
   /// Người mua đã tiếp tục đặt xe — người bán không được huỷ chốt.
   final bool buyerTransportBooked;
 
+  /// Buyer đã gửi đánh giá cho giao dịch này.
+  final bool isRated;
+
+  /// Người dùng hiện tại đã bấm "Tôi muốn nhận" cho tin này.
+  final bool isInterested;
+
   bool get isFree => price <= 0;
 
   int get effectivePrice => confirmedPrice ?? price;
@@ -109,6 +117,8 @@ class PassItemPost {
     bool? dealConfirmed,
     int? confirmedPrice,
     bool? buyerTransportBooked,
+    bool? isRated,
+    bool? isInterested,
     bool clearConfirmedPrice = false,
   }) {
     return PassItemPost(
@@ -135,6 +145,8 @@ class PassItemPost {
       dealConfirmed: dealConfirmed ?? this.dealConfirmed,
       confirmedPrice: clearConfirmedPrice ? null : (confirmedPrice ?? this.confirmedPrice),
       buyerTransportBooked: buyerTransportBooked ?? this.buyerTransportBooked,
+      isRated: isRated ?? this.isRated,
+      isInterested: isInterested ?? this.isInterested,
     );
   }
 }

@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../booking/data/quote_local_notifications.dart';
 import '../domain/notification_models.dart';
 
 class NotificationsRepository {
@@ -11,6 +12,7 @@ class NotificationsRepository {
         'marketplace_deal_confirmed'   => AppNotificationType.marketplaceDealConfirmed,
         'marketplace_deal_cancelled'   => AppNotificationType.marketplaceDealCancelled,
         'marketplace_transport_booked' => AppNotificationType.marketplaceTransportBooked,
+        'marketplace_interest'         => AppNotificationType.marketplaceInterest,
         'order_created' ||
         'order_accepted' ||
         'order_started' ||
@@ -37,21 +39,26 @@ class NotificationsRepository {
   }
 
   Future<List<AppNotification>> fetchInbox() async {
+    final local = QuoteLocalNotifications.all;
     try {
       final envelope = await _api.guard(() => _api.get('/notifications'));
       final raw = (envelope['notifications'] as List?) ?? [];
-      return raw.map((e) => _fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      final remote = raw.map((e) => _fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      final merged = [...local, ...remote];
+      merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return merged;
     } catch (_) {
-      return [];
+      return [...local]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
   }
 
   Future<int> unreadCount() async {
+    final localUnread = QuoteLocalNotifications.all.where((n) => !n.isRead).length;
     try {
       final envelope = await _api.guard(() => _api.get('/notifications/unread-count'));
-      return (envelope['unread_count'] as num?)?.toInt() ?? 0;
+      return localUnread + ((envelope['unread_count'] as num?)?.toInt() ?? 0);
     } catch (_) {
-      return 0;
+      return localUnread;
     }
   }
 
