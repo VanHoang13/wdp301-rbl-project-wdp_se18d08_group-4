@@ -192,8 +192,8 @@ class _HomePageState extends State<HomePage> {
                 child: _MainServiceCard(
                   colors: c,
                   onTap: () {
-                    context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                    context.push('/booking/packages');
+                    context.read<BookingFlowCubit>().startComboBooking();
+                    context.push('/booking/location');
                   },
                 ),
               ),
@@ -234,7 +234,7 @@ class _HomePageState extends State<HomePage> {
                           icon: Icons.groups_outlined,
                           useSecondaryIconBg: false,
                           title: 'Khuân vác',
-                          subtitle: 'Thuê đội · so sánh giờ',
+                          subtitle: 'Thêm vào đơn đã đặt',
                           onTap: () => context.push('/booking/labor'),
                         ),
                       ),
@@ -263,14 +263,11 @@ class _HomePageState extends State<HomePage> {
                       Expanded(
                         child: _SmallServiceCard(
                           colors: c,
-                          icon: Icons.local_shipping_outlined,
+                          icon: Icons.receipt_long_outlined,
                           useSecondaryIconBg: false,
-                          title: 'So sánh nhà xe',
-                          subtitle: 'Xem giá & đánh giá',
-                          onTap: () {
-                            context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                            context.push('/booking/partners');
-                          },
+                          title: 'Bảng phụ phí',
+                          subtitle: 'Tham khảo minh bạch',
+                          onTap: () => context.push('/booking/reference-prices'),
                         ),
                       ),
                     ],
@@ -386,7 +383,7 @@ class _MainServiceCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Xe + khuân vác gộp · Thêm người giá ưu đãi',
+                    'Tiết kiệm nhất · Chuyến chuẩn · Giá niêm yết',
                     style: TextStyle(
                       color: isDark ? colors.onPrimaryContainer : colors.onSurfaceMuted,
                       fontSize: 14,
@@ -547,7 +544,7 @@ class _FlashSaleBanner extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          'Nhà xe báo giá — bạn chọn',
+                          'Chuyến không vừa combo?',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -559,7 +556,7 @@ class _FlashSaleBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const Text(
-                          'UniMove giữ cọc · Cọc an toàn, hoàn tiền rõ',
+                          'Đặt linh hoạt · So sánh báo giá nhà xe',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.25),
@@ -570,14 +567,14 @@ class _FlashSaleBanner extends StatelessWidget {
                           borderRadius: BorderRadius.circular(99),
                           child: InkWell(
                             onTap: () {
-                              context.read<BookingFlowCubit>().startCompareQuotesFlow();
-                              context.push('/booking/packages');
+                              context.read<BookingFlowCubit>().startFullMoveBooking();
+                              context.push('/booking/location');
                             },
                             borderRadius: BorderRadius.circular(99),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
                               child: Text(
-                                'Nhận báo giá',
+                                'Đặt chuyến',
                                 style: TextStyle(
                                   color: colors.primary,
                                   fontWeight: FontWeight.w600,

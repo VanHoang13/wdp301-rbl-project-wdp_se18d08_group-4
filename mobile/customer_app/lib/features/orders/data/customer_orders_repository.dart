@@ -51,11 +51,7 @@ class CustomerOrdersRepository {
 
   Future<CustomerOrder?> fetchById(String id) async {
     if (await _useMockData()) {
-      try {
-        return MockOrdersData.orders.firstWhere((o) => o.id == id);
-      } catch (_) {
-        return null;
-      }
+      return MockOrdersData.orderById(id);
     }
 
     try {
@@ -68,13 +64,7 @@ class CustomerOrdersRepository {
     }
   }
 
-  CustomerOrder? _mockById(String id) {
-    try {
-      return MockOrdersData.orders.firstWhere((o) => o.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
+  CustomerOrder? _mockById(String id) => MockOrdersData.orderById(id);
 
   Future<TrackingSnapshot> fetchTracking(String orderId) async {
     final order = await fetchById(orderId);
@@ -91,7 +81,7 @@ class CustomerOrdersRepository {
   Future<String> createFromBooking(BookingFlowState state) async {
     if (await _useMockData()) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
-      return MockOrdersData.activeOrderId;
+      return MockOrdersData.placeBookingOrder(state);
     }
 
     final user = await AuthTokenStorage.instance.loadUser();
@@ -115,8 +105,24 @@ class CustomerOrdersRepository {
       _ => 'standard',
     };
 
-    final basePrice = state.movePackagePrice + state.comboExtraLaborFee;
+    final basePrice = state.isComboBooking
+        ? state.movePackagePrice + state.comboLaborFee + state.retailLaborFee
+        : state.partnerTransportPrice + state.retailLaborFee;
     final total = state.total;
+
+    final pickupNotes = _formatLocationNotes(
+      alley: state.pickupAlleyAccess,
+      extra: state.dormNote,
+      imageCount: state.dormImageCount,
+      isPickup: true,
+    );
+    final deliveryNotes = _formatLocationNotes(
+      alley: state.destinationAlleyAccess,
+      cargo: state.cargoVolume,
+      extra: state.dormNote,
+      imageCount: state.dormImageCount,
+      isPickup: false,
+    );
 
     final envelope = await _api.guard(
       () => _api.post('/orders', body: {
@@ -125,11 +131,17 @@ class CustomerOrdersRepository {
         'pickup_address': pickup.address,
         'pickup_city': pickup.city,
         'pickup_district': pickup.district,
+        'pickup_floor': state.pickupFloor,
+        'pickup_has_elevator': state.pickupHasElevator,
+        'pickup_notes': pickupNotes,
         'pickup_contact_name': contactName,
         'pickup_contact_phone': contactPhone,
         'delivery_address': delivery.address,
         'delivery_city': delivery.city,
         'delivery_district': delivery.district,
+        'delivery_floor': state.floorCount,
+        'delivery_has_elevator': state.hasElevator,
+        'delivery_notes': deliveryNotes,
         'delivery_contact_name': contactName,
         'delivery_contact_phone': contactPhone,
         'base_price': basePrice,
@@ -138,7 +150,12 @@ class CustomerOrdersRepository {
         'service_fee': state.serviceFee,
         'total_price': total,
         'number_of_rooms': 1,
-        if (state.isLaborService) 'scheduled_pickup_time': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+        'requires_helpers': state.isComboBooking && state.effectiveComboLaborCount > 0,
+        'number_of_helpers': state.isComboBooking ? state.effectiveComboLaborCount : 0,
+        if (state.scheduledPickupAt != null)
+          'scheduled_pickup_time': state.scheduledPickupAt!.toIso8601String()
+        else if (state.isLaborService)
+          'scheduled_pickup_time': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
       }),
     );
 
@@ -160,7 +177,7 @@ class CustomerOrdersRepository {
   }
 
   List<CustomerOrder> _mockFilter({required bool activeOnly, required bool completedOnly}) {
-    var list = MockOrdersData.orders;
+    var list = MockOrdersData.allOrders;
     if (activeOnly) {
       list = list.where((o) => o.status.isActive).toList();
     }
@@ -178,6 +195,26 @@ class _ParsedAddress {
   final String address;
   final String city;
   final String district;
+}
+
+String _formatLocationNotes({
+  required AlleyAccess alley,
+  CargoVolume? cargo,
+  String extra = '',
+  int imageCount = 0,
+  required bool isPickup,
+}) {
+  final parts = <String>['Đường vào: ${alley.label}'];
+  if (!isPickup && cargo != null) {
+    parts.add('Khối lượng đồ: ${cargo.label}');
+  }
+  if (extra.trim().isNotEmpty) {
+    parts.add(extra.trim());
+  }
+  if (imageCount > 0) {
+    parts.add('Ảnh đính kèm: $imageCount');
+  }
+  return parts.join(' · ');
 }
 
 _ParsedAddress _splitAddress(String raw) {

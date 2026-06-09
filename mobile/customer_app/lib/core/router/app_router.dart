@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/booking/data/quote_progress_repository.dart';
+import '../../features/booking/domain/quote_models.dart';
 import '../../features/booking/presentation/cubit/booking_flow_cubit.dart';
 import '../../features/booking/presentation/pages/choose_location_page.dart';
 import '../../features/booking/presentation/pages/labor_configure_page.dart';
@@ -11,6 +13,12 @@ import '../../features/booking/presentation/pages/labor_service_page.dart';
 import '../../features/booking/presentation/pages/choose_partner_page.dart';
 import '../../features/booking/presentation/pages/insurance_selection_page.dart';
 import '../../features/booking/presentation/pages/payment_page.dart';
+import '../../features/booking/presentation/pages/move_dorm_details_page.dart';
+import '../../features/booking/presentation/pages/move_schedule_page.dart';
+import '../../features/booking/presentation/pages/provider_quote_detail_page.dart';
+import '../../features/booking/presentation/pages/quote_move_schedule_page.dart';
+import '../../features/booking/presentation/pages/quote_progress_page.dart';
+import '../../features/booking/presentation/pages/reference_prices_page.dart';
 import '../../features/booking/presentation/pages/service_packages_page.dart';
 import '../../features/chat/presentation/pages/chat_thread_page.dart';
 import '../../features/notifications/presentation/pages/notification_detail_page.dart';
@@ -62,7 +70,19 @@ abstract final class AppRouter {
         builder: (_, state) =>
             ResetPasswordPage(initialEmail: state.uri.queryParameters['email']),
       ),
-      GoRoute(path: '/home', builder: (_, __) => const HomeShellPage()),
+      GoRoute(
+        path: '/home',
+        builder: (_, state) {
+          final tab = state.uri.queryParameters['tab'];
+          final index = switch (tab) {
+            'payments' => 1,
+            'activity' => 2,
+            'messages' => 3,
+            _ => 0,
+          };
+          return HomeShellPage(initialTab: index);
+        },
+      ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfilePage()),
       GoRoute(
         path: '/profile/edit',
@@ -78,6 +98,49 @@ abstract final class AppRouter {
       GoRoute(path: '/booking/labor/configure', builder: (_, __) => const LaborConfigurePage()),
       GoRoute(path: '/booking/labor/providers', builder: (_, __) => const LaborProvidersPage()),
       GoRoute(path: '/booking/location', builder: (_, __) => const ChooseLocationPage()),
+      GoRoute(path: '/booking/dorm-details', builder: (_, __) => const MoveDormDetailsPage()),
+      GoRoute(path: '/booking/schedule', builder: (_, __) => const MoveSchedulePage()),
+      GoRoute(
+        path: '/booking/quotes/:refId/progress',
+        redirect: (_, state) {
+          final refId = state.pathParameters['refId']!;
+          final snap = QuoteProgressRepository.instance.peek(refId);
+          if (snap?.status == QuoteProgressStatus.providerConfirmed &&
+              !snap!.hasRequestedPickup) {
+            return '/booking/quotes/$refId/schedule';
+          }
+          return null;
+        },
+        builder: (_, state) => QuoteProgressPage(
+          referenceId: state.pathParameters['refId']!,
+          photosUploadFailed: state.uri.queryParameters['photos'] == 'failed',
+        ),
+      ),
+      GoRoute(
+        path: '/booking/quotes/:refId/offer/:quoteId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, state) => ProviderQuoteDetailPage(
+          referenceId: state.pathParameters['refId']!,
+          quoteId: state.pathParameters['quoteId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/booking/quotes/:refId/schedule',
+        builder: (_, state) => QuoteMoveSchedulePage(
+          referenceId: state.pathParameters['refId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/booking/quote-submitted',
+        redirect: (_, state) {
+          final ref = state.uri.queryParameters['ref'];
+          if (ref != null && ref.isNotEmpty) {
+            return '/booking/quotes/$ref/progress';
+          }
+          return '/home';
+        },
+      ),
+      GoRoute(path: '/booking/reference-prices', builder: (_, __) => const ReferencePricesPage()),
       GoRoute(path: '/booking/packages', builder: (_, __) => const ServicePackagesPage()),
       GoRoute(path: '/booking/partners', builder: (_, __) => const ChoosePartnerPage()),
       GoRoute(path: '/pass-items', builder: (_, __) => const PassItemsPage()),
@@ -101,7 +164,15 @@ abstract final class AppRouter {
         ),
       ),
       GoRoute(path: '/booking/insurance', builder: (_, __) => const InsuranceSelectionPage()),
-      GoRoute(path: '/booking/payment', builder: (_, __) => const PaymentPage()),
+      GoRoute(
+        path: '/booking/move-labor',
+        redirect: (_, __) => '/booking/payment',
+      ),
+      GoRoute(
+        path: '/booking/payment',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, __) => const PaymentPage(),
+      ),
       GoRoute(
         path: '/orders/:orderId/tracking',
         builder: (_, state) => OrderTrackingPage(orderId: state.pathParameters['orderId']!),
