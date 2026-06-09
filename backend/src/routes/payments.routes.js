@@ -13,9 +13,11 @@ router.post('/me/payment-methods', requireAuth, requireRole('customer'), payment
 router.patch('/me/payment-methods/:id', requireAuth, requireRole('customer'), paymentsController.updatePaymentMethod);
 router.delete('/me/payment-methods/:id', requireAuth, requireRole('customer'), paymentsController.deletePaymentMethod);
 
-// Payment APIs
-router.get('/me', requireAuth, requireRole('customer'), paymentsController.getPayments);
-router.get('/me/:id', requireAuth, requireRole('customer'), paymentsController.getPayment);
 router.post('/deposit', requireAuth, requireRole('customer'), paymentsController.createDeposit);
+
+// BE-035 — Lịch sử & chi tiết giao dịch (đặt sau /me/* để tránh conflict)
+router.get('/', requireAuth, requireRole('customer'), paymentsController.getPayments);
+router.get('/me', requireAuth, requireRole('customer'), paymentsController.getPayments);
+router.get('/:id', requireAuth, requireRole('customer'), paymentsController.getPayment);
 
 module.exports = router;

@@ -297,10 +297,192 @@ async function deletePaymentMethod(userId, paymentMethodId) {
   }
 }
 
+const PAYMENT_METHOD_LABELS = {
+  payos: 'PayOS',
+  momo: 'MoMo',
+  wallet: 'Ví UniMove',
+  cash: 'Tiền mặt',
+  bank_transfer: 'Chuyển khoản',
+  credit_card: 'Thẻ tín dụng',
+  debit_card: 'Thẻ ghi nợ',
+};
+
+const SERVICE_TYPE_LABELS = {
+  standard: 'Tiêu chuẩn',
+  express: 'Nhanh',
+  premium: 'Cao cấp',
+};
+
+function mapPaymentType(purpose) {
+  switch (purpose) {
+    case 'deposit':
+      return 'deposit';
+    case 'refund':
+      return 'refund';
+    case 'full':
+    case 'final':
+      return 'full_payment';
+    default:
+      return 'deposit';
+  }
+}
+
+function mapPaymentStatus(status) {
+  switch (status) {
+    case 'pending':
+    case 'processing':
+      return 'pending';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+    case 'cancelled':
+      return 'failed';
+    case 'refunded':
+    case 'partially_refunded':
+      return 'refunded';
+    default:
+      return 'pending';
+  }
+}
+
+function resolveOrder(orderRow) {
+  if (!orderRow) return null;
+  return Array.isArray(orderRow) ? orderRow[0] : orderRow;
+}
+
+function buildServiceLabels(order) {
+  const category = 'Chuyển trọ';
+  const pkg = order?.service_packages;
+  const packageName = Array.isArray(pkg) ? pkg[0]?.name : pkg?.name;
+  const tier = SERVICE_TYPE_LABELS[order?.service_type] || 'Tiêu chuẩn';
+  const serviceLabel = packageName
+    ? `${category} · ${packageName}`
+    : `${category} · Gói ${tier}`;
+
+  return { service_label: serviceLabel, service_category: category };
+}
+
+function mapCustomerPayment(row) {
+  const order = resolveOrder(row.orders);
+  return {
+    id: row.id,
+    order_id: row.order_id,
+    order_number: order?.order_number || null,
+    amount: Number(row.amount),
+    type: mapPaymentType(row.payment_purpose),
+    status: mapPaymentStatus(row.status),
+    method: PAYMENT_METHOD_LABELS[row.payment_method] || row.payment_method,
+    created_at: row.created_at,
+    description: row.description || null,
+  };
+}
+
+function buildMaskedAccount(paymentMethod, bankAccountNumber) {
+  if (bankAccountNumber) {
+    const last4 = String(bankAccountNumber).slice(-4);
+    const label = PAYMENT_METHOD_LABELS[paymentMethod] || paymentMethod;
+    return `${label} ·••• ${last4}`;
+  }
+  if (paymentMethod === 'payos') return 'PayOS · QR';
+  return PAYMENT_METHOD_LABELS[paymentMethod] || paymentMethod;
+}
+
+/**
+ * BE-035 — GET /api/payments
+ * Lịch sử giao dịch của customer (đặt cọc, thanh toán, hoàn tiền…)
+ */
+async function getPaymentHistory(userId, query = {}) {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(query.limit, 10) || 10));
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const { data, error, count } = await supabaseAdmin
+    .from('payments')
+    .select(
+      `
+      id, payment_code, order_id, amount, currency, payment_method,
+      status, payment_purpose, description, created_at,
+      orders ( order_number, service_type, service_packages ( name ) )
+    `,
+      { count: 'exact' },
+    )
+    .eq('customer_id', userId)
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  return {
+    items: (data || []).map(mapCustomerPayment),
+    pagination: {
+      total: count || 0,
+      page,
+      limit,
+      pages: Math.ceil((count || 0) / limit) || 1,
+    },
+  };
+}
+
+/**
+ * BE-035 — GET /api/payments/:id
+ * Chi tiết giao dịch — JOIN orders + reviews
+ */
+async function getPaymentDetail(userId, paymentId) {
+  const { data: row, error } = await supabaseAdmin
+    .from('payments')
+    .select(
+      `
+      id, payment_code, order_id, customer_id, amount, currency, payment_method,
+      status, escrow_status, payment_purpose, description,
+      payos_transaction_id, payos_order_id, bank_account_number,
+      created_at, paid_at,
+      orders (
+        order_number, service_type,
+        service_packages ( name ),
+        reviews ( rating, comment )
+      )
+    `,
+    )
+    .eq('id', paymentId)
+    .eq('customer_id', userId)
+    .maybeSingle();
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  if (!row) throw httpError(404, 'Không tìm thấy giao dịch', 'payment_not_found');
+
+  const order = resolveOrder(row.orders);
+  const reviewRow = order?.reviews;
+  const review = Array.isArray(reviewRow) ? reviewRow[0] : reviewRow;
+  const { service_label, service_category } = buildServiceLabels(order);
+  const payment = mapCustomerPayment(row);
+
+  return {
+    payment,
+    payment_code: row.payment_code,
+    transaction_id: row.payos_transaction_id || row.payos_order_id || row.payment_code,
+    service_label,
+    service_category,
+    paid_at: row.paid_at || row.created_at,
+    escrow_status: row.escrow_status || null,
+    masked_account: buildMaskedAccount(row.payment_method, row.bank_account_number),
+    review_rating: review?.rating ?? null,
+    review_comment: review?.comment ?? null,
+    breakdown: [
+      {
+        label: payment.method,
+        amount: `${Number(row.amount).toLocaleString('vi-VN')}đ`,
+      },
+    ],
+  };
+}
+
 module.exports = {
   getWalletBalance,
   getPaymentMethods,
   addPaymentMethod,
   updatePaymentMethod,
   deletePaymentMethod,
+  getPaymentHistory,
+  getPaymentDetail,
 };

@@ -62,45 +62,28 @@ async function deletePaymentMethod(req, res, next) {
   }
 }
 
-/** GET /api/customers/me/payments — Lấy danh sách payments của customer */
+/** BE-035 — GET /api/payments — Lịch sử giao dịch */
 async function getPayments(req, res, next) {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('payments')
-      .select('id, payment_code, order_id, amount, currency, status, escrow_status, payos_qr_code, created_at, paid_at')
-      .eq('customer_id', req.user.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) throw httpError(500, error.message, 'db_error');
-
-    res.json({ success: true, data: data || [] });
+    const { items, pagination } = await paymentsService.getPaymentHistory(
+      req.user.id,
+      req.query,
+    );
+    res.json({ success: true, data: items, pagination });
   } catch (error) {
     next(error);
   }
 }
 
-/** GET /api/customers/me/payments/:id — Lấy chi tiết một payment */
+/** BE-035 — GET /api/payments/:id — Chi tiết giao dịch */
 async function getPayment(req, res, next) {
   try {
     const { id } = req.params;
-
     if (!id) {
       return next(httpError(400, 'Thiếu payment ID', 'missing_id'));
     }
-
-    const { data: payment, error } = await supabaseAdmin
-      .from('payments')
-      .select('*')
-      .eq('id', id)
-      .eq('customer_id', req.user.id)
-      .single();
-
-    if (error || !payment) {
-      return next(httpError(404, 'Không tìm thấy payment', 'payment_not_found'));
-    }
-
-    res.json({ success: true, data: payment });
+    const data = await paymentsService.getPaymentDetail(req.user.id, id);
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
