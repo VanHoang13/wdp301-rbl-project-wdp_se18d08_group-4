@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../orders/domain/checkout_models.dart';
 import '../../../orders/domain/order_models.dart';
 import '../../data/booking_media_repository.dart';
 import '../../data/booking_mock_repository.dart';
@@ -86,11 +87,8 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
     } else {
       try {
         partners = await _providersRepo.browse();
-        if (partners.isEmpty) {
-          partners = await _repo.fetchPartners();
-        }
       } catch (_) {
-        partners = await _repo.fetchPartners();
+        partners = [];
       }
     }
     if (state.isComboBooking) {
@@ -108,7 +106,7 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
     unawaited(loadPartners());
   }
 
-  Future<String> checkout() => _ordersRepo.createFromBooking(state);
+  Future<CheckoutResult> checkout() => _ordersRepo.createFromBooking(state);
 
   Future<void> loadLaborQuotes() async {
     emit(state.copyWith(loadingLaborQuotes: true, laborQuotes: []));

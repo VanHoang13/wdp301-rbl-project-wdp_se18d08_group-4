@@ -8,6 +8,7 @@ import '../../../../core/mock/mock_orders_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
 import '../../../../core/widgets/uni_surface_card.dart';
+import '../../../orders/data/customer_orders_repository.dart';
 import '../../../orders/domain/order_models.dart';
 
 class ReviewTripPage extends StatefulWidget {
@@ -20,10 +21,13 @@ class ReviewTripPage extends StatefulWidget {
 }
 
 class _ReviewTripPageState extends State<ReviewTripPage> {
+  final _ordersRepo = CustomerOrdersRepository();
   final _comment = TextEditingController();
   int _rating = 0;
   final Set<String> _tags = {};
   bool _submitting = false;
+  CustomerOrder? _order;
+  bool _loadingOrder = true;
 
   static const _tagOptions = [
     'Đúng giờ',
@@ -34,9 +38,24 @@ class _ReviewTripPageState extends State<ReviewTripPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadOrder();
+  }
+
+  @override
   void dispose() {
     _comment.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadOrder() async {
+    final order = await _ordersRepo.fetchById(widget.orderId);
+    if (!mounted) return;
+    setState(() {
+      _order = order;
+      _loadingOrder = false;
+    });
   }
 
   Future<void> _submit() async {
@@ -66,11 +85,29 @@ class _ReviewTripPageState extends State<ReviewTripPage> {
   Widget build(BuildContext context) {
     final c = UniMoveColors.of(context);
     final theme = ShadTheme.of(context);
-    CustomerOrder order;
-    try {
-      order = MockOrdersData.orders.firstWhere((o) => o.id == widget.orderId);
-    } catch (_) {
-      order = MockOrdersData.orders.first;
+
+    if (_loadingOrder) {
+      return Scaffold(
+        backgroundColor: c.background,
+        body: Center(child: CircularProgressIndicator(color: c.primary)),
+      );
+    }
+
+    final order = _order;
+    if (order == null) {
+      return Scaffold(
+        backgroundColor: c.background,
+        appBar: AppBar(
+          backgroundColor: c.surface,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: c.onSurface, size: 20.sp),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: Center(
+          child: Text('Không tìm thấy đơn hàng', style: TextStyle(color: c.onSurfaceMuted)),
+        ),
+      );
     }
 
     return Scaffold(

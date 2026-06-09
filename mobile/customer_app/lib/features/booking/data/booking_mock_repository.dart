@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/config/dev_config.dart';
 import '../../../core/constants/app_images.dart';
+import '../../../core/mock/mock_auth_session.dart';
+import '../../../core/network/api_client.dart';
 import '../domain/booking_models.dart';
 
 class BookingMockRepository {
-  Future<List<RecentPlace>> fetchRecentPlaces() async {
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    return const [
+  BookingMockRepository({ApiClient? api}) : _api = api ?? ApiClient.instance;
+
+  final ApiClient _api;
+
+  Future<bool> _useMockData() async {
+    if (DevConfig.useMockAuth && await MockAuthSession.isSignedIn()) return true;
+    return !(await AuthTokenStorage.instance.hasSession());
+  }
+
+  static const _mockRecentPlaces = [
       RecentPlace(
         id: '1',
         title: 'Ký túc xá Khu B',
@@ -25,10 +36,35 @@ class BookingMockRepository {
         subtitle: '208 Nguyễn Hữu Cảnh, Bình Thạnh',
         icon: Icons.home_outlined,
       ),
-    ];
+  ];
+
+  Future<List<RecentPlace>> fetchRecentPlaces() async {
+    if (await _useMockData()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      return _mockRecentPlaces;
+    }
+
+    try {
+      final envelope = await _api.guard(() => _api.get('/customers/me/recent-places'));
+      final raw = envelope['data'];
+      if (raw is! List || raw.isEmpty) return [];
+
+      return raw.asMap().entries.map((entry) {
+        final j = Map<String, dynamic>.from(entry.value as Map);
+        final address = j['address'] as String? ?? '';
+        return RecentPlace(
+          id: 'rp-${entry.key}-$address',
+          title: j['title'] as String? ?? address,
+          subtitle: address,
+          icon: Icons.history,
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
-  /// Combo chuyển trọ: xe + khuân vác gộp; thêm người rẻ hơn thuê riêng.
+  /// Combo chuyển trọ — chưa có API backend; giữ mock.
   Future<List<ServicePackage>> fetchPackages() async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     return const [
@@ -95,7 +131,7 @@ class BookingMockRepository {
     ];
   }
 
-  /// Gói bảo hiểm đồ đạc khi chuyển trọ.
+  /// Gói bảo hiểm — chưa có API backend; giữ mock.
   Future<List<CargoInsurancePlan>> fetchInsurancePlans() async {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     return const [
@@ -148,12 +184,13 @@ class BookingMockRepository {
     ];
   }
 
-  /// Nhà xe đăng ký combo niêm yết — mock cho đến khi có API.
+  /// Nhà xe combo niêm yết — chưa có API backend; giữ mock.
   Future<List<PartnerOffer>> fetchComboPartners(ServiceTier tier) async {
     final all = await fetchPartners();
     return all.where((p) => p.offersCombo(tier)).toList();
   }
 
+  /// Nhà xe linh hoạt (demo auth) — session thật dùng `ProvidersRepository.browse`.
   Future<List<PartnerOffer>> fetchPartners() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     return [

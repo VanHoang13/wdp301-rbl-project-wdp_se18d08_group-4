@@ -1,4 +1,8 @@
+import 'dart:convert';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +11,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/booking_scaffold.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
+import '../../../orders/domain/checkout_models.dart';
 import '../../domain/booking_models.dart';
 import '../cubit/booking_flow_cubit.dart';
 import '../cubit/booking_flow_state.dart';
@@ -21,6 +26,8 @@ class PaymentPage extends StatefulWidget {
 class _PaymentPageState extends State<PaymentPage> {
   final _discountCtrl = TextEditingController();
   bool _submitting = false;
+  DepositPaymentInfo? _depositInfo;
+  String? _pendingOrderId;
 
   @override
   void initState() {
@@ -188,6 +195,10 @@ class _PaymentPageState extends State<PaymentPage> {
               ],
               SizedBox(height: 16.h),
               _escrowTrustCard(c, deposit: deposit),
+              if (_depositInfo != null) ...[
+                SizedBox(height: 16.h),
+                _payosQrCard(c, _depositInfo!),
+              ],
               SizedBox(height: 16.h),
               Text(
                 'Phương thức thanh toán',
@@ -421,12 +432,18 @@ class _PaymentPageState extends State<PaymentPage> {
               child: SmoothCtaButton(
                 label: _submitting
                     ? 'Đang xử lý...'
-                    : state.isLaborService
-                        ? (state.isLaborAddon
-                            ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
-                            : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
-                        : 'Đặt cọc · ${_formatPrice(deposit)}',
-                onPressed: _submitting ? null : () => _confirmDeposit(context, state, labor?.name),
+                    : _depositInfo != null
+                        ? 'Theo dõi đơn hàng'
+                        : state.isLaborService
+                            ? (state.isLaborAddon
+                                ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
+                                : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
+                            : 'Đặt cọc · ${_formatPrice(deposit)}',
+                onPressed: _submitting
+                    ? null
+                    : _depositInfo != null
+                        ? () => context.go('/orders/$_pendingOrderId/tracking')
+                        : () => _confirmDeposit(context, state, labor?.name),
               ),
             ),
           ),
@@ -452,26 +469,44 @@ class _PaymentPageState extends State<PaymentPage> {
         return;
       }
 
-      final orderId = state.isLaborAddon && state.linkedOrderId != null
-          ? state.linkedOrderId!
-          : await cubit.checkout();
+      if (state.isLaborAddon && state.linkedOrderId != null) {
+        final orderId = state.linkedOrderId!;
+        if (!context.mounted) return;
+        final helpers = state.helperCount;
+        final team = teamName ?? 'đối tác';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đã thêm $helpers người ($team) vào đơn #${state.linkedOrderNumber ?? orderId}')),
+        );
+        context.go('/orders/$orderId/tracking');
+        return;
+      }
 
+      final result = await cubit.checkout();
       if (!context.mounted) return;
+
+      if (result.deposit != null) {
+        setState(() {
+          _depositInfo = result.deposit;
+          _pendingOrderId = result.orderId;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đơn đã tạo — quét mã QR để hoàn tất đặt cọc')),
+        );
+        return;
+      }
 
       final helpers = state.helperCount;
       final team = teamName ?? 'đối tác';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            state.isLaborAddon
-                ? 'Đã thêm $helpers người ($team) vào đơn #${state.linkedOrderNumber ?? orderId}'
-                : state.isLaborOnly
-                    ? 'Đã đặt $helpers người ($team) — đơn đã ghi nhận'
-                    : 'Đặt cọc thành công — đơn đã tạo trên hệ thống',
+            state.isLaborOnly
+                ? 'Đã đặt $helpers người ($team) — đơn đã ghi nhận'
+                : 'Đặt cọc thành công — đơn đã tạo trên hệ thống',
           ),
         ),
       );
-      context.go('/orders/$orderId/tracking');
+      context.go('/orders/${result.orderId}/tracking');
     } on ApiException catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -569,6 +604,115 @@ class _PaymentPageState extends State<PaymentPage> {
         ],
       ),
     );
+  }
+
+  Widget _payosQrCard(UniMoveColors c, DepositPaymentInfo info) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: c.primary.withValues(alpha: 0.35), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.qr_code_2, color: c.primary, size: 22.sp),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'Quét mã QR để đặt cọc ${_formatPrice(info.amount)}',
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w800, color: c.onSurface),
+                ),
+              ),
+            ],
+          ),
+          if (info.paymentCode.isNotEmpty) ...[
+            SizedBox(height: 6.h),
+            Text(
+              'Mã: ${info.paymentCode}',
+              style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
+            ),
+          ],
+          if (info.qrCode != null && info.qrCode!.startsWith('data:image')) ...[
+            SizedBox(height: 14.h),
+            Center(child: _qrDataImage(info.qrCode!, c, size: 220.w)),
+          ] else if (info.hasQrImage) ...[
+            SizedBox(height: 14.h),
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.r),
+                child: CachedNetworkImage(
+                  imageUrl: info.qrCode!,
+                  width: 220.w,
+                  height: 220.w,
+                  fit: BoxFit.contain,
+                  placeholder: (_, __) => SizedBox(
+                    width: 220.w,
+                    height: 220.w,
+                    child: Center(child: CircularProgressIndicator(color: c.primary, strokeWidth: 2)),
+                  ),
+                  errorWidget: (_, __, ___) => Icon(Icons.qr_code_2, size: 120.sp, color: c.onSurfaceMuted),
+                ),
+              ),
+            ),
+          ] else if (info.qrCode != null && info.qrCode!.isNotEmpty) ...[
+            SizedBox(height: 14.h),
+            Center(child: Icon(Icons.qr_code_2, size: 120.sp, color: c.primary)),
+          ],
+          if (info.bankAccountNumber != null) ...[
+            SizedBox(height: 12.h),
+            Text(
+              'STK: ${info.bankAccountNumber}',
+              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: c.onSurface),
+            ),
+          ],
+          if (info.bankAccountName != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              info.bankAccountName!,
+              style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
+            ),
+          ],
+          if (info.checkoutUrl != null && info.checkoutUrl!.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            TextButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: info.checkoutUrl!));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Đã sao chép link thanh toán')),
+                );
+              },
+              icon: Icon(Icons.link, size: 18.sp, color: c.primary),
+              label: Text(
+                'Sao chép link thanh toán',
+                style: TextStyle(fontSize: 13.sp, color: c.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+          SizedBox(height: 4.h),
+          Text(
+            'Sau khi chuyển khoản, nhấn "Theo dõi đơn hàng" để xem trạng thái.',
+            style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _qrDataImage(String dataUrl, UniMoveColors c, {required double size}) {
+    try {
+      final base64 = dataUrl.contains(',') ? dataUrl.split(',').last : dataUrl;
+      final bytes = base64Decode(base64);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12.r),
+        child: Image.memory(bytes, width: size, height: size, fit: BoxFit.contain),
+      );
+    } catch (_) {
+      return Icon(Icons.qr_code_2, size: 120.sp, color: c.onSurfaceMuted);
+    }
   }
 
   Widget _escrowTrustCard(UniMoveColors c, {required int deposit}) {
