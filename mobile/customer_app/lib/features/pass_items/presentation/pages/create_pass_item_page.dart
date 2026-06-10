@@ -9,7 +9,6 @@ import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../data/pass_item_repository.dart';
 import '../../domain/pass_extras.dart';
 import '../../domain/pass_item.dart';
-import '../../data/pass_item_location_prefs.dart';
 import '../../domain/pass_item_provinces.dart';
 import '../pass_item_format.dart';
 import '../widgets/pass_item_image.dart';
@@ -31,24 +30,12 @@ class _CreatePassItemPageState extends State<CreatePassItemPage> {
   final _descCtrl = TextEditingController();
 
   String _category = PassItemCategories.all.first;
-  String _provinceId = PassItemProvince.defaultId;
+  final String _provinceId = 'dn';
   PassItemCondition _condition = PassItemCondition.good;
   final List<String> _imagePaths = [];
   bool _free = false;
   bool _negotiable = false;
   bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProvince();
-  }
-
-  Future<void> _loadProvince() async {
-    final id = await loadPassItemsProvinceId();
-    if (!mounted) return;
-    setState(() => _provinceId = id);
-  }
 
   String get _fullArea =>
       PassItemProvince.formatArea(detail: _areaCtrl.text.trim(), provinceId: _provinceId);
@@ -337,21 +324,6 @@ class _CreatePassItemPageState extends State<CreatePassItemPage> {
                 leading: Icon(LucideIcons.timer, size: 18, color: c.primary),
               ),
               const SizedBox(height: 20),
-              _sectionLabel(c, 'Tỉnh / thành phố'),
-              const SizedBox(height: 8),
-              ShadSelect<String>(
-                placeholder: const Text('Chọn tỉnh / thành phố'),
-                initialValue: _provinceId,
-                options: [
-                  for (final p in PassItemProvince.all)
-                    ShadOption(value: p.id, child: Text(p.label)),
-                ],
-                selectedOptionBuilder: (context, value) =>
-                    Text(PassItemProvince.resolve(value).label),
-                onChanged: (v) {
-                  if (v != null) setState(() => _provinceId = v);
-                },
-              ),
               const SizedBox(height: 16),
               _sectionLabel(c, 'Địa chỉ lấy đồ (quận, KTX, phường...)'),
               const SizedBox(height: 8),

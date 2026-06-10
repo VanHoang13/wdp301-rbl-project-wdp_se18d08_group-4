@@ -35,57 +35,60 @@ class BookingMockRepository {
       ServicePackage(
         tier: ServiceTier.economy,
         label: 'Combo nhẹ',
-        subtitle: 'Ít đồ · 1 người khuân vác',
+        subtitle: 'Ít đồ · gợi ý 1 người',
         badge: 'TIẾT KIỆM',
-        price: 199000,
         popular: false,
-        laborIncluded: 1,
+        transportBasePrice: 134000,
+        laborSuggested: 1,
+        maxLaborCount: 3,
         includedKm: 5,
         extraKmPrice: 8000,
         extraLaborComboPrice: 65000,
         extraLaborRetailPrice: 120000,
         features: [
           PackageFeature(text: 'Vali, bàn, vài thùng — chuyến ngắn', included: true),
-          PackageFeature(text: 'Xe tải ~500kg (nhà xe đối tác báo giá)', included: true),
-          PackageFeature(text: '1 người khuân vác trong combo', included: true),
+          PackageFeature(text: 'Xe tải ~500kg · giá niêm yết cố định', included: true),
+          PackageFeature(text: 'Chọn 1–3 người khuân vác (giá combo)', included: true),
           PackageFeature(text: 'Bảo hiểm hàng hóa', included: false),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.standard,
         label: 'Combo phòng trọ',
-        subtitle: 'Đồ vừa · 2 người khuân vác',
+        subtitle: 'Đồ vừa · gợi ý 2 người',
         badge: 'PHỔ BIẾN',
-        price: 450000,
         popular: true,
-        laborIncluded: 2,
+        transportBasePrice: 300000,
+        laborSuggested: 2,
+        maxLaborCount: 3,
         includedKm: 10,
         extraKmPrice: 7000,
         extraLaborComboPrice: 75000,
         extraLaborRetailPrice: 120000,
         features: [
           PackageFeature(text: 'Giường, tủ, bếp — đa số sinh viên', included: true),
-          PackageFeature(text: 'Xe tải ~1 tấn (nhà xe đối tác báo giá)', included: true),
-          PackageFeature(text: '2 người khuân vác trong combo', included: true),
+          PackageFeature(text: 'Xe tải ~1 tấn · giá niêm yết cố định', included: true),
+          PackageFeature(text: 'Chọn 1–3 người khuân vác (giá combo)', included: true),
           PackageFeature(text: 'Bảo hiểm cơ bản', included: true),
         ],
       ),
       ServicePackage(
         tier: ServiceTier.premium,
         label: 'Combo trọn gói',
-        subtitle: 'Nhiều đồ · 3 người + bọc đồ',
+        subtitle: 'Nhiều đồ · gợi ý 3 người',
         badge: 'TRỌN CHUYẾN',
-        price: 890000,
         popular: false,
-        laborIncluded: 3,
+        transportBasePrice: 680000,
+        laborSuggested: 3,
+        maxLaborCount: 4,
         includedKm: 15,
         extraKmPrice: 6000,
         extraLaborComboPrice: 70000,
         extraLaborRetailPrice: 120000,
         features: [
           PackageFeature(text: 'Nhiều đồ lớn, cần đóng gói', included: true),
-          PackageFeature(text: 'Xe tải ~1.5 tấn (nhà xe đối tác báo giá)', included: true),
-          PackageFeature(text: '3 người khuân vác + hỗ trợ bọc đồ', included: true),
+          PackageFeature(text: 'Xe tải ~1.5 tấn · giá niêm yết cố định', included: true),
+          PackageFeature(text: 'Chọn 1–4 người khuân vác (giá combo)', included: true),
           PackageFeature(text: 'Bảo hiểm toàn diện', included: true),
         ],
       ),
@@ -145,6 +148,12 @@ class BookingMockRepository {
     ];
   }
 
+  /// Nhà xe đăng ký combo niêm yết — mock cho đến khi có API.
+  Future<List<PartnerOffer>> fetchComboPartners(ServiceTier tier) async {
+    final all = await fetchPartners();
+    return all.where((p) => p.offersCombo(tier)).toList();
+  }
+
   Future<List<PartnerOffer>> fetchPartners() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     return [
@@ -158,6 +167,8 @@ class BookingMockRepository {
         imageUrl: AppImages.partnerTruck1,
         vehicleLabel: 'Xe tải 1 tấn',
         completedTrips: 1260,
+        offeredComboTiers: {ServiceTier.economy, ServiceTier.standard, ServiceTier.premium},
+        comboLaborUnitPrice: 60000,
         recentReviews: [
           ProviderReview(
             author: 'Ngọc A.',
@@ -177,6 +188,20 @@ class BookingMockRepository {
             comment: 'Di chuyển nhanh, không phát sinh phí ngoài.',
             timeAgoLabel: '2 tuần trước',
           ),
+          ProviderReview(
+            author: 'Đức H.',
+            rating: 5.0,
+            comment:
+                'Chuyển từ KTX lên trọ mới, đồ khá nhiều nhưng team bốc xếp rất cẩn thận. '
+                'Báo giá trên app khớp với thực tế, phụ phí tầng và hẻm được giải thích rõ trước khi chốt.',
+            timeAgoLabel: '3 tuần trước',
+          ),
+          ProviderReview(
+            author: 'Lan P.',
+            rating: 4.8,
+            comment: 'Tài xế gọi trước 30 phút, đến đúng giờ. Máy giặt và tủ quần áo được bọc kỹ.',
+            timeAgoLabel: '1 tháng trước',
+          ),
         ],
       ),
       const PartnerOffer(
@@ -189,6 +214,8 @@ class BookingMockRepository {
         imageUrl: AppImages.partnerTruck2,
         vehicleLabel: 'Xe tải 500kg',
         completedTrips: 840,
+        offeredComboTiers: {ServiceTier.economy, ServiceTier.standard},
+        comboLaborUnitPrice: 62000,
         recentReviews: [
           ProviderReview(
             author: 'Hào P.',
@@ -208,6 +235,14 @@ class BookingMockRepository {
             comment: 'Tư vấn rõ ràng trước khi chốt đơn.',
             timeAgoLabel: '10 ngày trước',
           ),
+          ProviderReview(
+            author: 'Vy T.',
+            rating: 4.5,
+            comment:
+                'Giá rẻ hơn vài nhà xe khác. Hẻm hơi hẹp nên phải khuân bộ một đoạn nhưng '
+                'đã báo phụ phí từ đầu nên mình thấy ổn. Nhìn chung phù hợp sinh viên.',
+            timeAgoLabel: '2 tuần trước',
+          ),
         ],
       ),
       const PartnerOffer(
@@ -220,6 +255,8 @@ class BookingMockRepository {
         imageUrl: AppImages.partnerTruck1,
         vehicleLabel: 'Xe tải 1.5 tấn',
         completedTrips: 1025,
+        offeredComboTiers: {ServiceTier.standard, ServiceTier.premium},
+        comboLaborUnitPrice: 68000,
         recentReviews: [
           ProviderReview(
             author: 'Phương D.',
@@ -238,6 +275,14 @@ class BookingMockRepository {
             rating: 4.8,
             comment: 'Tổng thể dịch vụ tốt, đáng tiền.',
             timeAgoLabel: '9 ngày trước',
+          ),
+          ProviderReview(
+            author: 'Khoa N.',
+            rating: 4.9,
+            comment:
+                'Xe lớn nên chở được full đồ phòng trọ một chuyến. Đánh giá chi tiết từng khoản phụ phí '
+                'giúp mình so sánh dễ hơn các bên khác. Sẽ dùng lại lần sau.',
+            timeAgoLabel: '2 tuần trước',
           ),
         ],
       ),

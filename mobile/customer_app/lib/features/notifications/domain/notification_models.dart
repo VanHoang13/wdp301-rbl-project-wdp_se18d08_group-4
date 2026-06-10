@@ -8,6 +8,7 @@ enum AppNotificationType {
   marketplaceDealConfirmed,
   marketplaceDealCancelled,
   marketplaceTransportBooked,
+  marketplaceInterest,
 }
 
 class AppNotification {
@@ -52,7 +53,8 @@ class AppNotification {
   bool get isMarketplace => type == AppNotificationType.marketplaceMessage ||
       type == AppNotificationType.marketplaceDealConfirmed ||
       type == AppNotificationType.marketplaceDealCancelled ||
-      type == AppNotificationType.marketplaceTransportBooked;
+      type == AppNotificationType.marketplaceTransportBooked ||
+      type == AppNotificationType.marketplaceInterest;
 
   String get categoryLabel => switch (type) {
         AppNotificationType.promotion => 'Ưu đãi',
@@ -63,5 +65,6 @@ class AppNotification {
         AppNotificationType.marketplaceDealConfirmed => 'Chợ sinh viên',
         AppNotificationType.marketplaceDealCancelled => 'Chợ sinh viên',
         AppNotificationType.marketplaceTransportBooked => 'Chợ sinh viên',
+        AppNotificationType.marketplaceInterest => 'Chợ sinh viên',
       };
 }
