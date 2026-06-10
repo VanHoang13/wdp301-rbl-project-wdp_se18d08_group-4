@@ -52,4 +52,13 @@ async function updateSchedule(req, res, next) {
   }
 }
 
-module.exports = { browse, getById, getEarnings, getSchedule, updateSchedule };
+async function uploadDocuments(req, res, next) {
+  try {
+    const data = await providersService.uploadProviderDocuments(req.user.id, req.files || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { browse, getById, getEarnings, getSchedule, updateSchedule, uploadDocuments };

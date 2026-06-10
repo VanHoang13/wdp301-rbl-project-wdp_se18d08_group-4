@@ -1,5 +1,16 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
+const { ensurePublicImageBucket } = require('./storage.helpers');
+
+const PROVIDER_DOCS_BUCKET = 'provider-documents';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+const FIELD_TO_DOC_TYPE = {
+  cccd_front: 'id_card',
+  cccd_back: 'id_card',
+  vehicle_registration: 'vehicle_registration',
+  driver_license: 'license',
+  vehicle_photo: 'insurance',
+};
 
 const PROVIDER_SELECT = `
   id,
@@ -109,7 +120,6 @@ async function loadProviderRow(providerId) {
   return loadProviderFromProfilesOnly(providerId);
 }
 
-/** Gộp profiles (metadata) + provider_profiles (nhà xe) — tránh SELECT cột không có trên profiles. */
 async function loadProviderFromProfilesOnly(providerId) {
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
@@ -265,7 +275,6 @@ async function getEarnings(providerId, period = 'week') {
 
   const orders = data || [];
 
-  // Group by date
   const byDate = {};
   for (const o of orders) {
     const date = o.completed_at.slice(0, 10);
@@ -274,7 +283,6 @@ async function getEarnings(providerId, period = 'week') {
     byDate[date].orders += 1;
   }
 
-  // Fill all dates in range
   const breakdown = [];
   const cursor = new Date(from);
   while (cursor <= now) {
@@ -305,7 +313,6 @@ async function getSchedule(providerId) {
 
   const DAY_NAMES = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
-  // Build 7-day structure
   const days = Array.from({ length: 7 }, (_, i) => ({
     day_of_week: i,
     day_name: DAY_NAMES[i],
@@ -325,7 +332,6 @@ async function getSchedule(providerId) {
 }
 
 // ── PATCH /api/providers/me/schedule ─────────────────────────────────────────
-// Body: { slots: [{ day_of_week, start_time, end_time, is_available }] }
 async function updateSchedule(providerId, slots) {
   if (!Array.isArray(slots)) throw httpError(400, 'slots phải là mảng', 'validation_error');
 
@@ -336,7 +342,6 @@ async function updateSchedule(providerId, slots) {
       throw httpError(400, 'Thiếu start_time hoặc end_time', 'validation_error');
   }
 
-  // Replace approach: delete all then insert new
   const { error: delErr } = await supabaseAdmin
     .from('provider_availability')
     .delete()
@@ -360,4 +365,68 @@ async function updateSchedule(providerId, slots) {
   return getSchedule(providerId);
 }
 
-module.exports = { browseProviders, getProviderById, getEarnings, getSchedule, updateSchedule };
+// ── POST /api/providers/me/documents ─────────────────────────────────────────
+async function uploadProviderDocuments(providerId, filesMap) {
+  if (!filesMap || !Object.keys(filesMap).length) {
+    throw httpError(400, 'Không có file được upload', 'validation_error');
+  }
+
+  await ensurePublicImageBucket(PROVIDER_DOCS_BUCKET, {
+    fileSizeLimit: 5242880,
+    allowedMimeTypes: ['image/jpeg', 'image/png'],
+  });
+
+  const uploaded = [];
+
+  for (const [field, files] of Object.entries(filesMap)) {
+    const file = Array.isArray(files) ? files[0] : files;
+    if (!file?.buffer?.length) continue;
+
+    const ext = EXT_BY_MIME[file.mimetype];
+    if (!ext) throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+
+    const objectPath = `${providerId}/${field}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(PROVIDER_DOCS_BUCKET)
+      .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: true });
+
+    if (uploadError) throw httpError(500, uploadError.message, 'storage_error');
+
+    const { data: urlData } = supabaseAdmin.storage.from(PROVIDER_DOCS_BUCKET).getPublicUrl(objectPath);
+    const url = urlData?.publicUrl;
+    if (!url) throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
+
+    const docType = FIELD_TO_DOC_TYPE[field] || field;
+    const { error: dbError } = await supabaseAdmin.from('provider_documents').insert({
+      provider_id: providerId,
+      document_type: `${docType}_${field}`,
+      document_url: url,
+      is_verified: false,
+      notes: field,
+    });
+
+    if (dbError) throw httpError(500, dbError.message, 'db_error');
+
+    uploaded.push({ field, url, document_type: docType });
+  }
+
+  if (!uploaded.length) {
+    throw httpError(400, 'Không có file hợp lệ', 'validation_error');
+  }
+
+  await supabaseAdmin
+    .from('profiles')
+    .update({ status: 'pending_verification' })
+    .eq('id', providerId);
+
+  return { uploaded: uploaded.length, documents: uploaded };
+}
+
+module.exports = {
+  browseProviders,
+  getProviderById,
+  getEarnings,
+  getSchedule,
+  updateSchedule,
+  uploadProviderDocuments,
+};
