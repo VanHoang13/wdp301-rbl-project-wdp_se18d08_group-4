@@ -63,4 +63,46 @@ class ProviderOrdersRepository {
       ),
     );
   }
+
+  Future<void> accept(String orderId) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'in_progress');
+      return;
+    }
+    await _api.guard(() => _api.patch('/orders/$orderId/accept'));
+  }
+
+  Future<void> decline(String orderId, {String? reason}) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'declined');
+      return;
+    }
+    await _api.guard(
+      () => _api.patch('/orders/$orderId/decline',
+          body: reason != null && reason.isNotEmpty ? {'reason': reason} : null),
+    );
+  }
+
+  Future<void> complete(String orderId) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'completed');
+      return;
+    }
+    await _api.guard(() => _api.patch('/orders/$orderId/complete'));
+  }
+
+  Future<void> cancel(String orderId, {String? reason}) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'cancelled');
+      return;
+    }
+    await _api.guard(
+      () => _api.patch('/orders/$orderId/cancel',
+          body: reason != null && reason.isNotEmpty ? {'reason': reason} : null),
+    );
+  }
 }

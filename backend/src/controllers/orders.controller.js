@@ -58,4 +58,40 @@ async function respondToOrder(req, res, next) {
   }
 }
 
-module.exports = { listOrders, createOrder, getOrder, respondToOrder };
+async function acceptOrder(req, res, next) {
+  try {
+    const data = await ordersService.acceptOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function declineOrder(req, res, next) {
+  try {
+    const data = await ordersService.declineOrder(req.params.id, req.user.id, req.body.reason);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function completeOrder(req, res, next) {
+  try {
+    const data = await ordersService.completeOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function cancelOrder(req, res, next) {
+  try {
+    const data = await ordersService.cancelOrder(req.params.id, req.user.id, req.body.reason);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { listOrders, createOrder, getOrder, respondToOrder, acceptOrder, declineOrder, completeOrder, cancelOrder };

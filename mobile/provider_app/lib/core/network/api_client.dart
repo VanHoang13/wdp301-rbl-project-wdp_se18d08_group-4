@@ -56,6 +56,10 @@ class ApiClient {
     return _unwrap(await _dio.post<dynamic>(path, data: body));
   }
 
+  Future<Map<String, dynamic>> patch(String path, {Map<String, dynamic>? body}) async {
+    return _unwrap(await _dio.patch<dynamic>(path, data: body));
+  }
+
   Map<String, dynamic> _unwrap(Response<dynamic> response) {
     final raw = response.data;
     if (raw is! Map) {

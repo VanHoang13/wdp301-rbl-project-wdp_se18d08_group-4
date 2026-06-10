@@ -238,4 +238,126 @@ async function getProviderById(providerId, { reviewsLimit = 5 } = {}) {
   };
 }
 
-module.exports = { browseProviders, getProviderById };
+// ── GET /api/providers/me/earnings?period=week|month|year ─────────────────────
+async function getEarnings(providerId, period = 'week') {
+  const now = new Date();
+  let from;
+
+  if (period === 'week') {
+    from = new Date(now);
+    from.setDate(now.getDate() - 6);
+    from.setHours(0, 0, 0, 0);
+  } else if (period === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else {
+    from = new Date(now.getFullYear(), 0, 1);
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .select('id, total_price, completed_at')
+    .eq('provider_id', providerId)
+    .eq('status', 'completed')
+    .gte('completed_at', from.toISOString())
+    .order('completed_at', { ascending: true });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const orders = data || [];
+
+  // Group by date
+  const byDate = {};
+  for (const o of orders) {
+    const date = o.completed_at.slice(0, 10);
+    if (!byDate[date]) byDate[date] = { earned: 0, orders: 0 };
+    byDate[date].earned += Number(o.total_price) || 0;
+    byDate[date].orders += 1;
+  }
+
+  // Fill all dates in range
+  const breakdown = [];
+  const cursor = new Date(from);
+  while (cursor <= now) {
+    const date = cursor.toISOString().slice(0, 10);
+    breakdown.push({
+      date,
+      earned: byDate[date]?.earned ?? 0,
+      orders: byDate[date]?.orders ?? 0,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const total_earned = orders.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+
+  return { period, total_earned, total_orders: orders.length, breakdown };
+}
+
+// ── GET /api/providers/me/schedule ────────────────────────────────────────────
+async function getSchedule(providerId) {
+  const { data, error } = await supabaseAdmin
+    .from('provider_availability')
+    .select('id, day_of_week, start_time, end_time, is_available')
+    .eq('provider_id', providerId)
+    .order('day_of_week')
+    .order('start_time');
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const DAY_NAMES = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+
+  // Build 7-day structure
+  const days = Array.from({ length: 7 }, (_, i) => ({
+    day_of_week: i,
+    day_name: DAY_NAMES[i],
+    slots: [],
+  }));
+
+  for (const row of data || []) {
+    days[row.day_of_week].slots.push({
+      id: row.id,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      is_available: row.is_available,
+    });
+  }
+
+  return days;
+}
+
+// ── PATCH /api/providers/me/schedule ─────────────────────────────────────────
+// Body: { slots: [{ day_of_week, start_time, end_time, is_available }] }
+async function updateSchedule(providerId, slots) {
+  if (!Array.isArray(slots)) throw httpError(400, 'slots phải là mảng', 'validation_error');
+
+  for (const s of slots) {
+    if (s.day_of_week == null || s.day_of_week < 0 || s.day_of_week > 6)
+      throw httpError(400, 'day_of_week phải từ 0 (CN) đến 6 (T7)', 'validation_error');
+    if (!s.start_time || !s.end_time)
+      throw httpError(400, 'Thiếu start_time hoặc end_time', 'validation_error');
+  }
+
+  // Replace approach: delete all then insert new
+  const { error: delErr } = await supabaseAdmin
+    .from('provider_availability')
+    .delete()
+    .eq('provider_id', providerId);
+
+  if (delErr) throw httpError(500, delErr.message, 'db_error');
+
+  if (slots.length === 0) return getSchedule(providerId);
+
+  const rows = slots.map((s) => ({
+    provider_id: providerId,
+    day_of_week: Number(s.day_of_week),
+    start_time: s.start_time,
+    end_time: s.end_time,
+    is_available: s.is_available !== false,
+  }));
+
+  const { error: insErr } = await supabaseAdmin.from('provider_availability').insert(rows);
+  if (insErr) throw httpError(500, insErr.message, 'db_error');
+
+  return getSchedule(providerId);
+}
+
+module.exports = { browseProviders, getProviderById, getEarnings, getSchedule, updateSchedule };

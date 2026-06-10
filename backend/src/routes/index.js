@@ -8,6 +8,7 @@ const webhooksRoutes = require('./webhooks.routes');
 const adminRoutes = require('./admin.routes');
 const marketplaceRoutes = require('./marketplace.routes');
 const notificationRoutes = require('./notification.routes');
+const conversationsRoutes = require('./conversations.routes');
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use('/webhooks', webhooksRoutes);
 router.use('/admin', adminRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/conversations', conversationsRoutes);
 
 module.exports = router;

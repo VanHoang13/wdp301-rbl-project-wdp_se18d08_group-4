@@ -29,29 +29,105 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     super.dispose();
   }
 
-  Future<void> _respond(String response) async {
+  Future<void> _accept() async {
     setState(() => _submitting = true);
     try {
-      await ref.read(providerOrdersRepositoryProvider).respond(
-            orderId: widget.orderId,
-            response: response,
-            declineReason: response == 'declined' ? _declineReasonCtrl.text : null,
+      await ref.read(providerOrdersRepositoryProvider).accept(widget.orderId);
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerOrderDetailProvider(widget.orderId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã nhận đơn — đơn đang thực hiện')),
+      );
+      context.pop();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _decline() async {
+    setState(() => _submitting = true);
+    try {
+      await ref.read(providerOrdersRepositoryProvider).decline(
+            widget.orderId,
+            reason: _declineReasonCtrl.text.trim(),
           );
       ref.invalidate(providerOrdersListProvider);
       ref.invalidate(providerOrderDetailProvider(widget.orderId));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response == 'accepted' ? 'Đã nhận đơn' : 'Đã từ chối đơn')),
+        const SnackBar(content: Text('Đã từ chối đơn')),
       );
-      if (response == 'accepted') context.pop();
+      context.pop();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
+
+  Future<void> _complete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hoàn thành đơn?'),
+        content: const Text('Xác nhận đơn hàng đã được giao hoàn tất cho khách.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xác nhận')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await ref.read(providerOrdersRepositoryProvider).complete(widget.orderId);
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerOrderDetailProvider(widget.orderId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đơn hoàn thành!')),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _cancel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hủy đơn?'),
+        content: const Text('Bạn có chắc muốn hủy đơn hàng này không?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Không')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hủy đơn', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await ref.read(providerOrdersRepositoryProvider).cancel(widget.orderId);
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerOrderDetailProvider(widget.orderId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy đơn')));
+      context.pop();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -186,16 +262,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           const SizedBox(height: 10),
                           ShadButton.outline(
                             width: double.infinity,
-                            onPressed: () {
-                              final threadId = MockProviderData.chatThreadIdForOrder(order.id);
-                              if (threadId != null) {
-                                context.push('/chat/$threadId');
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Chưa có hội thoại với $customer')),
-                                );
-                              }
-                            },
+                            onPressed: () => context.push('/chat/order-${order.id}'),
                             leading: const Icon(LucideIcons.messageCircle, size: 18),
                             child: const Text('Nhắn tin cho khách'),
                           ),
@@ -204,7 +271,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           const SizedBox(height: 24),
                           ShadButton(
                             width: double.infinity,
-                            onPressed: _submitting ? null : () => _respond('accepted'),
+                            onPressed: _submitting ? null : _accept,
                             child: _submitting
                                 ? const SizedBox(
                                     width: 22,
@@ -232,11 +299,28 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                                 const SizedBox(height: 12),
                                 ShadButton.outline(
                                   width: double.infinity,
-                                  onPressed: _submitting ? null : () => _respond('declined'),
+                                  onPressed: _submitting ? null : _decline,
                                   child: const Text('Từ chối đơn'),
                                 ),
                               ],
                             ),
+                          ),
+                        ],
+                        if (order.isActive) ...[
+                          const SizedBox(height: 12),
+                          ShadButton(
+                            width: double.infinity,
+                            backgroundColor: Colors.green.shade600,
+                            onPressed: _submitting ? null : _complete,
+                            leading: const Icon(LucideIcons.circleCheck, size: 18),
+                            child: const Text('Hoàn thành đơn'),
+                          ),
+                          const SizedBox(height: 8),
+                          ShadButton.outline(
+                            width: double.infinity,
+                            onPressed: _submitting ? null : _cancel,
+                            leading: const Icon(LucideIcons.x, size: 18, color: Color(0xFFEF4444)),
+                            child: const Text('Hủy đơn', style: TextStyle(color: Color(0xFFEF4444))),
                           ),
                         ],
                       ]),

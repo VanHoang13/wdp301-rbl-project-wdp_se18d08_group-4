@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../../core/mock/mock_provider_data.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 
-class SchedulePage extends StatefulWidget {
+class SchedulePage extends ConsumerStatefulWidget {
   const SchedulePage({super.key});
 
   @override
-  State<SchedulePage> createState() => _SchedulePageState();
+  ConsumerState<SchedulePage> createState() => _SchedulePageState();
 }
 
-class _SchedulePageState extends State<SchedulePage> {
+class _SchedulePageState extends ConsumerState<SchedulePage> {
   static const _dayLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
   static const _districts = ['Quận 1', 'Quận 3', 'Quận 7', 'Quận Bình Thạnh', 'Quận Tân Bình', 'TP. Thủ Đức'];
 
+  // UI index 0 = Thứ 2 (Mon), 6 = CN (Sun)
+  // API day_of_week: 0 = Sun, 1 = Mon … 6 = Sat
+  static int _toApiDay(int uiIndex) => (uiIndex + 1) % 7;
+  static int _toUiIndex(int apiDay) => (apiDay + 6) % 7;
+
   bool _online = true;
+  bool _loading = true;
+  bool _saving = false;
   int _selectedDay = 0;
-  late final Map<int, _DaySchedule> _daySchedules = {
+  late Map<int, _DaySchedule> _daySchedules = {
     for (var i = 0; i < _dayLabels.length; i++)
       i: _DaySchedule(
         enabled: i <= 4,
@@ -29,14 +37,84 @@ class _SchedulePageState extends State<SchedulePage> {
   final Set<String> _areas = {'Quận 1', 'Quận 7', 'Quận Bình Thạnh'};
 
   @override
+  void initState() {
+    super.initState();
+    _loadSchedule();
+  }
+
+  Future<void> _loadSchedule() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final envelope = await api.guard(() => api.get('/providers/me/schedule'));
+      final days = envelope['data'] as List<dynamic>? ?? [];
+      final Map<int, _DaySchedule> loaded = {
+        for (var i = 0; i < _dayLabels.length; i++)
+          i: _DaySchedule(
+            enabled: false,
+            start: const TimeOfDay(hour: 8, minute: 0),
+            end: const TimeOfDay(hour: 17, minute: 0),
+          ),
+      };
+      for (final day in days) {
+        final d = Map<String, dynamic>.from(day as Map);
+        final apiDay = (d['day_of_week'] as num?)?.toInt() ?? 0;
+        final uiIdx = _toUiIndex(apiDay);
+        final slots = d['slots'] as List<dynamic>? ?? [];
+        if (slots.isNotEmpty) {
+          final slot = Map<String, dynamic>.from(slots.last as Map);
+          final start = _parseTime(slot['start_time'] as String? ?? '08:00');
+          final end = _parseTime(slot['end_time'] as String? ?? '17:00');
+          final isAvailable = slot['is_available'] as bool? ?? true;
+          loaded[uiIdx] = _DaySchedule(enabled: isAvailable, start: start, end: end);
+        }
+      }
+      if (mounted) setState(() { _daySchedules = loaded; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _saveSchedule() async {
+    setState(() => _saving = true);
+    try {
+      final slots = <Map<String, dynamic>>[];
+      for (var i = 0; i < _dayLabels.length; i++) {
+        final s = _daySchedules[i]!;
+        slots.add({
+          'day_of_week': _toApiDay(i),
+          'start_time': _timeText(s.start),
+          'end_time': _timeText(s.end),
+          'is_available': s.enabled,
+        });
+      }
+      final api = ref.read(apiClientProvider);
+      await api.guard(() => api.patch('/providers/me/schedule', body: {'slots': slots}));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã lưu lịch làm việc')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  static TimeOfDay _parseTime(String s) {
+    final parts = s.split(':');
+    if (parts.length < 2) return const TimeOfDay(hour: 8, minute: 0);
+    return TimeOfDay(hour: int.tryParse(parts[0]) ?? 8, minute: int.tryParse(parts[1]) ?? 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = UniMoveColors.of(context);
     final monday = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
     final today = DateTime.now().weekday - 1;
     final todayHours = _hoursLabel(_daySchedules[today] ?? _daySchedules[0]!);
-    final earnings = MockProviderData.orders
-        .where((o) => o.isCompleted)
-        .fold<int>(0, (s, o) => s + o.totalPrice);
 
     return ShadScreenScope(
       builder: (_, theme) {
@@ -59,7 +137,7 @@ class _SchedulePageState extends State<SchedulePage> {
                 children: [
                   Expanded(child: _statCard(theme, c, LucideIcons.clock, todayHours, 'GIỜ LÀM VIỆC HÔM NAY')),
                   const SizedBox(width: 12),
-                  Expanded(child: _statCard(theme, c, LucideIcons.wallet, _compact(earnings), 'THU NHẬP HÔM NAY (VND)')),
+                  Expanded(child: _statCard(theme, c, LucideIcons.calendarCheck, _loading ? '...' : 'OK', 'LỊCH ĐÃ ĐỒNG BỘ')),
                 ],
               ),
               const SizedBox(height: 24),
@@ -182,11 +260,15 @@ class _SchedulePageState extends State<SchedulePage> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Chạm vào từng ngày để chỉnh giờ riêng')),
-            ),
-            icon: const Icon(LucideIcons.pencil, size: 15),
-            label: const Text('Chỉnh sửa'),
+            onPressed: _saving ? null : _saveSchedule,
+            icon: _saving
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(LucideIcons.save, size: 15),
+            label: const Text('Lưu lịch'),
           ),
       ],
     );
@@ -476,18 +558,6 @@ class _SchedulePageState extends State<SchedulePage> {
       ),
       child: child,
     );
-  }
-
-  static String _compact(int amount) {
-    if (amount < 1000) return '$amount';
-    final k = amount / 1000;
-    final s = (k == k.roundToDouble() ? k.toInt().toString() : k.toStringAsFixed(0));
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return '${buf}k';
   }
 
   static int _toMinutes(TimeOfDay t) => t.hour * 60 + t.minute;

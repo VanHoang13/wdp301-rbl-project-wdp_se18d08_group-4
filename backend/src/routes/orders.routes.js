@@ -14,4 +14,9 @@ router.post(
   ordersController.respondToOrder,
 );
 
+router.patch('/:id/accept', requireAuth, requireRole('provider'), ordersController.acceptOrder);
+router.patch('/:id/decline', requireAuth, requireRole('provider'), ordersController.declineOrder);
+router.patch('/:id/complete', requireAuth, requireRole('provider'), ordersController.completeOrder);
+router.patch('/:id/cancel', requireAuth, ordersController.cancelOrder);
+
 module.exports = router;

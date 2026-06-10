@@ -82,9 +82,126 @@ async function getOrderById(orderId) {
   return data;
 }
 
+// ── PATCH /api/orders/:id/accept ──────────────────────────────────────────────
+async function acceptOrder(orderId, providerId) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, provider_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (order.status !== 'pending')
+    throw Object.assign(new Error('Đơn hàng không còn ở trạng thái chờ nhận'), { status: 409 });
+
+  // Log response
+  await supabaseAdmin.from('order_provider_responses').insert({
+    order_id: orderId,
+    provider_id: providerId,
+    response: 'accepted',
+  });
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .update({ provider_id: providerId, status: 'in_progress' })
+    .eq('id', orderId)
+    .eq('status', 'pending') // guard against race condition
+    .select('*')
+    .single();
+
+  if (error) throw Object.assign(new Error(error.message), { status: 500 });
+  if (!data) throw Object.assign(new Error('Đơn hàng vừa được nhận bởi provider khác'), { status: 409 });
+  return data;
+}
+
+// ── PATCH /api/orders/:id/decline ─────────────────────────────────────────────
+async function declineOrder(orderId, providerId, reason) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (!['pending', 'in_progress'].includes(order.status))
+    throw Object.assign(new Error('Không thể từ chối đơn ở trạng thái này'), { status: 409 });
+
+  await supabaseAdmin.from('order_provider_responses').insert({
+    order_id: orderId,
+    provider_id: providerId,
+    response: 'declined',
+    decline_reason: reason || null,
+  });
+
+  return { order_id: orderId, status: order.status };
+}
+
+// ── PATCH /api/orders/:id/complete ────────────────────────────────────────────
+async function completeOrder(orderId, providerId) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, provider_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (order.provider_id !== providerId)
+    throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
+  if (order.status !== 'in_progress')
+    throw Object.assign(new Error('Chỉ có thể hoàn thành đơn đang thực hiện'), { status: 409 });
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (error) throw Object.assign(new Error(error.message), { status: 500 });
+  return data;
+}
+
+// ── PATCH /api/orders/:id/cancel ──────────────────────────────────────────────
+async function cancelOrder(orderId, userId, reason) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, customer_id, provider_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (order.customer_id !== userId && order.provider_id !== userId)
+    throw Object.assign(new Error('Bạn không có quyền hủy đơn hàng này'), { status: 403 });
+  if (['completed', 'cancelled'].includes(order.status))
+    throw Object.assign(new Error('Đơn hàng đã hoàn thành hoặc đã hủy'), { status: 409 });
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .update({
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: userId,
+      cancellation_reason: reason || null,
+    })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (error) throw Object.assign(new Error(error.message), { status: 500 });
+  return data;
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
   providerRespond,
   getOrderById,
+  acceptOrder,
+  declineOrder,
+  completeOrder,
+  cancelOrder,
 };
