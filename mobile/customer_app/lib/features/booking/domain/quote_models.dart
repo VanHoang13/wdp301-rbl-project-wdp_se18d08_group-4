@@ -182,6 +182,7 @@ class QuoteRequestSnapshot {
     this.scheduledPickupAt,
     this.scheduledSlotLabel,
     this.depositPaidAt,
+    this.providerTripConfirmed = false,
   });
 
   final String id;
@@ -211,6 +212,9 @@ class QuoteRequestSnapshot {
   final DateTime? scheduledPickupAt;
   final String? scheduledSlotLabel;
   final DateTime? depositPaidAt;
+
+  /// Nhà xe đã nhận đơn trên app (sau khi khách đặt cọc).
+  final bool providerTripConfirmed;
 
   bool get hasRequestedPickup => requestedPickupAt != null;
 
@@ -264,6 +268,7 @@ class QuoteRequestSnapshot {
     DateTime? scheduledPickupAt,
     String? scheduledSlotLabel,
     DateTime? depositPaidAt,
+    bool? providerTripConfirmed,
     bool? wantsTransportLabor,
     int? transportLaborHelpers,
     int? transportLaborHours,
@@ -293,6 +298,7 @@ class QuoteRequestSnapshot {
       scheduledSlotLabel:
           clearScheduled ? null : (scheduledSlotLabel ?? this.scheduledSlotLabel),
       depositPaidAt: depositPaidAt ?? this.depositPaidAt,
+      providerTripConfirmed: providerTripConfirmed ?? this.providerTripConfirmed,
     );
   }
 }

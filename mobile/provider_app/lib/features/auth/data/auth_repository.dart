@@ -17,15 +17,7 @@ final providerProfileProvider = FutureProvider<ProviderProfile?>((ref) async {
   if (await AuthTokenStorage.instance.isMockSession()) {
     return ProviderProfile.fromJson(MockProviderData.userJson);
   }
-  try {
-    return await ref.watch(authRepositoryProvider).fetchProfile();
-  } on ApiException catch (e) {
-    if (e.statusCode == 401 && DevConfig.useMockAuth) {
-      await MockAuthSession.signIn();
-      return ProviderProfile.fromJson(MockProviderData.userJson);
-    }
-    rethrow;
-  }
+  return ref.watch(authRepositoryProvider).fetchProfile();
 });
 
 class AuthRepository {

@@ -31,6 +31,15 @@ async function browseProviders({ city, minRating, limit = 20 }) {
   const { data, error } = await query;
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
 
+  if (city) {
+    const needle = String(city).toLowerCase();
+    return (data || []).filter((row) => {
+      const areas = Array.isArray(row.service_area) ? row.service_area : [];
+      if (areas.length === 0) return needle.includes('đà nẵng') || needle.includes('da nang');
+      return areas.some((a) => String(a).toLowerCase().includes(needle) || needle.includes(String(a).toLowerCase()));
+    });
+  }
+
   return data;
 }
 

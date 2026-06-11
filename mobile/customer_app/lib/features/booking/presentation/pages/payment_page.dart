@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -6,12 +7,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/booking_scaffold.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
 import '../../../orders/domain/checkout_models.dart';
+import '../../../payments/data/payments_repository.dart';
+import '../../../payments/domain/payment_models.dart';
 import '../../domain/booking_models.dart';
 import '../cubit/booking_flow_cubit.dart';
 import '../cubit/booking_flow_state.dart';
@@ -25,9 +29,14 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   final _discountCtrl = TextEditingController();
+  final _paymentsRepo = PaymentsRepository();
   bool _submitting = false;
+  bool _paymentCompleted = false;
+  bool _pollingPayment = false;
+  bool _checkingPayment = false;
   DepositPaymentInfo? _depositInfo;
   String? _pendingOrderId;
+  Timer? _paymentPoll;
 
   @override
   void initState() {
@@ -41,8 +50,64 @@ class _PaymentPageState extends State<PaymentPage> {
 
   @override
   void dispose() {
+    _paymentPoll?.cancel();
     _discountCtrl.dispose();
     super.dispose();
+  }
+
+  void _startPaymentPolling(String paymentId) {
+    _paymentPoll?.cancel();
+    setState(() {
+      _paymentCompleted = false;
+      _pollingPayment = true;
+    });
+
+    Future<void> check() async {
+      if (_checkingPayment) return;
+      _checkingPayment = true;
+      try {
+        final detail = await _paymentsRepo.fetchDetail(paymentId);
+        if (!mounted) return;
+        if (detail?.payment.status == PaymentStatus.completed) {
+          _paymentPoll?.cancel();
+          setState(() {
+            _paymentCompleted = true;
+            _pollingPayment = false;
+          });
+        }
+      } finally {
+        _checkingPayment = false;
+      }
+    }
+
+    check();
+    _paymentPoll = Timer.periodic(const Duration(seconds: 3), (_) => check());
+  }
+
+  Future<void> _recheckPayment() async {
+    final paymentId = _depositInfo?.paymentId;
+    if (paymentId == null || paymentId.isEmpty) return;
+    setState(() => _checkingPayment = true);
+    try {
+      final detail = await _paymentsRepo.fetchDetail(paymentId);
+      if (!mounted) return;
+      if (detail?.payment.status == PaymentStatus.completed) {
+        _paymentPoll?.cancel();
+        setState(() {
+          _paymentCompleted = true;
+          _pollingPayment = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã xác nhận thanh toán thành công')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chưa nhận được xác nhận từ ngân hàng — thử lại sau vài giây')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingPayment = false);
+    }
   }
 
   @override
@@ -197,7 +262,7 @@ class _PaymentPageState extends State<PaymentPage> {
               _escrowTrustCard(c, deposit: deposit),
               if (_depositInfo != null) ...[
                 SizedBox(height: 16.h),
-                _payosQrCard(c, _depositInfo!),
+                _payosQrCard(c, _depositInfo!, paymentCompleted: _paymentCompleted, polling: _pollingPayment),
               ],
               SizedBox(height: 16.h),
               Text(
@@ -433,16 +498,33 @@ class _PaymentPageState extends State<PaymentPage> {
                 label: _submitting
                     ? 'Đang xử lý...'
                     : _depositInfo != null
-                        ? 'Theo dõi đơn hàng'
+                        ? (_paymentCompleted
+                            ? (state.isQuoteBooking ? 'Đã thanh toán — hoàn tất' : 'Theo dõi đơn hàng')
+                            : 'Đang chờ xác nhận thanh toán...')
                         : state.isLaborService
                             ? (state.isLaborAddon
                                 ? 'Đặt cọc thêm khuân vác · ${_formatPrice(deposit)}'
                                 : 'Đặt cọc khuân vác · ${_formatPrice(deposit)}')
                             : 'Đặt cọc · ${_formatPrice(deposit)}',
-                onPressed: _submitting
+                onPressed: _submitting || (_depositInfo != null && !_paymentCompleted)
                     ? null
                     : _depositInfo != null
-                        ? () => context.go('/orders/$_pendingOrderId/tracking')
+                        ? () async {
+                            if (state.isQuoteBooking) {
+                              setState(() => _submitting = true);
+                              try {
+                                await context.read<BookingFlowCubit>().completeQuoteDeposit();
+                                if (!context.mounted) return;
+                                context.pop(true);
+                              } catch (e) {
+                                if (!context.mounted) return;
+                                setState(() => _submitting = false);
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                              }
+                              return;
+                            }
+                            context.go('/orders/$_pendingOrderId/tracking');
+                          }
                         : () => _confirmDeposit(context, state, labor?.name),
               ),
             ),
@@ -460,6 +542,21 @@ class _PaymentPageState extends State<PaymentPage> {
       final cubit = context.read<BookingFlowCubit>();
 
       if (state.isQuoteBooking) {
+        final checkout = await cubit.payQuoteDeposit();
+        if (!context.mounted) return;
+
+        if (checkout?.deposit != null) {
+          setState(() {
+            _depositInfo = checkout!.deposit;
+            _pendingOrderId = checkout.orderId;
+          });
+          _startPaymentPolling(checkout!.deposit!.paymentId);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Quét mã QR — hệ thống tự xác nhận khi chuyển khoản thành công')),
+          );
+          return;
+        }
+
         await cubit.completeQuoteDeposit();
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -489,8 +586,9 @@ class _PaymentPageState extends State<PaymentPage> {
           _depositInfo = result.deposit;
           _pendingOrderId = result.orderId;
         });
+        _startPaymentPolling(result.deposit!.paymentId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đơn đã tạo — quét mã QR để hoàn tất đặt cọc')),
+          const SnackBar(content: Text('Đơn đã tạo — quét mã QR, chờ xác nhận thanh toán')),
         );
         return;
       }
@@ -606,7 +704,12 @@ class _PaymentPageState extends State<PaymentPage> {
     );
   }
 
-  Widget _payosQrCard(UniMoveColors c, DepositPaymentInfo info) {
+  Widget _payosQrCard(
+    UniMoveColors c,
+    DepositPaymentInfo info, {
+    required bool paymentCompleted,
+    required bool polling,
+  }) {
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
@@ -654,13 +757,13 @@ class _PaymentPageState extends State<PaymentPage> {
                     height: 220.w,
                     child: Center(child: CircularProgressIndicator(color: c.primary, strokeWidth: 2)),
                   ),
-                  errorWidget: (_, __, ___) => Icon(Icons.qr_code_2, size: 120.sp, color: c.onSurfaceMuted),
+                  errorWidget: (_, __, ___) => _vietQrWidget(info.qrCode!, size: 220.w),
                 ),
               ),
             ),
-          ] else if (info.qrCode != null && info.qrCode!.isNotEmpty) ...[
+          ] else if (info.hasVietQrPayload) ...[
             SizedBox(height: 14.h),
-            Center(child: Icon(Icons.qr_code_2, size: 120.sp, color: c.primary)),
+            Center(child: _vietQrWidget(info.qrCode!, size: 220.w)),
           ],
           if (info.bankAccountNumber != null) ...[
             SizedBox(height: 12.h),
@@ -692,12 +795,64 @@ class _PaymentPageState extends State<PaymentPage> {
               ),
             ),
           ],
-          SizedBox(height: 4.h),
-          Text(
-            'Sau khi chuyển khoản, nhấn "Theo dõi đơn hàng" để xem trạng thái.',
-            style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
-          ),
+          SizedBox(height: 10.h),
+          if (paymentCompleted)
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: c.success, size: 18.sp),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'Thanh toán đã xác nhận — bạn có thể tiếp tục bước sau.',
+                    style: TextStyle(fontSize: 12.sp, color: c.success, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            )
+          else if (polling) ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 16.w,
+                  height: 16.w,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: c.primary),
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'Đang chờ ngân hàng xác nhận. Sau khi chuyển khoản, hệ thống tự kiểm tra mỗi 3 giây.',
+                    style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            TextButton.icon(
+              onPressed: _checkingPayment ? null : _recheckPayment,
+              icon: Icon(Icons.refresh, size: 18.sp, color: c.primary),
+              label: Text(
+                _checkingPayment ? 'Đang kiểm tra...' : 'Tôi đã chuyển khoản — kiểm tra lại',
+                style: TextStyle(fontSize: 13.sp, color: c.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _vietQrWidget(String data, {required double size}) {
+    return Container(
+      padding: EdgeInsets.all(10.w),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: QrImageView(
+        data: data,
+        size: size,
+        backgroundColor: Colors.white,
+        errorCorrectionLevel: QrErrorCorrectLevel.M,
       ),
     );
   }

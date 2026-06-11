@@ -6,12 +6,82 @@ class RecentPlace {
     required this.title,
     required this.subtitle,
     required this.icon,
+    this.lat,
+    this.lng,
   });
 
   final String id;
   final String title;
   final String subtitle;
   final IconData icon;
+  final double? lat;
+  final double? lng;
+}
+
+/// Gợi ý địa chỉ — GET /maps/places/autocomplete
+class PlaceSuggestion {
+  const PlaceSuggestion({
+    required this.placeId,
+    required this.mainText,
+    required this.secondaryText,
+    this.lat,
+    this.lng,
+  });
+
+  final String placeId;
+  final String mainText;
+  final String secondaryText;
+  final double? lat;
+  final double? lng;
+
+  String get displayAddress =>
+      secondaryText.trim().isNotEmpty ? secondaryText.trim() : mainText.trim();
+}
+
+/// Chi tiết địa chỉ đã chọn — GET /maps/places/details
+class PlaceDetails {
+  const PlaceDetails({
+    required this.placeId,
+    required this.title,
+    required this.address,
+    this.lat,
+    this.lng,
+  });
+
+  final String placeId;
+  final String title;
+  final String address;
+  final double? lat;
+  final double? lng;
+}
+
+/// Hint luồng báo giá (chuyến thường) — GET /customers/me/booking-locations
+class QuoteFlowHint {
+  const QuoteFlowHint({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+}
+
+/// Payload cho màn chọn địa điểm — GET /customers/me/booking-locations
+class BookingLocationsPayload {
+  const BookingLocationsPayload({
+    this.defaultPickup,
+    this.defaultPickupLat,
+    this.defaultPickupLng,
+    this.recentPlaces = const [],
+    this.comboFlowHint,
+    this.quoteFlowHint,
+    this.mapPreviewUrl,
+  });
+
+  final String? defaultPickup;
+  final double? defaultPickupLat;
+  final double? defaultPickupLng;
+  final List<RecentPlace> recentPlaces;
+  final String? comboFlowHint;
+  final QuoteFlowHint? quoteFlowHint;
+  final String? mapPreviewUrl;
 }
 
 enum ServiceTier { economy, standard, premium }

@@ -20,7 +20,6 @@ import '../../features/booking/presentation/pages/quote_move_schedule_page.dart'
 import '../../features/booking/presentation/pages/quote_progress_page.dart';
 import '../../features/booking/presentation/pages/reference_prices_page.dart';
 import '../../features/booking/presentation/pages/service_packages_page.dart';
-import '../../features/chat/presentation/pages/chat_thread_page.dart';
 import '../../features/notifications/presentation/pages/notification_detail_page.dart';
 import '../../features/payments/domain/payment_method_models.dart';
 import '../../features/payments/presentation/pages/add_card_page.dart';
@@ -238,7 +237,7 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: '/chat/:conversationId',
-        builder: (_, state) => ChatThreadPage(conversationId: state.pathParameters['conversationId']!),
+        redirect: (_, __) => '/home?tab=messages',
       ),
     ],
   );

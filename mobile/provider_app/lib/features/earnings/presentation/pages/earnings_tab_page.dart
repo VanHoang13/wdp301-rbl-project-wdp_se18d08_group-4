@@ -43,6 +43,19 @@ class EarningsTabPage extends ConsumerWidget {
                   physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: c.chipBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: c.border),
+                      ),
+                      child: Text(
+                        'Ước tính từ đơn đã hoàn thành — chưa có API thanh toán/thu nhập riêng.',
+                        style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.35),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(

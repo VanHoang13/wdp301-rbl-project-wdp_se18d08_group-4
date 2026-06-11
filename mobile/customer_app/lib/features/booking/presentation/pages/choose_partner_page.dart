@@ -53,31 +53,6 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                 padding: EdgeInsets.symmetric(horizontal: 20.w),
                 child: Column(
                   children: [
-                    if (state.isComboBooking)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 10.h),
-                        child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                          decoration: BoxDecoration(
-                            color: c.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10.r),
-                            border: Border.all(color: c.primary.withValues(alpha: 0.25)),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.science_outlined, size: 16.sp, color: c.primary),
-                              SizedBox(width: 8.w),
-                              Expanded(
-                                child: Text(
-                                  'Dữ liệu demo — danh sách nhà xe combo niêm yết (chưa có API)',
-                                  style: TextStyle(fontSize: 11.sp, color: c.onSurface, height: 1.3),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     Container(
                       padding: EdgeInsets.all(14.w),
                       decoration: BoxDecoration(
@@ -90,9 +65,7 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                           SizedBox(width: 10.w),
                           Expanded(
                             child: Text(
-                              state.isComboBooking
-                                  ? 'Tiết kiệm nhất · Xe+km niêm yết cố định · Nhà xe chỉ đặt giá khuân vác'
-                                  : 'Marketplace · Nhiều nhà xe đã xác minh · Giá do đối tác báo',
+                              'Danh sách nhà xe đã xác minh · Giá tham khảo từ đối tác',
                               style: TextStyle(
                                 fontSize: 13.sp,
                                 fontWeight: FontWeight.w600,
@@ -281,7 +254,7 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                 child: ElevatedButton(
                   onPressed: () {
                     context.read<BookingFlowCubit>().selectPartner(p.id);
-                    context.push('/booking/insurance');
+                    context.push('/booking/payment');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: c.primary,

@@ -21,6 +21,12 @@ class DepositPaymentInfo {
   bool get hasQrImage =>
       qrCode != null &&
       (qrCode!.startsWith('http://') || qrCode!.startsWith('https://') || qrCode!.startsWith('data:image'));
+
+  /// PayOS trả chuỗi VietQR (EMVCo) — cần render bằng qr_flutter, không phải ảnh.
+  bool get hasVietQrPayload =>
+      qrCode != null &&
+      qrCode!.isNotEmpty &&
+      !hasQrImage;
 }
 
 class CheckoutResult {

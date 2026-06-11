@@ -1,6 +1,7 @@
 /// Khớp bảng `orders` + enum `order_status` trong Supabase.
 enum OrderStatus {
   pending,
+  matched,
   accepted,
   pickingUp,
   inProgress,
@@ -11,19 +12,20 @@ enum OrderStatus {
   static OrderStatus fromDb(String value) {
     return switch (value) {
       'pending' => OrderStatus.pending,
+      'matched' => OrderStatus.matched,
       'accepted' => OrderStatus.accepted,
       'picking_up' => OrderStatus.pickingUp,
       'in_progress' => OrderStatus.inProgress,
       'completed' => OrderStatus.completed,
       'cancelled' => OrderStatus.cancelled,
       'disputed' => OrderStatus.disputed,
-      'matched' => OrderStatus.accepted,
       _ => OrderStatus.pending,
     };
   }
 
   String get dbValue => switch (this) {
         OrderStatus.pending => 'pending',
+        OrderStatus.matched => 'matched',
         OrderStatus.accepted => 'accepted',
         OrderStatus.pickingUp => 'picking_up',
         OrderStatus.inProgress => 'in_progress',
@@ -34,6 +36,7 @@ enum OrderStatus {
 
   bool get isActive =>
       this == OrderStatus.pending ||
+      this == OrderStatus.matched ||
       this == OrderStatus.accepted ||
       this == OrderStatus.pickingUp ||
       this == OrderStatus.inProgress;
@@ -67,6 +70,8 @@ class CustomerOrder {
     this.hasReview = false,
     this.scheduledPickupAt,
     this.quoteReferenceId,
+    this.depositPaid = false,
+    this.quoteRequest = false,
   });
 
   final String id;
@@ -93,6 +98,17 @@ class CustomerOrder {
   final bool hasReview;
   final DateTime? scheduledPickupAt;
   final String? quoteReferenceId;
+  final bool depositPaid;
+  final bool quoteRequest;
+
+  /// Khách đã cọc, chờ nhà xe nhận đơn.
+  bool get awaitingProviderAccept => status == OrderStatus.matched && depositPaid;
+
+  /// Nhà xe đã nhận đơn (sau khi khách cọc).
+  bool get providerTripConfirmed =>
+      status == OrderStatus.accepted ||
+      status == OrderStatus.pickingUp ||
+      status == OrderStatus.inProgress;
 
   bool get isAwaitingScheduledPickup {
     final at = scheduledPickupAt;
@@ -213,5 +229,6 @@ class TrackingSnapshot {
   final String statusLabel;
   final bool isAwaitingScheduledPickup;
 
-  bool get showLiveTracking => order.showLiveTracking;
+  /// Backend chưa có API GPS — chỉ hiển thị timeline trạng thái.
+  bool get showLiveTracking => false;
 }

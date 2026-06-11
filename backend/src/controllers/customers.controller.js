@@ -29,6 +29,34 @@ async function getRecentPlaces(req, res, next) {
   }
 }
 
+async function getBookingLocations(req, res, next) {
+  try {
+    const limit = req.query.limit;
+    const data = await customersService.getBookingLocations(req.user.id, limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function addRecentPlace(req, res, next) {
+  try {
+    const data = await customersService.saveRecentPlace(req.user.id, req.body || {});
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function clearRecentPlaces(req, res, next) {
+  try {
+    const data = await customersService.clearRecentPlaces(req.user.id);
+    res.json({ success: true, data, message: 'Đã xóa địa điểm gần đây' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function uploadAvatar(req, res, next) {
   try {
     if (!req.file) {
@@ -41,4 +69,12 @@ async function uploadAvatar(req, res, next) {
   }
 }
 
-module.exports = { getMe, patchMe, getRecentPlaces, uploadAvatar };
+module.exports = {
+  getMe,
+  patchMe,
+  getRecentPlaces,
+  addRecentPlace,
+  getBookingLocations,
+  clearRecentPlaces,
+  uploadAvatar,
+};
