@@ -180,7 +180,7 @@ abstract final class MockOrdersData {
       createdAt: _now.subtract(const Duration(days: 2)),
       cancelledAt: _now.subtract(const Duration(hours: 12)),
       quoteRequest: true,
-      cancellationNote: 'Khách đổi lịch — tiền cọc đã hoàn về ví UniMove.',
+      cancellationNote: 'Khách đổi lịch — tiền cọc đã hoàn về tài khoản ngân hàng.',
     ),
   ];
 

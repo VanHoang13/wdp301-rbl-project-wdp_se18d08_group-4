@@ -27,7 +27,21 @@ async function placeDetails(req, res, next) {
   }
 }
 
+async function resolveAddress(req, res, next) {
+  try {
+    const data = await mapsService.resolveAddress(req.query.input, {
+      lat: req.query.lat,
+      lng: req.query.lng,
+      pickupAddress: req.query.pickup_address,
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   autocomplete,
   placeDetails,
+  resolveAddress,
 };

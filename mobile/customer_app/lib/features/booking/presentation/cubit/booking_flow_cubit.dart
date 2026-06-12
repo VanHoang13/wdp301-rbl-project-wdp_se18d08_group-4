@@ -40,6 +40,7 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
   final BookingMockRepository _repo;
   final PlacesRepository _placesRepo;
   Timer? _destinationSearchDebounce;
+  Timer? _destinationResolveDebounce;
   final LaborRepository _laborRepo;
   final ProvidersRepository _providersRepo;
   final CustomerOrdersRepository _ordersRepo;
@@ -228,10 +229,12 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
 
   void onDestinationChanged(String value) {
     _destinationSearchDebounce?.cancel();
+    _destinationResolveDebounce?.cancel();
     emit(state.copyWith(
       destination: value,
       clearDestinationCoords: true,
       clearPlaceSuggestions: value.trim().length < 2,
+      resolvingDestination: false,
     ));
 
     final q = value.trim();
@@ -244,33 +247,100 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
     _destinationSearchDebounce = Timer(const Duration(milliseconds: 350), () async {
       final suggestions = await _placesRepo.autocomplete(q, bias: _placesBias);
       if (isClosed) return;
+      if (state.destination.trim() != q) return;
       emit(state.copyWith(
         placeSuggestions: suggestions,
         loadingPlaceSuggestions: false,
       ));
     });
+
+    _destinationResolveDebounce = Timer(const Duration(milliseconds: 850), () {
+      if (state.destination.trim() == q) {
+        unawaited(_tryResolveDestination(q));
+      }
+    });
   }
 
-  Future<void> selectPlaceSuggestion(PlaceSuggestion suggestion) async {
+  Future<void> resolveDestinationNow() async {
+    _destinationResolveDebounce?.cancel();
+    final q = state.destination.trim();
+    if (q.length < 2) return;
+    await _tryResolveDestination(q);
+  }
+
+  Future<void> _tryResolveDestination(String q) async {
+    emit(state.copyWith(resolvingDestination: true));
+
+    final resolved = await _placesRepo.resolveAddress(q, bias: _placesBias);
+    if (isClosed) return;
+    if (state.destination.trim() != q) {
+      emit(state.copyWith(resolvingDestination: false));
+      return;
+    }
+
+    if (resolved?.lat != null && resolved?.lng != null) {
+      applyResolvedDestination(resolved!);
+      emit(state.copyWith(resolvingDestination: false));
+      return;
+    }
+
+    if (state.placeSuggestions.isNotEmpty) {
+      await selectPlaceSuggestion(state.placeSuggestions.first, typedInput: q);
+      if (!isClosed) emit(state.copyWith(resolvingDestination: false));
+      return;
+    }
+
+    emit(state.copyWith(resolvingDestination: false));
+  }
+
+  Future<void> selectPlaceSuggestion(
+    PlaceSuggestion suggestion, {
+    String? typedInput,
+  }) async {
     _destinationSearchDebounce?.cancel();
+    final typed = (typedInput ?? state.destination).trim();
     emit(state.copyWith(
       loadingPlaceSuggestions: true,
       clearPlaceSuggestions: true,
     ));
 
     PlaceDetails details;
-    if (suggestion.lat != null && suggestion.lng != null) {
+    final typedHasHouse = RegExp(r'^(\d+|số\s*\d+)', caseSensitive: false).hasMatch(typed);
+    final suggestionHasHouse = RegExp(r'^\d+').hasMatch(suggestion.mainText.trim());
+
+    if (typedHasHouse && !suggestionHasHouse && typed.length >= 3) {
+      final resolved = await _placesRepo.resolveAddress(typed, bias: _placesBias);
+      if (resolved != null && resolved.lat != null && resolved.lng != null) {
+        details = resolved;
+      } else if (suggestion.lat != null && suggestion.lng != null) {
+        final short = typed.split(',').first.trim();
+        details = PlaceDetails(
+          placeId: suggestion.placeId,
+          title: short,
+          address: '$short, ${suggestion.secondaryText}',
+          lat: suggestion.lat,
+          lng: suggestion.lng,
+        );
+      } else {
+        details = await _placesRepo.getDetails(
+          placeId: suggestion.placeId,
+          fallbackAddress: typed.isNotEmpty ? typed : suggestion.displayAddress,
+        );
+      }
+    } else if (suggestion.lat != null && suggestion.lng != null) {
       details = PlaceDetails(
         placeId: suggestion.placeId,
-        title: suggestion.mainText,
-        address: suggestion.displayAddress,
+        title: typed.isNotEmpty ? typed.split(',').first.trim() : suggestion.mainText,
+        address: typed.isNotEmpty && !suggestion.displayAddress.toLowerCase().contains(typed.toLowerCase())
+            ? '$typed, ${suggestion.secondaryText}'
+            : suggestion.displayAddress,
         lat: suggestion.lat,
         lng: suggestion.lng,
       );
     } else {
       details = await _placesRepo.getDetails(
         placeId: suggestion.placeId,
-        fallbackAddress: suggestion.displayAddress,
+        fallbackAddress: typed.isNotEmpty ? typed : suggestion.displayAddress,
       );
     }
 
@@ -312,6 +382,7 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
   @override
   Future<void> close() {
     _destinationSearchDebounce?.cancel();
+    _destinationResolveDebounce?.cancel();
     return super.close();
   }
 
@@ -457,13 +528,91 @@ class BookingFlowCubit extends Cubit<BookingFlowState> {
     unawaited(loadPartners());
   }
 
-  /// Đặt vận chuyển cho 1 món pass đồ — điểm lấy = nơi bán, khách chọn điểm giao.
-  void startPassItemDelivery({required String pickup, required String passItemId}) {
+  /// Đặt vận chuyển pass đồ — geocode điểm lấy, khách chọn combo/chuyến thường sau.
+  Future<void> preparePassItemDelivery({
+    required String pickup,
+    required String passItemId,
+  }) async {
     emit(BookingFlowState(
       pickup: pickup,
       destination: '',
       passItemDelivery: true,
       passItemId: passItemId,
+      isComboBooking: false,
+      loadingPickup: true,
+    ));
+
+    final resolved = await _placesRepo.resolveAddress(
+      pickup.trim(),
+      bias: PlacesSearchBias(pickupAddress: pickup.trim()),
+    );
+    if (isClosed) return;
+    if (resolved?.lat != null && resolved?.lng != null) {
+      emit(state.copyWith(
+        pickup: resolved!.address,
+        pickupLat: resolved.lat,
+        pickupLng: resolved.lng,
+        loadingPickup: false,
+      ));
+    } else {
+      emit(state.copyWith(loadingPickup: false));
+    }
+  }
+
+  Future<void> ensurePickupCoordinates() async {
+    if (state.pickupLat != null && state.pickupLng != null) return;
+    final pickup = state.pickup.trim();
+    if (pickup.isEmpty) return;
+
+    emit(state.copyWith(loadingPickup: true));
+    final resolved = await _placesRepo.resolveAddress(
+      pickup,
+      bias: PlacesSearchBias(pickupAddress: pickup),
+    );
+    if (isClosed) return;
+    if (resolved?.lat != null && resolved?.lng != null) {
+      emit(state.copyWith(
+        pickup: resolved!.address,
+        pickupLat: resolved.lat,
+        pickupLng: resolved.lng,
+        loadingPickup: false,
+      ));
+    } else {
+      emit(state.copyWith(loadingPickup: false));
+    }
+  }
+
+  void applyResolvedDestination(PlaceDetails details) {
+    emit(state.copyWith(
+      destination: details.address,
+      destinationLat: details.lat,
+      destinationLng: details.lng,
+      clearPlaceSuggestions: true,
+    ));
+  }
+
+  Future<bool> ensureDestinationCoordinates() async {
+    if (state.destinationLat != null && state.destinationLng != null) return true;
+    final q = state.destination.trim();
+    if (q.length < 2) return false;
+
+    await _tryResolveDestination(q);
+    return state.destinationLat != null && state.destinationLng != null;
+  }
+
+  void selectPassItemComboMode() {
+    emit(state.copyWith(isComboBooking: true, partners: const [], selectedPartnerId: null));
+    unawaited(loadPackages());
+  }
+
+  void selectPassItemNormalMode() {
+    emit(state.copyWith(
+      isComboBooking: false,
+      partners: const [],
+      selectedPartnerId: null,
+      wantsRetailLabor: false,
+      clearLaborProvider: true,
+      clearLaborQuotes: true,
     ));
   }
 

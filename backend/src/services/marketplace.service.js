@@ -2,6 +2,8 @@ const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
 const { ensurePublicImageBucket } = require('./storage.helpers');
+const payosService = require('./payos.service');
+const env = require('../config/env');
 
 const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', 'books', 'other'];
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
@@ -9,6 +11,15 @@ const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
 
 const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+
+function computeListingFee(price) {
+  const p = Number(price);
+  if (!p || p <= 0) return 0;
+  const raw = Math.round(p * 0.02);
+  if (raw < 5000) return 5000;
+  if (raw > 30000) return 30000;
+  return raw;
+}
 
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
@@ -29,6 +40,9 @@ async function createListing(userId, body) {
     throw httpError(400, 'price phải là số không âm', 'validation_error');
   }
 
+  const listingFee = computeListingFee(price);
+  const requiresPayment = listingFee > 0;
+
   const { data, error } = await supabaseAdmin
     .from('marketplace_listings')
     .insert([{
@@ -41,8 +55,8 @@ async function createListing(userId, body) {
       price:          Number(price),
       images:         Array.isArray(images) ? images : [],
       usage_duration: usage_duration ? String(usage_duration).trim() : null,
-      status:      'active',
-      fee_paid:    false,
+      status:      requiresPayment ? 'hidden' : 'active',
+      fee_paid:    !requiresPayment,
     }])
     .select(`
       id, title, description, category, condition, area,
@@ -52,7 +66,279 @@ async function createListing(userId, body) {
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');
+  return {
+    listing: data,
+    listing_fee: {
+      amount: listingFee,
+      requires_payment: requiresPayment,
+    },
+  };
+}
+
+async function loadListingForFeePay(userId, listingId) {
+  const { data: listing, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, owner_id, price, fee_paid, status, title')
+    .eq('id', listingId)
+    .single();
+
+  if (error || !listing) throw httpError(404, 'Không tìm thấy tin đăng', 'not_found');
+  if (listing.owner_id !== userId) throw httpError(403, 'Không có quyền thanh toán tin này', 'access_denied');
+  return listing;
+}
+
+async function selectListingAfterFeePay(listingId) {
+  const { data: updatedListing, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .update({ fee_paid: true, status: 'active' })
+    .eq('id', listingId)
+    .select(`
+      id, title, description, category, condition, area,
+      price, images, status, fee_paid, created_at, updated_at,
+      profiles:owner_id ( id, full_name, avatar_url, phone )
+    `)
+    .single();
+  if (error) throw httpError(500, error.message, 'db_error');
+  return updatedListing;
+}
+
+/** Kích hoạt tin sau khi PayOS xác nhận thanh toán phí đăng tin. */
+async function finalizeListingFeePayment(listingId) {
+  if (!listingId) return;
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, fee_paid')
+    .eq('id', listingId)
+    .maybeSingle();
+  if (!listing || listing.fee_paid) return;
+  await selectListingAfterFeePay(listingId);
+}
+
+async function payListingFeeWithWallet(userId, listingId, fee) {
+  let { data: wallet, error: walletError } = await supabaseAdmin
+    .from('wallets')
+    .select('id, balance')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (walletError) throw httpError(500, walletError.message, 'db_error');
+
+  if (!wallet) {
+    const { data: createdWallet, error: createWalletError } = await supabaseAdmin
+      .from('wallets')
+      .insert({ user_id: userId, balance: 0, currency: 'VND' })
+      .select('id, balance')
+      .single();
+    if (createWalletError) throw httpError(500, createWalletError.message, 'db_error');
+    wallet = createdWallet;
+  }
+
+  const balanceBefore = Number(wallet.balance) || 0;
+  if (balanceBefore < fee) {
+    throw httpError(
+      400,
+      `Số dư ví không đủ. Cần ${fee.toLocaleString('vi-VN')}đ, hiện có ${balanceBefore.toLocaleString('vi-VN')}đ`,
+      'insufficient_balance',
+    );
+  }
+
+  const balanceAfter = balanceBefore - fee;
+  const { error: walletUpdateError } = await supabaseAdmin
+    .from('wallets')
+    .update({ balance: balanceAfter, updated_at: new Date().toISOString() })
+    .eq('id', wallet.id);
+  if (walletUpdateError) throw httpError(500, walletUpdateError.message, 'db_error');
+
+  const { error: txError } = await supabaseAdmin.from('wallet_transactions').insert({
+    wallet_id: wallet.id,
+    transaction_type: 'order_payment',
+    amount: fee,
+    balance_before: balanceBefore,
+    balance_after: balanceAfter,
+    reference_type: 'marketplace_listing',
+    reference_id: listingId,
+    description: 'Phí đăng tin Chợ sinh viên',
+  });
+  if (txError) throw httpError(500, txError.message, 'db_error');
+
+  const updatedListing = await selectListingAfterFeePay(listingId);
+  return {
+    listing: updatedListing,
+    fee_paid: fee,
+    wallet_balance: balanceAfter,
+    payment_method: 'wallet',
+    already_paid: false,
+  };
+}
+
+function mapListingFeePaymentResponse(paymentRecord, listing, fee, payosExtras = {}) {
+  return {
+    listing,
+    fee_amount: fee,
+    payment_method: 'payos',
+    already_paid: false,
+    payment: {
+      payment_id: paymentRecord.id,
+      payment_code: paymentRecord.payment_code,
+      amount: Number(paymentRecord.amount) || fee,
+      currency: paymentRecord.currency || 'VND',
+      status: paymentRecord.status || 'pending',
+      checkout_url: paymentRecord.payos_payment_url,
+      qr_code: paymentRecord.payos_qr_code,
+      qr_code_data_url: paymentRecord.payos_qr_code,
+      bank_account_number: payosExtras.accountNumber || paymentRecord.bank_account_number || null,
+      bank_account_name: payosExtras.accountName || null,
+      expires_at: paymentRecord.expires_at,
+    },
+  };
+}
+
+async function findPendingListingFeePayment(userId, listingId) {
+  const { data, error } = await supabaseAdmin
+    .from('payments')
+    .select('*')
+    .eq('customer_id', userId)
+    .eq('marketplace_listing_id', listingId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (String(error.message || '').includes('marketplace_listing_id')) {
+      throw httpError(
+        500,
+        'Database chưa cập nhật. Chạy: node scripts/apply-migration.js supabase/migrations/20240131000000_marketplace_listing_fee_payments.sql',
+        'db_migration_required',
+      );
+    }
+    throw httpError(500, error.message, 'db_error');
+  }
   return data;
+}
+
+async function payListingFeeWithPayos(userId, listingId, fee, body = {}) {
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, title, status, fee_paid, price, images, created_at')
+    .eq('id', listingId)
+    .single();
+
+  const existing = await findPendingListingFeePayment(userId, listingId);
+  if (existing?.payos_qr_code) {
+    return mapListingFeePaymentResponse(existing, listing, fee);
+  }
+
+  const paymentCode = existing?.payment_code || payosService.generatePaymentCode();
+  const orderCode = payosService.generateOrderCode();
+
+  let paymentRecord = existing;
+  if (!paymentRecord) {
+    const { data, error: insertError } = await supabaseAdmin
+      .from('payments')
+      .insert({
+        payment_code: paymentCode,
+        order_id: null,
+        marketplace_listing_id: listingId,
+        customer_id: userId,
+        amount: fee,
+        currency: 'VND',
+        payment_method: 'payos',
+        status: 'pending',
+        escrow_status: 'none',
+        payment_purpose: 'full',
+        description: `LISTING_FEE:${listingId}`,
+      })
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error('[ListingFee] payment insert error:', insertError);
+      const hint = String(insertError.message || '').includes('order_id')
+        ? 'Chạy migration: node scripts/apply-migration.js supabase/migrations/20240131000000_marketplace_listing_fee_payments.sql'
+        : insertError.message;
+      throw httpError(500, `Lỗi tạo payment record: ${hint}`, 'db_error');
+    }
+    paymentRecord = data;
+  }
+
+  let payosResponse;
+  try {
+    payosResponse = await payosService.createPaymentLink({
+      paymentCode,
+      amount: Math.round(fee),
+      orderCode: parseInt(orderCode, 10),
+      description: paymentCode,
+      returnUrl: `${env.APP_URL}/payment-success?payment_code=${paymentCode}`,
+      cancelUrl: `${env.APP_URL}/payment-cancel?payment_code=${paymentCode}`,
+      customerName: body.customer_name || 'Customer',
+      customerEmail: body.customer_email || 'noreply@unimove.com',
+    });
+  } catch (payosError) {
+    if (!existing) {
+      await supabaseAdmin.from('payments').delete().eq('id', paymentRecord.id);
+    }
+    throw payosError;
+  }
+
+  const expiresAt = payosResponse.expiresAt instanceof Date
+    ? payosResponse.expiresAt.toISOString()
+    : new Date(Date.now() + 3600000).toISOString();
+
+  const { error: updateError } = await supabaseAdmin
+    .from('payments')
+    .update({
+      payos_order_id: String(payosResponse.orderCode),
+      payos_payment_url: payosResponse.checkoutUrl,
+      payos_qr_code: payosResponse.qrCode,
+      bank_account_number: payosResponse.accountNumber || null,
+      expires_at: expiresAt,
+    })
+    .eq('id', paymentRecord.id);
+
+  if (updateError) {
+    console.error('[ListingFee] payment update error:', updateError);
+    throw httpError(500, `Lỗi cập nhật payment PayOS: ${updateError.message}`, 'db_error');
+  }
+
+  const updatedPayment = {
+    ...paymentRecord,
+    payos_order_id: String(payosResponse.orderCode),
+    payos_payment_url: payosResponse.checkoutUrl,
+    payos_qr_code: payosResponse.qrCode,
+    bank_account_number: payosResponse.accountNumber || null,
+    expires_at: expiresAt,
+  };
+
+  return mapListingFeePaymentResponse(updatedPayment, listing, fee, {
+    accountNumber: payosResponse.accountNumber,
+    accountName: payosResponse.accountName,
+  });
+}
+
+/** PASS-03 — POST /api/marketplace/listings/:id/listing-fee/pay */
+async function payListingFee(userId, listingId, body = {}) {
+  const paymentMethod = body.payment_method || 'payos';
+  if (!['wallet', 'payos'].includes(paymentMethod)) {
+    throw httpError(400, 'payment_method phải là wallet hoặc payos', 'unsupported_payment_method');
+  }
+
+  const listing = await loadListingForFeePay(userId, listingId);
+  if (listing.fee_paid) {
+    return { listing, fee_paid: 0, wallet_balance: null, already_paid: true, payment_method: paymentMethod };
+  }
+
+  const fee = computeListingFee(listing.price);
+  if (fee <= 0) {
+    const updated = await selectListingAfterFeePay(listingId);
+    return { listing: updated, fee_paid: 0, wallet_balance: null, already_paid: false, payment_method: paymentMethod };
+  }
+
+  if (paymentMethod === 'payos') {
+    return payListingFeeWithPayos(userId, listingId, fee, body);
+  }
+
+  return payListingFeeWithWallet(userId, listingId, fee);
 }
 
 /** API-059 — GET /api/marketplace/listings */
@@ -803,11 +1089,11 @@ async function uploadListingImage(userId, file) {
 }
 
 module.exports = {
-  createListing, browseListings, getMyListings,
+  createListing, payListingFee, finalizeListingFeePayment, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, browseByOwner, bumpListing,
   confirmReceived, createRating, getSellerStats,
-  uploadListingImage,
+  uploadListingImage, computeListingFee,
 };

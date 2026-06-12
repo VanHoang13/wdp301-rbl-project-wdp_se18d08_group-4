@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const os = require('os');
 const app = require('./app');
 const env = require('./config/env');
@@ -15,8 +16,12 @@ function lanAddresses() {
 }
 
 app.listen(env.PORT, '0.0.0.0', () => {
+  const payosOk = Boolean(env.PAYOS_CLIENT_ID && env.PAYOS_API_KEY && env.PAYOS_CHECKSUM_KEY);
+  const goongOk = Boolean(env.GOONG_API_KEY);
   console.log(`UniMove API: http://localhost:${env.PORT}`);
   console.log(`Health: http://localhost:${env.PORT}/api/health`);
+  console.log(`PayOS: ${payosOk ? 'đã cấu hình' : 'CHƯA cấu hình — lưu file .env ở thư mục gốc project'}`);
+  console.log(`Goong: ${goongOk ? 'đã cấu hình' : 'CHƯA cấu hình — thêm GOONG_API_KEY vào .env (fallback OSM)'}`);
   const ips = lanAddresses();
   if (ips.length) {
     console.log('Điện thoại thật → api_config.dart useLanHost + IP:');

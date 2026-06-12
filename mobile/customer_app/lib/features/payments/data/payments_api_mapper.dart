@@ -2,9 +2,6 @@ import '../domain/payment_method_models.dart';
 import '../domain/payment_models.dart';
 
 abstract final class PaymentsApiMapper {
-  static int walletBalanceFromJson(Map<String, dynamic> j) =>
-      (j['balance'] as num?)?.round() ?? 0;
-
   static CustomerPayment paymentFromJson(Map<String, dynamic> j) {
     final orderId = j['order_id'] as String? ?? '';
     final statusRaw = j['status'] as String? ?? 'pending';

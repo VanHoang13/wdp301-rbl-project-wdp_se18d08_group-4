@@ -1,7 +1,6 @@
 import '../../../core/auth/auth_token_storage.dart';
 import '../../../core/config/dev_config.dart';
 import '../../../core/mock/mock_auth_session.dart';
-import '../../../core/mock/mock_customer_data.dart';
 import '../../../core/mock/mock_payments_data.dart';
 import '../../../core/mock/mock_payment_methods_data.dart';
 import '../../../core/network/api_client.dart';
@@ -31,6 +30,7 @@ class PaymentsRepository {
       if (raw is! List) return [];
       return raw
           .map((e) => PaymentsApiMapper.savedMethodFromJson(Map<String, dynamic>.from(e as Map)))
+          .where((m) => m.kind != PaymentMethodKind.wallet)
           .toList();
     } catch (_) {
       return [];
@@ -39,22 +39,9 @@ class PaymentsRepository {
 
   Future<List<AddPaymentMethodOption>> fetchAddPaymentOptions() async {
     await Future<void>.delayed(const Duration(milliseconds: 40));
-    return MockPaymentMethodsData.addOptions;
-  }
-
-  Future<int> fetchWalletBalance() async {
-    if (await _useMockData()) {
-      return MockCustomerData.walletBalance;
-    }
-
-    try {
-      final envelope = await _api.guard(() => _api.get('/payments/me/wallet'));
-      final data = envelope['data'];
-      if (data is! Map) return 0;
-      return PaymentsApiMapper.walletBalanceFromJson(Map<String, dynamic>.from(data));
-    } catch (_) {
-      return 0;
-    }
+    return MockPaymentMethodsData.addOptions
+        .where((o) => o.kind != PaymentMethodKind.wallet)
+        .toList();
   }
 
   Future<List<CustomerPayment>> fetchRecentPayments({int limit = 10}) async {

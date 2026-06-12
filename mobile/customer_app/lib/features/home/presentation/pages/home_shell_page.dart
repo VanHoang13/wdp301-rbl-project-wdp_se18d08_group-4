@@ -27,7 +27,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
 
   static const _tabs = [
     (icon: LucideIcons.house, label: 'Trang chủ'),
-    (icon: LucideIcons.wallet, label: 'Thanh toán'),
+    (icon: LucideIcons.creditCard, label: 'Thanh toán'),
     (icon: LucideIcons.clipboardList, label: 'Hoạt động'),
     (icon: LucideIcons.messageCircle, label: 'Tin nhắn'),
   ];

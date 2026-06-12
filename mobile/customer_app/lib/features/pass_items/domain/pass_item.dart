@@ -1,3 +1,5 @@
+import '../../orders/domain/checkout_models.dart';
+
 enum PassItemStatus { open, reserved, completed, hidden }
 
 enum PassItemCondition { likeNew, good, fair }
@@ -46,6 +48,7 @@ class PassItemPost {
     this.buyerTransportBooked = false,
     this.isRated = false,
     this.isInterested = false,
+    this.feePaid = true,
   });
 
   final String id;
@@ -94,7 +97,12 @@ class PassItemPost {
   /// Người dùng hiện tại đã bấm "Tôi muốn nhận" cho tin này.
   final bool isInterested;
 
+  /// Đã thanh toán phí đăng tin (nếu có).
+  final bool feePaid;
+
   bool get isFree => price <= 0;
+
+  bool get pendingListingFee => isMine && !feePaid && !isFree;
 
   int get effectivePrice => confirmedPrice ?? price;
 
@@ -119,6 +127,7 @@ class PassItemPost {
     bool? buyerTransportBooked,
     bool? isRated,
     bool? isInterested,
+    bool? feePaid,
     bool clearConfirmedPrice = false,
   }) {
     return PassItemPost(
@@ -147,8 +156,37 @@ class PassItemPost {
       buyerTransportBooked: buyerTransportBooked ?? this.buyerTransportBooked,
       isRated: isRated ?? this.isRated,
       isInterested: isInterested ?? this.isInterested,
+      feePaid: feePaid ?? this.feePaid,
     );
   }
+}
+
+class CreateListingResult {
+  const CreateListingResult({
+    required this.post,
+    required this.listingFee,
+    required this.requiresPayment,
+  });
+
+  final PassItemPost post;
+  final int listingFee;
+  final bool requiresPayment;
+}
+
+class ListingFeePayResult {
+  const ListingFeePayResult({
+    this.listing,
+    this.feePaid = 0,
+    this.paymentMethod = 'payos',
+    this.alreadyPaid = false,
+    this.payosPayment,
+  });
+
+  final PassItemPost? listing;
+  final int feePaid;
+  final String paymentMethod;
+  final bool alreadyPaid;
+  final DepositPaymentInfo? payosPayment;
 }
 
 abstract final class PassItemCategories {

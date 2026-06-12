@@ -16,5 +16,11 @@ router.get(
   requireRole('customer'),
   mapsController.placeDetails,
 );
+router.get(
+  '/places/resolve',
+  requireAuth,
+  requireRole('customer'),
+  mapsController.resolveAddress,
+);
 
 module.exports = router;

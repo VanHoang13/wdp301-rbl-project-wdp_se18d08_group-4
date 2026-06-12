@@ -58,6 +58,65 @@ class PlacesRepository {
     return _nominatimFallback(q, bias: bias);
   }
 
+  /// Geocode chính xác theo text khách gõ (ưu tiên số nhà).
+  Future<PlaceDetails?> resolveAddress(
+    String input, {
+    PlacesSearchBias? bias,
+  }) async {
+    final q = input.trim();
+    if (q.length < 2) return null;
+
+    final params = <String, dynamic>{'input': q};
+    if (bias?.lat != null) params['lat'] = bias!.lat;
+    if (bias?.lng != null) params['lng'] = bias!.lng;
+    if (bias?.pickupAddress?.trim().isNotEmpty ?? false) {
+      params['pickup_address'] = bias!.pickupAddress!.trim();
+    }
+
+    if (await AuthTokenStorage.instance.hasSession()) {
+      try {
+        final envelope = await _api.guard(
+          () => _api.get('/maps/places/resolve', queryParameters: params),
+        );
+        final data = envelope['data'];
+        if (data is Map) {
+          final j = Map<String, dynamic>.from(data);
+          return PlaceDetails(
+            placeId: j['place_id'] as String? ?? '',
+            title: j['title'] as String? ?? q,
+            address: j['address'] as String? ?? q,
+            lat: _toDouble(j['lat']),
+            lng: _toDouble(j['lng']),
+          );
+        }
+      } catch (_) {}
+    }
+
+    final suggestions = await _nominatimFallback(q, bias: bias);
+    if (suggestions.isEmpty) return null;
+    final parsed = _parseHouseStreet(q);
+    PlaceSuggestion best = suggestions.first;
+    if (parsed.$1 != null) {
+      final num = parsed.$1!.toLowerCase();
+      for (final s in suggestions) {
+        final main = s.mainText.toLowerCase();
+        if (main.startsWith('$num ') || main.startsWith('$num/')) {
+          best = s;
+          break;
+        }
+      }
+    }
+    return PlaceDetails(
+      placeId: best.placeId,
+      title: parsed.$1 != null && !best.mainText.toLowerCase().startsWith(parsed.$1!.toLowerCase())
+          ? '${parsed.$1} ${best.mainText}'
+          : best.mainText,
+      address: best.displayAddress,
+      lat: best.lat,
+      lng: best.lng,
+    );
+  }
+
   Future<PlaceDetails> getDetails({
     required String placeId,
     String? fallbackAddress,
@@ -164,7 +223,19 @@ class PlacesRepository {
         });
       }
 
-      if (RegExp(r'^\d+\s+').hasMatch(input) && locality.isNotEmpty) {
+      final parsed = _parseHouseStreet(input);
+      if (parsed.$1 != null && locality.isNotEmpty) {
+        for (final street in ['${parsed.$1} ${parsed.$2}', parsed.$2]) {
+          await runSearch({
+            'street': street,
+            'city': locality,
+            'country': 'Vietnam',
+            'format': 'json',
+            'addressdetails': 1,
+            'limit': 8,
+          });
+        }
+      } else if (locality.isNotEmpty) {
         await runSearch({
           'street': input,
           'city': locality,
@@ -193,7 +264,7 @@ class PlacesRepository {
       }
       await runSearch(textParams);
 
-      return _dedupeAndRank(collected, bias?.lat, bias?.lng, 6);
+      return _dedupeAndRank(collected, bias?.lat, bias?.lng, 6, input);
     } catch (_) {
       return [];
     }
@@ -227,11 +298,47 @@ class PlacesRepository {
     );
   }
 
+  (String?, String) _parseHouseStreet(String input) {
+    final q = input.trim();
+    final numbered = RegExp(r'^(\d+[/-]?\d*)\s+(.+)$', caseSensitive: false).firstMatch(q);
+    if (numbered != null) {
+      return (numbered.group(1), numbered.group(2)!.trim());
+    }
+    final soNha = RegExp(r'^số\s*(\d+[/-]?\d*)\s+(.+)$', caseSensitive: false).firstMatch(q);
+    if (soNha != null) {
+      return (soNha.group(1), soNha.group(2)!.trim());
+    }
+    return (null, q);
+  }
+
+  int _scoreSuggestion(PlaceSuggestion row, String input, double? biasLat, double? biasLng) {
+    final parsed = _parseHouseStreet(input);
+    var score = 0;
+    final main = row.mainText.toLowerCase();
+    if (parsed.$1 != null) {
+      final num = parsed.$1!.toLowerCase();
+      if (main.startsWith('$num ') || main.startsWith('$num/')) {
+        score += 120;
+      } else if (RegExp(r'^\d+').hasMatch(main)) {
+        score += 40;
+      } else {
+        score -= 30;
+      }
+    }
+    if (biasLat != null && biasLng != null && row.lat != null && row.lng != null) {
+      final km = _distanceKm(biasLat, biasLng, row.lat, row.lng);
+      score += (50 - km).clamp(0, 50).round();
+      if (km > 40) score -= 80;
+    }
+    return score;
+  }
+
   List<PlaceSuggestion> _dedupeAndRank(
     List<PlaceSuggestion> rows,
     double? biasLat,
     double? biasLng,
     int limit,
+    String input,
   ) {
     final seen = <String>{};
     final unique = <PlaceSuggestion>[];
@@ -242,12 +349,10 @@ class PlacesRepository {
       unique.add(row);
     }
 
+    unique.sort((a, b) =>
+        _scoreSuggestion(b, input, biasLat, biasLng).compareTo(_scoreSuggestion(a, input, biasLat, biasLng)));
+
     if (biasLat != null && biasLng != null) {
-      unique.sort((a, b) {
-        final da = _distanceKm(biasLat, biasLng, a.lat, a.lng);
-        final db = _distanceKm(biasLat, biasLng, b.lat, b.lng);
-        return da.compareTo(db);
-      });
       final nearby = unique
           .where((r) => r.lat != null && r.lng != null && _distanceKm(biasLat, biasLng, r.lat, r.lng) <= 40)
           .toList();

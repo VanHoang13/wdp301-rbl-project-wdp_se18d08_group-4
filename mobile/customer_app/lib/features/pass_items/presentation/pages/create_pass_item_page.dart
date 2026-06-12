@@ -11,6 +11,7 @@ import '../../domain/pass_extras.dart';
 import '../../domain/pass_item.dart';
 import '../../domain/pass_item_provinces.dart';
 import '../pass_item_format.dart';
+import '../widgets/listing_fee_payment_sheet.dart';
 import '../widgets/pass_item_image.dart';
 
 class CreatePassItemPage extends StatefulWidget {
@@ -110,21 +111,23 @@ class _CreatePassItemPageState extends State<CreatePassItemPage> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(LucideIcons.wallet, size: 14, color: c.onSurfaceMuted),
-              const SizedBox(width: 6),
-              Text('Trừ vào ví UniMove', style: TextStyle(fontSize: 12, color: c.onSurfaceMuted)),
-            ],
-          ),
+          if (fee > 0) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.qr_code_2, size: 14, color: c.onSurfaceMuted),
+                const SizedBox(width: 6),
+                Text('Thanh toán qua QR PayOS', style: TextStyle(fontSize: 12, color: c.onSurfaceMuted)),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           ShadButton(
             width: double.infinity,
             size: ShadButtonSize.lg,
             onPressed: () => Navigator.pop(ctx, true),
             leading: const Icon(LucideIcons.badgeCheck, size: 18),
-            child: Text(fee == 0 ? 'Đăng tin miễn phí' : 'Thanh toán & đăng tin'),
+            child: Text(fee == 0 ? 'Đăng tin miễn phí' : 'Tiếp tục thanh toán'),
           ),
         ],
       ),
@@ -161,7 +164,7 @@ class _CreatePassItemPageState extends State<CreatePassItemPage> {
       final imageUrls = await Future.wait(
         _imagePaths.map((p) => _repo.uploadImage(filePath: p)),
       );
-      await _repo.create(
+      final result = await _repo.create(
         title: _titleCtrl.text.trim(),
         description: _descCtrl.text.trim(),
         category: _category,
@@ -174,6 +177,31 @@ class _CreatePassItemPageState extends State<CreatePassItemPage> {
         images: imageUrls,
       );
       if (!mounted) return;
+
+      if (result.requiresPayment && result.listingFee > 0) {
+        setState(() => _submitting = false);
+        final paid = await ListingFeePaymentSheet.show(
+          context,
+          listingId: result.post.id,
+          fee: result.listingFee,
+        );
+        if (!mounted) return;
+        if (paid) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã thanh toán phí và đăng tin thành công')),
+          );
+          context.pop(true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tin đã lưu nhưng chưa thanh toán phí — xem tại «Tin của tôi» để thanh toán'),
+            ),
+          );
+          context.pop(true);
+        }
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Đã đăng tin pass đồ thành công')),
       );

@@ -27,7 +27,14 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
   @override
   void initState() {
     super.initState();
-    context.read<BookingFlowCubit>().loadPlaces();
+    final cubit = context.read<BookingFlowCubit>();
+    if (cubit.state.passItemDelivery) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/booking/pass-item/transport');
+      });
+      return;
+    }
+    cubit.loadPlaces();
   }
 
   @override
@@ -40,7 +47,15 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
   Widget build(BuildContext context) {
     final c = UniMoveColors.of(context);
 
-    return BlocBuilder<BookingFlowCubit, BookingFlowState>(
+    return BlocListener<BookingFlowCubit, BookingFlowState>(
+      listenWhen: (prev, curr) => prev.destination != curr.destination,
+      listener: (context, state) {
+        if (_destinationCtrl.text != state.destination) {
+          _destinationCtrl.text = state.destination;
+          _destinationCtrl.selection = TextSelection.collapsed(offset: _destinationCtrl.text.length);
+        }
+      },
+      child: BlocBuilder<BookingFlowCubit, BookingFlowState>(
       builder: (context, state) {
         final isLabor = state.isLaborOnly;
 
@@ -113,6 +128,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           ),
         );
       },
+      ),
     );
   }
 
@@ -268,9 +284,11 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          final address = suggestion.displayAddress;
-          _destinationCtrl.text = address;
-          context.read<BookingFlowCubit>().selectPlaceSuggestion(suggestion);
+          final typed = _destinationCtrl.text.trim();
+          context.read<BookingFlowCubit>().selectPlaceSuggestion(
+                suggestion,
+                typedInput: typed,
+              );
         },
         borderRadius: BorderRadius.circular(10.r),
         child: Padding(

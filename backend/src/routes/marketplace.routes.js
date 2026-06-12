@@ -12,6 +12,8 @@ router.get('/listings', requireAuth, marketplaceController.browseListings);
 router.get('/my-listings', requireAuth, marketplaceController.getMyListings);
 // API-062 — Đăng tin
 router.post('/listings', requireAuth, marketplaceController.createListing);
+// PASS-03 — Thanh toán phí đăng tin
+router.post('/listings/:id/listing-fee/pay', requireAuth, marketplaceController.payListingFee);
 // API-073 — Upload ảnh tin (đặt trước /listings/:id)
 router.post(
   '/listings/images',

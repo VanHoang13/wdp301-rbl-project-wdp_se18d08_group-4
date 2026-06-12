@@ -13,7 +13,8 @@
     "seed:e2e": "node seed-e2e-test-accounts.js",
     "migrate:quotes": "node scripts/apply-migration.js supabase/migrations/20240129000000_order_quotes_bidding.sql",
     "migrate:deposit-trigger": "node scripts/apply-migration.js supabase/migrations/20240130000000_fix_deposit_payment_trigger.sql",
-    "fix:payment": "node scripts/fix-stuck-deposit-payment.js"
+    "fix:payment": "node scripts/fix-stuck-deposit-payment.js",
+    "migrate:listing-fee": "node scripts/apply-migration.js supabase/migrations/20240131000000_marketplace_listing_fee_payments.sql"
   },
   "keywords": [
     "express",

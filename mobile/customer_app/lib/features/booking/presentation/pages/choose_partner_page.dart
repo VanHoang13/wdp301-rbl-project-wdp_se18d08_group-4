@@ -41,7 +41,9 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
       builder: (context, state) {
         final partners = _applySort(state.partners);
         return BookingScaffold(
-          title: state.isComboBooking ? 'Nhà xe combo niêm yết' : 'Chọn nhà xe',
+          title: state.isComboBooking
+              ? 'Nhà xe combo niêm yết'
+              : (state.passItemDelivery ? 'Chọn nhà xe · pass đồ' : 'Chọn nhà xe'),
           trailing: IconButton(icon: const Icon(Icons.tune), onPressed: () {}),
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

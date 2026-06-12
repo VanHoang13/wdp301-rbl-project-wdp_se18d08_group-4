@@ -45,7 +45,7 @@ class _ServicePackagesPageState extends State<ServicePackagesPage> {
         final estimateTotal = state.subtotal;
 
         return BookingScaffold(
-          title: 'Combo chuyển trọ',
+          title: state.passItemDelivery ? 'Combo chuyển đồ' : 'Combo chuyển trọ',
           body: ListView(
             padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 168.h),
             children: [

@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('../services/supabase.service');
 const paymentsService = require('../services/payments.service');
 const payosService = require('../services/payos.service');
+const marketplaceService = require('../services/marketplace.service');
 const env = require('../config/env');
 const { httpError } = require('../services/auth.helpers');
 
@@ -117,6 +118,10 @@ async function syncPaymentFromPayOS(payment) {
           deposit_paid_at: new Date().toISOString(),
         })
         .eq('id', updated.order_id);
+    }
+
+    if (updated.marketplace_listing_id) {
+      await marketplaceService.finalizeListingFeePayment(updated.marketplace_listing_id);
     }
 
     return updated;
@@ -320,7 +325,7 @@ async function payosWebhook(req, res, next) {
     // Find payment by payment_code
     const { data: payment, error: findError } = await supabaseAdmin
       .from('payments')
-      .select('id, customer_id, order_id, amount, status')
+      .select('id, customer_id, order_id, marketplace_listing_id, amount, status')
       .eq('payment_code', paymentCode)
       .single();
 
@@ -396,14 +401,19 @@ async function payosWebhook(req, res, next) {
       .update(updatePayload)
       .eq('id', payment.id);
 
-    if (!updateError && newStatus === 'completed' && payment.order_id) {
-      await supabaseAdmin
-        .from('orders')
-        .update({
-          deposit_paid: true,
-          deposit_paid_at: new Date().toISOString(),
-        })
-        .eq('id', payment.order_id);
+    if (!updateError && newStatus === 'completed') {
+      if (payment.order_id) {
+        await supabaseAdmin
+          .from('orders')
+          .update({
+            deposit_paid: true,
+            deposit_paid_at: new Date().toISOString(),
+          })
+          .eq('id', payment.order_id);
+      }
+      if (payment.marketplace_listing_id) {
+        await marketplaceService.finalizeListingFeePayment(payment.marketplace_listing_id);
+      }
     }
 
     if (updateError) {
