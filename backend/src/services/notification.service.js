@@ -25,4 +25,22 @@ async function createNotification(userId, type, title, body, opts = {}) {
   if (error) console.error('[notification] insert error:', error.message);
 }
 
-module.exports = { createNotification };
+/** Gửi thông báo cho tất cả admin đang active */
+async function notifyAdmins(type, title, body, opts = {}) {
+  const { data: admins, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('role', 'admin')
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('[notification] fetch admins error:', error.message);
+    return;
+  }
+
+  await Promise.all(
+    (admins || []).map((admin) => createNotification(admin.id, type, title, body, opts)),
+  );
+}
+
+module.exports = { createNotification, notifyAdmins };

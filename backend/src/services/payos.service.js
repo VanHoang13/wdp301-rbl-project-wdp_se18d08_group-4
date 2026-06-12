@@ -36,6 +36,84 @@ function generateSignature({ orderCode, amount, description, returnUrl, cancelUr
   return crypto.createHmac('sha256', PAYOS_CHECKSUM_KEY).update(dataStr).digest('hex');
 }
 
+function sortObjByKey(object) {
+  return Object.keys(object)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = object[key];
+      return acc;
+    }, {});
+}
+
+/** PayOS v2 — ký/verify webhook từ object `data` (không phải raw body) */
+function createSignatureFromObj(data) {
+  if (!data || !PAYOS_CHECKSUM_KEY) return null;
+
+  const sorted = sortObjByKey(data);
+  const queryStr = Object.keys(sorted)
+    .filter((key) => sorted[key] !== undefined)
+    .map((key) => {
+      let value = sorted[key];
+      if (value && Array.isArray(value)) {
+        value = JSON.stringify(value.map((item) => sortObjByKey(item)));
+      }
+      if (value === null || value === undefined || value === 'null' || value === 'undefined') {
+        value = '';
+      }
+      return `${key}=${value}`;
+    })
+    .join('&');
+
+  return crypto.createHmac('sha256', PAYOS_CHECKSUM_KEY).update(queryStr).digest('hex');
+}
+
+function verifyWebhookSignature(body) {
+  const { data, signature } = body || {};
+  if (!data || !signature) {
+    return { valid: false, reason: 'missing_signature_or_data' };
+  }
+
+  const expected = createSignatureFromObj(data);
+  if (!expected) {
+    return { valid: false, reason: 'config_error' };
+  }
+
+  try {
+    const valid = crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expected),
+    );
+    return { valid, reason: valid ? null : 'invalid_signature' };
+  } catch {
+    return { valid: false, reason: 'invalid_signature' };
+  }
+}
+
+/** Map PayOS payment link / webhook data → DB status */
+function mapPayOSStatus(payosData, expectedAmount) {
+  const status = String(payosData?.status || '').toUpperCase();
+  const amountPaid = Number(payosData?.amountPaid ?? payosData?.amount ?? 0);
+  const expected = Number(expectedAmount);
+
+  if (status === 'PAID' || (amountPaid > 0 && amountPaid >= expected)) {
+    return { dbStatus: 'completed', amountPaid, failureReason: null };
+  }
+  if (status === 'CANCELLED') {
+    return { dbStatus: 'cancelled', amountPaid, failureReason: 'Customer cancelled payment' };
+  }
+  if (status === 'EXPIRED') {
+    return { dbStatus: 'failed', amountPaid, failureReason: 'Payment link expired' };
+  }
+  return { dbStatus: 'pending', amountPaid, failureReason: null };
+}
+
+/** Webhook PayOS v2 — thanh toán thành công khi success=true & code=00 */
+function isWebhookPaymentSuccess(body) {
+  const topOk = body?.success === true && String(body?.code) === '00';
+  const dataOk = String(body?.data?.code) === '00';
+  return topOk || dataOk;
+}
+
 /**
  * Create a payment link on PayOS v2
  * Returns: { checkoutUrl, qrCode, orderCode, payosOrderId }
@@ -225,4 +303,8 @@ module.exports = {
   getPaymentStatus,
   cancelPaymentRequest,
   generateSignature,
+  createSignatureFromObj,
+  verifyWebhookSignature,
+  mapPayOSStatus,
+  isWebhookPaymentSuccess,
 };

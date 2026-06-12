@@ -149,6 +149,10 @@ async function createDeposit(req, res, next) {
       return next(httpError(500, 'Lỗi tạo payment record', 'db_error'));
     }
 
+    // Return/cancel qua API backend → tự sync PayOS (local + production), rồi redirect về app
+    const payosReturnUrl = `${env.API_URL}/api/payments/payos/return?payment_code=${encodeURIComponent(paymentCode)}`;
+    const payosCancelUrl = `${env.API_URL}/api/payments/payos/cancel?payment_code=${encodeURIComponent(paymentCode)}`;
+
     // Call PayOS API to create payment link
     const payosPayload = {
       paymentCode,
@@ -156,8 +160,8 @@ async function createDeposit(req, res, next) {
       orderCode: parseInt(orderCode, 10),
       // PayOS: description ngắn, không dấu (giới hạn ký tự trên VietQR)
       description: paymentCode,
-      returnUrl: `${env.APP_URL}/payment-success?payment_code=${paymentCode}`,
-      cancelUrl: `${env.APP_URL}/payment-cancel?payment_code=${paymentCode}`,
+      returnUrl: payosReturnUrl,
+      cancelUrl: payosCancelUrl,
       customerName: customer_name || req.user.name || 'Customer',
       customerEmail: customer_email || req.user.email || 'noreply@unimove.com',
     };
@@ -169,6 +173,7 @@ async function createDeposit(req, res, next) {
       .from('payments')
       .update({
         payos_order_id: payosResponse.orderCode.toString(),
+        payos_transaction_id: payosResponse.payosOrderId || null,
         payos_payment_url: payosResponse.checkoutUrl,
         payos_qr_code: payosResponse.qrCode,
         expires_at: payosResponse.expiresAt.toISOString(),
@@ -208,168 +213,128 @@ async function createDeposit(req, res, next) {
   }
 }
 
-/** BE-029: Webhook PayOS — xác nhận thanh toán */
-async function payosWebhook(req, res, next) {
+/** POST /api/payments/:id/sync — đồng bộ thủ công (dự phòng, thường không cần) */
+async function syncPayment(req, res, next) {
   try {
-    const { code, desc, data } = req.body;
+    const data = await paymentsService.syncPaymentStatus(req.user.id, req.params.id);
+    res.json({ success: true, message: data.message, data });
+  } catch (error) {
+    next(error);
+  }
+}
 
-    /**
-     * PayOS webhook response format:
-     * {
-     *   code: "00",  // "00" = success, other = error
-     *   desc: "success description",
-     *   data: {
-     *     orderCode: 123456,
-     *     amount: 1000000,
-     *     amountPaid: 1000000,
-     *     amountRemaining: 0,
-     *     status: "PAID",  // "PAID", "CANCELLED", "EXPIRED"
-     *     transactions: [{
-     *       paymentLinkId: "...",
-     *       amount: 1000000,
-     *       accountNumber: "...",
-     *       reference: "...",
-     *       transactionDateTime: "2026-06-06T10:30:00Z",
-     *       paymentMethodType: "BANK_TRANSFER"
-     *     }],
-     *     cancellationReason: null,
-     *     reference: "PAY-20260606-0001"  // Our payment code
-     *   }
-     * }
-     */
+/**
+ * GET /api/payments/payos/return — PayOS redirect sau thanh toán
+ * Tự sync từ PayOS rồi chuyển về màn hình app (local & production)
+ */
+async function payosReturn(req, res) {
+  const paymentCode = req.query.payment_code;
 
-    // Validate webhook structure
-    if (!data || !data.reference) {
-      console.warn('PayOS webhook: missing required fields', req.body);
-      return res.status(400).json({
+  try {
+    const data = await paymentsService.syncPaymentByCode(paymentCode);
+    const status = data.payment?.status || 'pending';
+
+    if (req.query.format === 'json') {
+      return res.json({ success: true, message: data.message, data });
+    }
+
+    const redirectUrl = new URL('/payment-success', env.APP_URL);
+    redirectUrl.searchParams.set('payment_code', paymentCode);
+    redirectUrl.searchParams.set('status', status);
+    if (data.payment?.order_id) {
+      redirectUrl.searchParams.set('order_id', data.payment.order_id);
+    }
+    return res.redirect(302, redirectUrl.toString());
+  } catch (error) {
+    console.error('[PayOS] Return callback error:', error.message);
+
+    if (req.query.format === 'json') {
+      return res.status(error.status || 500).json({
         success: false,
-        message: 'Invalid webhook payload',
-        code: 'invalid_payload',
+        message: error.message || 'Lỗi xác nhận thanh toán',
       });
     }
 
-    const paymentCode = data.reference; // Our payment_code: PAY-YYYYMMDD-XXXX
-    const payosStatus = data.status; // PAID, CANCELLED, EXPIRED
-    const payosOrderCode = data.orderCode;
-    const amountPaid = data.amountPaid || 0;
+    const redirectUrl = new URL('/payment-success', env.APP_URL);
+    redirectUrl.searchParams.set('payment_code', paymentCode || '');
+    redirectUrl.searchParams.set('status', 'pending');
+    return res.redirect(302, redirectUrl.toString());
+  }
+}
 
-    // Find payment by payment_code
-    const { data: payment, error: findError } = await supabaseAdmin
-      .from('payments')
-      .select('id, customer_id, order_id, amount, status')
-      .eq('payment_code', paymentCode)
-      .single();
+/** GET /api/payments/payos/cancel — PayOS redirect khi khách hủy thanh toán */
+async function payosCancel(req, res) {
+  const paymentCode = req.query.payment_code || '';
 
-    if (findError || !payment) {
-      console.warn('PayOS webhook: payment not found', { paymentCode });
-      // Still return 200 to acknowledge webhook (PayOS requirement)
+  if (req.query.format === 'json') {
+    return res.json({
+      success: true,
+      message: 'Đã hủy thanh toán',
+      data: { payment_code: paymentCode, status: 'cancelled' },
+    });
+  }
+
+  const redirectUrl = new URL('/payment-cancel', env.APP_URL);
+  redirectUrl.searchParams.set('payment_code', paymentCode);
+  return res.redirect(302, redirectUrl.toString());
+}
+
+/** BE-029: Webhook PayOS v2 — xác nhận thanh toán */
+async function payosWebhook(req, res) {
+  try {
+    const result = await paymentsService.processPayOSWebhook(req.body);
+
+    if (!result.found) {
+      console.warn('[PayOS] Webhook: payment not found', {
+        orderCode: result.orderCode,
+        description: result.paymentCode,
+      });
       return res.json({
         success: true,
-        message: 'Webhook acknowledged (payment not found - may be already processed)',
+        message: 'Webhook acknowledged (payment not found)',
       });
     }
 
-    // Check if payment already completed
-    if (payment.status === 'completed' || payment.status === 'refunded') {
-      console.log('PayOS webhook: payment already processed', { paymentCode, status: payment.status });
+    if (result.alreadyProcessed) {
       return res.json({
         success: true,
         message: 'Webhook acknowledged (payment already processed)',
       });
     }
 
-    // Determine new payment status based on PayOS status
-    let newStatus = 'failed';
-    let failureReason = null;
-
-    switch (payosStatus) {
-      case 'PAID':
-        newStatus = 'completed';
-        break;
-      case 'CANCELLED':
-        newStatus = 'cancelled';
-        failureReason = 'Customer cancelled payment';
-        break;
-      case 'EXPIRED':
-        newStatus = 'failed';
-        failureReason = 'Payment link expired';
-        break;
-      default:
-        newStatus = 'failed';
-        failureReason = `Unknown PayOS status: ${payosStatus}`;
-    }
-
-    // Amount validation
-    if (newStatus === 'completed' && amountPaid < payment.amount) {
-      console.warn('PayOS webhook: insufficient amount paid', {
-        expected: payment.amount,
-        paid: amountPaid,
-      });
-      newStatus = 'failed';
-      failureReason = `Insufficient amount. Expected: ${payment.amount}, Paid: ${amountPaid}`;
-    }
-
-    // Update payment record
-    const updatePayload = {
-      status: newStatus,
-      payos_order_id: payosOrderCode,
-      payos_transaction_id: data.transactions?.[0]?.transactionDateTime,
-    };
-
-    if (failureReason) {
-      updatePayload.failure_reason = failureReason;
-    }
-
-    if (newStatus === 'completed') {
-      updatePayload.paid_at = new Date().toISOString();
-      // Set escrow_status to 'held' for deposit
-      // (will be 'released' when customer confirms completion)
-      updatePayload.escrow_status = 'held';
-    }
-
-    const { error: updateError } = await supabaseAdmin
-      .from('payments')
-      .update(updatePayload)
-      .eq('id', payment.id);
-
-    if (updateError) {
-      console.error('PayOS webhook: failed to update payment', updateError);
-      // Still return 200 to acknowledge webhook
-      return res.json({
-        success: true,
-        message: 'Webhook acknowledged (but failed to update DB)',
-      });
-    }
-
-    // Log webhook receipt
-    console.log('PayOS webhook: processed successfully', {
-      paymentCode,
-      status: newStatus,
-      amount: payment.amount,
-      customerId: payment.customer_id,
+    console.log('[PayOS] Webhook processed:', {
+      paymentCode: result.paymentCode,
+      status: result.newStatus,
     });
 
-    // DB triggers will automatically:
-    // 1. update_wallet_on_payment_completed() → update wallet balance
-    // 2. create_provider_earnings_trigger() → create provider_earnings record
-
-    // Acknowledge webhook (PayOS requires 200 OK within timeout)
     res.json({
       success: true,
       message: 'Webhook processed successfully',
       data: {
-        paymentCode,
-        newStatus,
+        paymentCode: result.paymentCode,
+        newStatus: result.newStatus,
       },
     });
   } catch (error) {
     console.error('PayOS webhook error:', error);
-    // Return 200 anyway to prevent webhook retry storms
     res.json({
       success: false,
-      message: 'Webhook processing error',
-      error: error.message,
+      message: error.message || 'Webhook processing error',
     });
+  }
+}
+
+/** BE-032 — POST /api/payments/refund */
+async function createRefund(req, res, next) {
+  try {
+    const data = await paymentsService.createRefund(req.user.id, req.body || {});
+    res.status(201).json({
+      success: true,
+      message: data.message || 'Yêu cầu hoàn tiền đã gửi, chờ admin duyệt',
+      data,
+    });
+  } catch (error) {
+    next(error);
   }
 }
 
@@ -382,5 +347,9 @@ module.exports = {
   getPayments,
   getPayment,
   createDeposit,
+  syncPayment,
+  payosReturn,
+  payosCancel,
+  createRefund,
   payosWebhook,
 };

@@ -1,4 +1,9 @@
 const { supabaseAdmin } = require('./supabase.service');
+const { httpError } = require('./auth.helpers');
+const { createNotification } = require('./notification.service');
+const paymentsService = require('./payments.service');
+
+const CANCELLABLE_STATUSES = ['pending', 'accepted'];
 
 function splitAddress(raw) {
   const address = String(raw || '').trim() || 'Chưa nhập địa chỉ';
@@ -150,9 +155,108 @@ async function getOrderById(orderId) {
   return data;
 }
 
+/**
+ * BE-025 — PATCH /api/orders/:id/cancel
+ * Hủy đơn → tự tạo yêu cầu hoàn tiền pending (nếu có payment) → admin duyệt
+ */
+async function cancelOrder(customerId, orderId, reason) {
+  const trimmedReason = String(reason || '').trim();
+  if (!trimmedReason) {
+    throw httpError(400, 'Lý do hủy không được để trống', 'validation_error');
+  }
+
+  const { data: order, error: fetchError } = await supabaseAdmin
+    .from('orders')
+    .select('id, customer_id, status, order_number, provider_id')
+    .eq('id', orderId)
+    .single();
+
+  if (fetchError || !order) {
+    throw httpError(404, 'Không tìm thấy đơn hàng', 'order_not_found');
+  }
+  if (order.customer_id !== customerId) {
+    throw httpError(403, 'Không có quyền hủy đơn hàng này', 'access_denied');
+  }
+  if (order.status === 'cancelled') {
+    throw httpError(400, 'Đơn hàng đã được hủy trước đó', 'already_cancelled');
+  }
+  if (!CANCELLABLE_STATUSES.includes(order.status)) {
+    throw httpError(
+      400,
+      `Không thể hủy đơn ở trạng thái "${order.status}"`,
+      'cannot_cancel',
+    );
+  }
+
+  const previousStatus = order.status;
+
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from('orders')
+    .update({
+      status: 'cancelled',
+      cancellation_reason: trimmedReason,
+      cancelled_by: customerId,
+      cancelled_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (updateError) throw httpError(500, updateError.message, 'db_error');
+
+  await supabaseAdmin.from('order_status_history').insert({
+    order_id: orderId,
+    from_status: previousStatus,
+    to_status: 'cancelled',
+    changed_by: customerId,
+    notes: `Khách hàng hủy đơn: ${trimmedReason}`,
+  });
+
+  await createNotification(
+    customerId,
+    'order_cancelled',
+    'Đơn hàng đã bị hủy',
+    `Đơn ${order.order_number} đã được hủy thành công.`,
+    { priority: 'normal', actionData: { order_id: orderId } },
+  );
+
+  if (order.provider_id) {
+    await createNotification(
+      order.provider_id,
+      'order_cancelled',
+      'Đơn hàng đã bị hủy',
+      `Đơn ${order.order_number} đã bị khách hủy. Lý do: ${trimmedReason}`,
+      { priority: 'high', actionData: { order_id: orderId } },
+    );
+  }
+
+  let refundRequest = null;
+  let refundSkipReason = null;
+  try {
+    refundRequest = await paymentsService.requestRefundForOrder(
+      customerId,
+      orderId,
+      trimmedReason,
+      {
+        statusBeforeCancel: previousStatus,
+        hadProvider: Boolean(order.provider_id),
+      },
+    );
+  } catch (err) {
+    if (err.code === 'no_refundable_payment') {
+      refundSkipReason = 'no_refundable_payment';
+    } else {
+      throw err;
+    }
+  }
+
+  return { order: updated, refund_request: refundRequest, refund_skip_reason: refundSkipReason };
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
   providerRespond,
   getOrderById,
+  cancelOrder,
 };

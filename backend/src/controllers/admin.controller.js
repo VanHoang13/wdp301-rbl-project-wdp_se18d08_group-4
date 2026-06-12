@@ -1310,43 +1310,20 @@ async function getRefunds(req, res) {
 /** PUT /api/admin/refunds/:id/approve */
 async function approveRefund(req, res) {
   try {
-    const { id } = req.params;
-
-    const { data: updatedRefund, error } = await supabaseAdmin
-      .from('refunds')
-      .update({
-        status: 'completed',
-        approved_by: req.user.id,
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select(`
-        *,
-        requested_by_profile:profiles!refunds_requested_by_fkey(full_name, email)
-      `)
-      .single();
-
-    if (error) throw error;
-
-    // Notify user
-    await supabaseAdmin.from('notifications').insert({
-      user_id: updatedRefund.requested_by,
-      notification_type: 'refund_approved',
-      title: 'Hoàn tiền đã được duyệt',
-      body: `Yêu cầu hoàn tiền ${updatedRefund.refund_amount.toLocaleString()}đ đã được duyệt`,
-      priority: 'normal'
-    });
+    const paymentsService = require('../services/payments.service');
+    const data = await paymentsService.completeRefund(req.params.id, req.user.id);
 
     res.json({
       success: true,
-      message: 'Duyệt hoàn tiền thành công',
-      data: updatedRefund
+      message: data.message || 'Duyệt hoàn tiền thành công',
+      data,
     });
   } catch (error) {
     console.error('Approve refund error:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
-      message: 'Lỗi server khi duyệt hoàn tiền'
+      message: error.message || 'Lỗi server khi duyệt hoàn tiền',
+      ...(error.code ? { code: error.code } : {}),
     });
   }
 }
