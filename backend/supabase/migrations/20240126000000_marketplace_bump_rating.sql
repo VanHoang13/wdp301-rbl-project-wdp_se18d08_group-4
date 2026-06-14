@@ -22,16 +22,18 @@ ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'marketplace_item_received'
 ALTER TABLE marketplace_ratings ENABLE ROW LEVEL SECURITY;
 
 -- Ai cũng đọc được rating (public)
+DROP POLICY IF EXISTS "ratings_select_public" ON marketplace_ratings;
 CREATE POLICY "ratings_select_public"
   ON marketplace_ratings FOR SELECT
   USING (true);
 
 -- Chỉ backend (service_role) mới insert/update/delete được
--- App gọi qua API Node.js dùng supabaseAdmin (service_role key) nên không cần policy insert cho anon/authenticated
+DROP POLICY IF EXISTS "ratings_insert_service" ON marketplace_ratings;
 CREATE POLICY "ratings_insert_service"
   ON marketplace_ratings FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
 
+DROP POLICY IF EXISTS "ratings_delete_service" ON marketplace_ratings;
 CREATE POLICY "ratings_delete_service"
   ON marketplace_ratings FOR DELETE
   USING (auth.role() = 'service_role');

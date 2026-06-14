@@ -1,5 +1,8 @@
 const { supabaseAdmin } = require('./supabase.service');
 
+const DELIVERY_PHOTOS_BUCKET = 'delivery-photos';
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
 function splitAddress(raw) {
   const address = String(raw || '').trim() || 'Chưa nhập địa chỉ';
   return { address, city: 'TP.HCM', district: 'Quận 1' };
@@ -30,7 +33,20 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
   if (role === 'customer') {
     query = query.eq('customer_id', userId);
   } else if (role === 'provider') {
+    // Lấy danh sách đơn provider đã từ chối để loại ra khỏi kết quả
+    const { data: declined } = await supabaseAdmin
+      .from('order_provider_responses')
+      .select('order_id')
+      .eq('provider_id', userId)
+      .eq('response', 'declined');
+
+    const declinedIds = (declined || []).map((r) => r.order_id);
+
     query = query.or(`provider_id.eq.${userId},status.eq.pending,status.eq.matched`);
+
+    if (declinedIds.length > 0) {
+      query = query.not('id', 'in', `(${declinedIds.join(',')})`);
+    }
   }
 
   const { status } = queryParams;
@@ -172,7 +188,7 @@ async function acceptOrder(orderId, providerId) {
 
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .update({ provider_id: providerId, status: 'in_progress' })
+    .update({ provider_id: providerId, status: 'accepted' })
     .eq('id', orderId)
     .eq('status', 'pending') // guard against race condition
     .select('*')
@@ -180,6 +196,32 @@ async function acceptOrder(orderId, providerId) {
 
   if (error) throw Object.assign(new Error(error.message), { status: 500 });
   if (!data) throw Object.assign(new Error('Đơn hàng vừa được nhận bởi provider khác'), { status: 409 });
+  return data;
+}
+
+// ── PATCH /api/orders/:id/start ───────────────────────────────────────────────
+async function startOrder(orderId, providerId) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, provider_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (order.provider_id !== providerId)
+    throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
+  if (order.status !== 'accepted')
+    throw Object.assign(new Error('Chỉ có thể bắt đầu đơn đã được nhận'), { status: 409 });
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .update({ status: 'in_progress', actual_pickup_time: new Date().toISOString() })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (error) throw Object.assign(new Error(error.message), { status: 500 });
   return data;
 }
 
@@ -193,8 +235,8 @@ async function declineOrder(orderId, providerId, reason) {
 
   if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
   if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
-  if (!['pending', 'in_progress'].includes(order.status))
-    throw Object.assign(new Error('Không thể từ chối đơn ở trạng thái này'), { status: 409 });
+  if (order.status !== 'pending')
+    throw Object.assign(new Error('Chỉ có thể từ chối đơn đang chờ nhận'), { status: 409 });
 
   await supabaseAdmin.from('order_provider_responses').insert({
     order_id: orderId,
@@ -221,14 +263,29 @@ async function completeOrder(orderId, providerId) {
   if (order.status !== 'in_progress')
     throw Object.assign(new Error('Chỉ có thể hoàn thành đơn đang thực hiện'), { status: 409 });
 
+  const now = new Date().toISOString();
+
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .update({
+      status: 'completed',
+      completed_at: now,
+      payment_released: true,
+      payment_released_at: now,
+    })
     .eq('id', orderId)
     .select('*')
     .single();
 
   if (error) throw Object.assign(new Error(error.message), { status: 500 });
+
+  // Release escrow trên bảng payments
+  await supabaseAdmin
+    .from('payments')
+    .update({ escrow_status: 'released' })
+    .eq('order_id', orderId)
+    .eq('escrow_status', 'held');
+
   return data;
 }
 
@@ -263,13 +320,58 @@ async function cancelOrder(orderId, userId, reason) {
   return data;
 }
 
+// ── POST /api/orders/:id/delivery-photo ───────────────────────────────────────
+async function uploadDeliveryPhoto(orderId, providerId, file) {
+  if (!file?.buffer?.length) throw Object.assign(new Error('Thiếu file ảnh'), { status: 400 });
+
+  const ext = EXT_BY_MIME[file.mimetype];
+  if (!ext) throw Object.assign(new Error('Chỉ chấp nhận ảnh JPG, PNG hoặc WebP'), { status: 400 });
+
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, provider_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+  if (order.provider_id !== providerId)
+    throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
+  if (order.status !== 'in_progress')
+    throw Object.assign(new Error('Chỉ upload ảnh khi đơn đang thực hiện'), { status: 409 });
+
+  const objectPath = `${orderId}/delivery-${Date.now()}.${ext}`;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(DELIVERY_PHOTOS_BUCKET)
+    .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: true });
+
+  if (uploadError) throw Object.assign(new Error(uploadError.message), { status: 500 });
+
+  const { data: urlData } = supabaseAdmin.storage
+    .from(DELIVERY_PHOTOS_BUCKET)
+    .getPublicUrl(objectPath);
+  const photoUrl = urlData?.publicUrl;
+  if (!photoUrl) throw Object.assign(new Error('Không tạo được URL ảnh'), { status: 500 });
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('orders')
+    .update({ delivery_photo_url: photoUrl })
+    .eq('id', orderId);
+
+  if (updateErr) throw Object.assign(new Error(updateErr.message), { status: 500 });
+
+  return { photo_url: photoUrl };
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
   providerRespond,
   getOrderById,
   acceptOrder,
+  startOrder,
   declineOrder,
   completeOrder,
   cancelOrder,
+  uploadDeliveryPhoto,
 };

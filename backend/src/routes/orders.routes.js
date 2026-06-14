@@ -1,6 +1,7 @@
 const express = require('express');
 const ordersController = require('../controllers/orders.controller');
 const { requireAuth, requireRole } = require('../middleware/auth.middleware');
+const { handleDeliveryPhotoUpload } = require('../middleware/upload.middleware');
 
 const router = express.Router();
 
@@ -15,8 +16,10 @@ router.post(
 );
 
 router.patch('/:id/accept', requireAuth, requireRole('provider'), ordersController.acceptOrder);
+router.patch('/:id/start', requireAuth, requireRole('provider'), ordersController.startOrder);
 router.patch('/:id/decline', requireAuth, requireRole('provider'), ordersController.declineOrder);
 router.patch('/:id/complete', requireAuth, requireRole('provider'), ordersController.completeOrder);
 router.patch('/:id/cancel', requireAuth, ordersController.cancelOrder);
+router.post('/:id/delivery-photo', requireAuth, requireRole('provider'), handleDeliveryPhotoUpload, ordersController.uploadDeliveryPhoto);
 
 module.exports = router;

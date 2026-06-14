@@ -135,6 +135,8 @@ class ProviderOrder {
     this.completedAt,
     this.cancellationReason,
     this.cancelledAt,
+    this.depositAmount = 0,
+    this.remainingAmount = 0,
   });
 
   factory ProviderOrder.fromJson(Map<String, dynamic> json) {
@@ -200,6 +202,8 @@ class ProviderOrder {
       cancelledAt: json['cancelled_at'] != null
           ? DateTime.tryParse(json['cancelled_at'] as String)
           : null,
+      depositAmount: ((json['deposit_amount'] as num?) ?? 0).round(),
+      remainingAmount: ((json['remaining_amount'] as num?) ?? 0).round(),
     );
   }
 
@@ -235,6 +239,8 @@ class ProviderOrder {
   final DateTime? completedAt;
   final String? cancellationReason;
   final DateTime? cancelledAt;
+  final int depositAmount;
+  final int remainingAmount;
 
   OrderLocationPoint get pickupPoint =>
       pickup ??
@@ -300,6 +306,8 @@ class ProviderOrder {
       completedAt: completedAt,
       cancellationReason: cancellationReason,
       cancelledAt: cancelledAt,
+      depositAmount: depositAmount,
+      remainingAmount: remainingAmount,
     );
   }
 

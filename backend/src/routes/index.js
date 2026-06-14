@@ -9,6 +9,7 @@ const adminRoutes = require('./admin.routes');
 const marketplaceRoutes = require('./marketplace.routes');
 const notificationRoutes = require('./notification.routes');
 const conversationsRoutes = require('./conversations.routes');
+const reviewsRoutes = require('./reviews.routes');
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use('/admin', adminRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/conversations', conversationsRoutes);
+router.use('/reviews', reviewsRoutes);
 
 module.exports = router;

@@ -170,6 +170,15 @@ class ProviderProfileTabPage extends ConsumerWidget {
                     const SizedBox(height: 10),
                     const ThemeToggleTile(),
                     const SizedBox(height: 10),
+                    _MenuTile(
+                      icon: LucideIcons.userCheck,
+                      title: 'Hồ sơ công khai',
+                      subtitle: 'Xem hồ sơ như khách hàng nhìn thấy',
+                      onTap: () {
+                        final id = profile?.id;
+                        if (id != null) context.push('/profile/public/$id');
+                      },
+                    ),
                     _MenuTile(icon: LucideIcons.calendarDays, title: 'Lịch làm việc', subtitle: 'Quản lý giờ và ngày hoạt động', onTap: () => context.push('/schedule')),
                     _MenuTile(icon: LucideIcons.fileUp, title: 'Giấy tờ & xác thực', subtitle: 'GPLX, đăng ký xe, bảo hiểm', onTap: () => context.push('/documents')),
                     _MenuTile(
