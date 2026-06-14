@@ -5,9 +5,11 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../data/pass_item_location_prefs.dart';
 import '../../data/pass_item_repository.dart';
+import '../../domain/pass_extras.dart';
 import '../../domain/pass_item.dart';
 import '../../domain/pass_item_provinces.dart';
 import '../pass_item_format.dart';
+import '../widgets/listing_fee_payment_sheet.dart';
 import '../widgets/pass_item_image.dart';
 import '../widgets/pass_item_province_picker_sheet.dart';
 
@@ -669,6 +671,7 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
   }
 
   Widget _myCard(UniMoveColors c, PassItemPost post) {
+    final needsListingFee = !post.feePaid && !post.isFree;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -682,56 +685,68 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
           _listingCardInner(c, post),
           Divider(height: 1, color: c.border),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.favorite_border, size: 15, color: c.onSurfaceMuted),
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () => context.push('/pass-items/${post.id}/chat'),
-                  child: Text(
-                    '${post.interestedCount} khách quan tâm',
-                    style: TextStyle(fontSize: 12, color: c.primary, fontWeight: FontWeight.w600),
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.favorite_border, size: 15, color: c.onSurfaceMuted),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          InkWell(
+                            onTap: () => context.push('/pass-items/${post.id}/chat'),
+                            child: Text(
+                              '${post.interestedCount} khách quan tâm',
+                              style: TextStyle(fontSize: 12, color: c.primary, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          if (post.buyerTransportBooked)
+                            _miniBadge(c, 'Khách đã đặt xe', c.primary, c.primaryContainer)
+                          else if (post.dealConfirmed)
+                            _miniBadge(c, 'Đã chốt', c.success, c.success.withValues(alpha: 0.14))
+                          else
+                            Text('chốt đơn trong chat', style: TextStyle(fontSize: 11, color: c.onSurfaceMuted)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (post.buyerTransportBooked) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: c.primaryContainer,
-                      borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _statusBadge(c, post, needsListingFee: needsListingFee),
+                    const Spacer(),
+                    if (needsListingFee)
+                      TextButton(
+                        onPressed: () => _payPendingListingFee(post),
+                        style: TextButton.styleFrom(
+                          foregroundColor: c.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Thanh toán phí', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    PopupMenuButton<PassItemStatus>(
+                      icon: Icon(Icons.more_horiz, color: c.onSurfaceMuted),
+                      onSelected: (s) async {
+                        await _repo.updateStatus(post.id, s);
+                        _load();
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: PassItemStatus.reserved, child: Text('Đang chờ chốt đơn')),
+                        PopupMenuItem(value: PassItemStatus.completed, child: Text('Đã hoàn tất giao dịch')),
+                        PopupMenuItem(value: PassItemStatus.hidden, child: Text('Ẩn tin đăng')),
+                        PopupMenuItem(value: PassItemStatus.open, child: Text('Đăng lại tin')),
+                      ],
                     ),
-                    child: Text('Khách đã đặt xe', style: TextStyle(fontSize: 10, color: c.primary, fontWeight: FontWeight.w700)),
-                  ),
-                ] else if (post.dealConfirmed) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: c.success.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('Đã chốt', style: TextStyle(fontSize: 10, color: c.success, fontWeight: FontWeight.w700)),
-                  ),
-                ] else ...[
-                  const SizedBox(width: 6),
-                  Text('· chốt đơn trong chat', style: TextStyle(fontSize: 11, color: c.onSurfaceMuted)),
-                ],
-                const Spacer(),
-                _statusBadge(c, post.status),
-                const SizedBox(width: 8),
-                PopupMenuButton<PassItemStatus>(
-                  icon: Icon(Icons.more_horiz, color: c.onSurfaceMuted),
-                  onSelected: (s) async {
-                    await _repo.updateStatus(post.id, s);
-                    _load();
-                  },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: PassItemStatus.reserved, child: Text('Đang chờ chốt đơn')),
-                    PopupMenuItem(value: PassItemStatus.completed, child: Text('Đã hoàn tất giao dịch')),
-                    PopupMenuItem(value: PassItemStatus.hidden, child: Text('Ẩn tin đăng')),
-                    PopupMenuItem(value: PassItemStatus.open, child: Text('Đăng lại tin')),
                   ],
                 ),
               ],
@@ -790,7 +805,36 @@ class _PassItemsPageState extends State<PassItemsPage> with SingleTickerProvider
     );
   }
 
-  Widget _statusBadge(UniMoveColors c, PassItemStatus status) {
+  Widget _miniBadge(UniMoveColors c, String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(6)),
+      child: Text(label, style: TextStyle(fontSize: 10, color: textColor, fontWeight: FontWeight.w700)),
+    );
+  }
+
+  Future<void> _payPendingListingFee(PassItemPost post) async {
+    final fee = PassListingFee.compute(price: post.price, isFree: post.isFree);
+    if (fee <= 0) return;
+    final paid = await ListingFeePaymentSheet.show(
+      context,
+      listingId: post.id,
+      fee: fee,
+    );
+    if (!mounted) return;
+    if (paid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã thanh toán phí đăng tin')),
+      );
+      _load();
+    }
+  }
+
+  Widget _statusBadge(UniMoveColors c, PassItemPost post, {bool needsListingFee = false}) {
+    if (needsListingFee || post.pendingListingFee) {
+      return _miniBadge(c, 'Chờ thanh toán', Colors.orange, Colors.orange.withValues(alpha: 0.14));
+    }
+    final status = post.status;
     final tint = switch (status) {
       PassItemStatus.open => c.primary,
       PassItemStatus.reserved => c.primaryLight,

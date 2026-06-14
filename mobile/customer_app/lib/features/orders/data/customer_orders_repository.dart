@@ -1,11 +1,10 @@
+import '../../../core/auth/api_session_mode.dart';
 import '../../../core/auth/auth_token_storage.dart';
-import '../../../core/config/dev_config.dart';
-import '../../../core/mock/mock_auth_session.dart';
 import '../../../core/mock/mock_orders_data.dart';
-import '../../booking/data/quote_runtime_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../booking/domain/booking_models.dart';
 import '../../booking/presentation/cubit/booking_flow_state.dart';
+import '../domain/checkout_models.dart';
 import '../domain/order_models.dart';
 import 'order_api_mapper.dart';
 
@@ -14,10 +13,7 @@ class CustomerOrdersRepository {
 
   final ApiClient _api;
 
-  Future<bool> _useMockData() async {
-    if (DevConfig.useMockAuth && await MockAuthSession.isSignedIn()) return true;
-    return !(await AuthTokenStorage.instance.hasSession());
-  }
+  Future<bool> _useMockData() => ApiSessionMode.useMockData();
 
   Future<List<CustomerOrder>> fetchOrders({bool activeOnly = false, bool completedOnly = false}) async {
     if (await _useMockData()) {
@@ -33,14 +29,6 @@ class CustomerOrdersRepository {
             .toList()
         : <CustomerOrder>[];
 
-    // Demo fallback: tài khoản thật chưa có đơn nào → hiển thị dữ liệu mẫu
-    // để màn "Hoạt động" không trống khi demo.
-    if (list.isEmpty) {
-      return _mockFilter(activeOnly: activeOnly, completedOnly: completedOnly);
-    }
-
-    list = _mergeRuntimeOrders(list);
-
     if (activeOnly) {
       list = list.where((o) => o.status.isActive).toList();
     }
@@ -53,9 +41,6 @@ class CustomerOrdersRepository {
   }
 
   Future<CustomerOrder?> fetchById(String id) async {
-    final runtime = QuoteRuntimeStore.instance.orderById(id);
-    if (runtime != null) return runtime;
-
     if (await _useMockData()) {
       return MockOrdersData.orderById(id);
     }
@@ -63,14 +48,12 @@ class CustomerOrdersRepository {
     try {
       final envelope = await _api.guard(() => _api.get('/orders/$id'));
       final data = envelope['data'];
-      if (data is! Map) return _mockById(id);
+      if (data is! Map) return null;
       return OrderApiMapper.fromJson(Map<String, dynamic>.from(data));
     } on ApiException {
-      return _mockById(id);
+      return null;
     }
   }
-
-  CustomerOrder? _mockById(String id) => MockOrdersData.orderById(id);
 
   Future<TrackingSnapshot> fetchTracking(String orderId) async {
     final order = await fetchById(orderId);
@@ -83,13 +66,92 @@ class CustomerOrdersRepository {
     return OrderApiMapper.trackingFromOrder(order);
   }
 
-  /// Tạo đơn từ luồng booking + đặt cọc qua API.
-  Future<String> createFromBooking(BookingFlowState state) async {
+  /// Tạo đơn chờ nhà xe nhận (luồng báo giá) — không đặt cọc ngay.
+  Future<String> createQuoteRequestOrder(BookingFlowState state, String referenceId) async {
     if (await _useMockData()) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      return MockOrdersData.placeBookingOrder(state);
+      throw ApiException('Cần đăng nhập để gửi yêu cầu báo giá');
     }
 
+    // Giá do nhà xe báo sau — không gửi giá tham chiếu lên server.
+    final body = await _buildOrderBody(
+      state,
+      basePrice: 0,
+      totalPrice: 0,
+      quoteReferenceId: referenceId,
+    );
+
+    final envelope = await _api.guard(() => _api.post('/orders', body: body));
+    final orderJson = Map<String, dynamic>.from(envelope['data'] as Map);
+    return orderJson['id'] as String;
+  }
+
+  /// Đặt cọc cho đơn đã tồn tại (sau khi chốt nhà xe báo giá).
+  Future<DepositPaymentInfo?> createDepositForOrder({
+    required String orderId,
+    required int amount,
+  }) async {
+    if (await _useMockData()) return null;
+
+    final user = await AuthTokenStorage.instance.loadUser();
+    final contactName = user?['full_name'] as String? ?? 'Khách UniMove';
+
+    final depositEnvelope = await _api.guard(
+      () => _api.post('/payments/deposit', body: {
+        'order_id': orderId,
+        'amount': amount,
+        'payment_method': 'payos',
+        if (contactName.isNotEmpty) 'customer_name': contactName,
+        if ((user?['email'] as String?)?.isNotEmpty == true) 'customer_email': user!['email'],
+      }),
+    );
+    final depositJson = depositEnvelope['data'];
+    if (depositJson is! Map) return null;
+
+    final d = Map<String, dynamic>.from(depositJson);
+    return DepositPaymentInfo(
+      paymentId: d['payment_id'] as String? ?? '',
+      paymentCode: d['payment_code'] as String? ?? '',
+      amount: (d['amount'] as num?)?.round() ?? amount,
+      qrCode: d['qr_code'] as String? ?? d['qr_code_data_url'] as String?,
+      checkoutUrl: d['checkout_url'] as String?,
+      bankAccountNumber: d['bank_account_number'] as String?,
+      bankAccountName: d['bank_account_name'] as String?,
+    );
+  }
+
+  /// Tạo đơn từ luồng booking + đặt cọc qua API.
+  Future<CheckoutResult> createFromBooking(BookingFlowState state) async {
+    if (await _useMockData()) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return CheckoutResult(orderId: MockOrdersData.placeBookingOrder(state));
+    }
+
+    final basePrice = state.isComboBooking
+        ? state.movePackagePrice + state.comboLaborFee + state.retailLaborFee
+        : state.partnerTransportPrice + state.retailLaborFee;
+    final total = state.total;
+
+    final body = await _buildOrderBody(state, basePrice: basePrice, totalPrice: total);
+    final envelope = await _api.guard(() => _api.post('/orders', body: body));
+
+    final orderJson = Map<String, dynamic>.from(envelope['data'] as Map);
+    final orderId = orderJson['id'] as String;
+
+    DepositPaymentInfo? depositInfo;
+    final deposit = (total * 0.3).round();
+    if (deposit > 0 && !state.isLaborAddon) {
+      depositInfo = await createDepositForOrder(orderId: orderId, amount: deposit);
+    }
+
+    return CheckoutResult(orderId: orderId, deposit: depositInfo);
+  }
+
+  Future<Map<String, dynamic>> _buildOrderBody(
+    BookingFlowState state, {
+    required int basePrice,
+    required int totalPrice,
+    String? quoteReferenceId,
+  }) async {
     final user = await AuthTokenStorage.instance.loadUser();
     final contactName = user?['full_name'] as String? ?? 'Khách UniMove';
     final contactPhone = user?['phone'] as String? ?? '+84900000000';
@@ -111,17 +173,16 @@ class CustomerOrdersRepository {
       _ => 'standard',
     };
 
-    final basePrice = state.isComboBooking
-        ? state.movePackagePrice + state.comboLaborFee + state.retailLaborFee
-        : state.partnerTransportPrice + state.retailLaborFee;
-    final total = state.total;
-
-    final pickupNotes = _formatLocationNotes(
+    var pickupNotes = _formatLocationNotes(
       alley: state.pickupAlleyAccess,
       extra: state.dormNote,
       imageCount: state.dormImageCount,
       isPickup: true,
     );
+    if (quoteReferenceId != null) {
+      pickupNotes = '$pickupNotes · Mã báo giá: $quoteReferenceId';
+    }
+
     final deliveryNotes = _formatLocationNotes(
       alley: state.destinationAlleyAccess,
       cargo: state.cargoVolume,
@@ -130,67 +191,51 @@ class CustomerOrdersRepository {
       isPickup: false,
     );
 
-    final envelope = await _api.guard(
-      () => _api.post('/orders', body: {
-        'vehicle_size': vehicleSize,
-        'service_type': serviceType,
-        'pickup_address': pickup.address,
-        'pickup_city': pickup.city,
-        'pickup_district': pickup.district,
-        'pickup_floor': state.pickupFloor,
-        'pickup_has_elevator': state.pickupHasElevator,
-        'pickup_notes': pickupNotes,
-        'pickup_contact_name': contactName,
-        'pickup_contact_phone': contactPhone,
-        'delivery_address': delivery.address,
-        'delivery_city': delivery.city,
-        'delivery_district': delivery.district,
-        'delivery_floor': state.floorCount,
-        'delivery_has_elevator': state.hasElevator,
-        'delivery_notes': deliveryNotes,
-        'delivery_contact_name': contactName,
-        'delivery_contact_phone': contactPhone,
-        'base_price': basePrice,
-        'distance_price': 0,
-        'floor_price': state.floorFee,
-        'service_fee': state.serviceFee,
-        'total_price': total,
-        'number_of_rooms': 1,
-        'requires_helpers': state.isComboBooking && state.effectiveComboLaborCount > 0,
-        'number_of_helpers': state.isComboBooking ? state.effectiveComboLaborCount : 0,
-        if (state.scheduledPickupAt != null)
-          'scheduled_pickup_time': state.scheduledPickupAt!.toIso8601String()
-        else if (state.isLaborService)
-          'scheduled_pickup_time': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
-      }),
-    );
+    final helpers = state.wantsTransportLabor && !state.isComboBooking
+        ? state.transportLaborHelpers
+        : (state.isComboBooking ? state.effectiveComboLaborCount : 0);
 
-    final orderJson = Map<String, dynamic>.from(envelope['data'] as Map);
-    final orderId = orderJson['id'] as String;
-
-    final deposit = (total * 0.3).round();
-    if (deposit > 0 && !state.isLaborAddon) {
-      await _api.guard(
-        () => _api.post('/payments/deposit', body: {
-          'order_id': orderId,
-          'amount': deposit,
-          'payment_method': state.paymentMethod == PaymentMethod.momo ? 'momo' : 'payos',
-        }),
-      );
-    }
-
-    return orderId;
-  }
-
-  List<CustomerOrder> _mergeRuntimeOrders(List<CustomerOrder> list) {
-    final runtime = QuoteRuntimeStore.instance.orders;
-    if (runtime.isEmpty) return list;
-    final ids = list.map((o) => o.id).toSet();
-    return [...runtime.where((o) => !ids.contains(o.id)), ...list];
+    return {
+      'vehicle_size': vehicleSize,
+      'service_type': serviceType,
+      'pickup_address': pickup.address,
+      'pickup_city': pickup.city,
+      'pickup_district': pickup.district,
+      'pickup_floor': state.pickupFloor,
+      'pickup_has_elevator': state.pickupHasElevator,
+      if (state.pickupLat != null) 'pickup_latitude': state.pickupLat,
+      if (state.pickupLng != null) 'pickup_longitude': state.pickupLng,
+      'pickup_notes': pickupNotes,
+      'pickup_contact_name': contactName,
+      'pickup_contact_phone': contactPhone,
+      'delivery_address': delivery.address,
+      'delivery_city': delivery.city,
+      'delivery_district': delivery.district,
+      if (state.destinationLat != null) 'delivery_latitude': state.destinationLat,
+      if (state.destinationLng != null) 'delivery_longitude': state.destinationLng,
+      'delivery_floor': state.floorCount,
+      'delivery_has_elevator': state.hasElevator,
+      'delivery_notes': deliveryNotes,
+      'delivery_contact_name': contactName,
+      'delivery_contact_phone': contactPhone,
+      'base_price': basePrice,
+      'distance_price': 0,
+      'floor_price': state.floorFee,
+      'service_fee': state.serviceFee,
+      'total_price': totalPrice,
+      'number_of_rooms': 1,
+      'requires_helpers': helpers > 0,
+      'number_of_helpers': helpers,
+      'quote_request': quoteReferenceId != null,
+      if (state.scheduledPickupAt != null)
+        'scheduled_pickup_time': state.scheduledPickupAt!.toIso8601String()
+      else if (state.isLaborService)
+        'scheduled_pickup_time': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+    };
   }
 
   List<CustomerOrder> _mockFilter({required bool activeOnly, required bool completedOnly}) {
-    var list = _mergeRuntimeOrders([...MockOrdersData.orders]);
+    var list = [...MockOrdersData.orders];
     if (activeOnly) {
       list = list.where((o) => o.status.isActive).toList();
     }
@@ -233,7 +278,7 @@ String _formatLocationNotes({
 _ParsedAddress _splitAddress(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) {
-    return const _ParsedAddress(address: 'Chưa nhập địa chỉ', city: 'TP.HCM', district: 'Quận 1');
+    return const _ParsedAddress(address: 'Chưa nhập địa chỉ', city: 'Đà Nẵng', district: 'Hải Châu');
   }
-  return _ParsedAddress(address: trimmed, city: 'TP.HCM', district: 'Quận 1');
+  return _ParsedAddress(address: trimmed, city: 'Đà Nẵng', district: 'Hải Châu');
 }

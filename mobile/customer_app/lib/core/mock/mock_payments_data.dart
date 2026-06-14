@@ -32,7 +32,7 @@ abstract final class MockPaymentsData {
       amount: 215000,
       type: PaymentType.refund,
       status: PaymentStatus.refunded,
-      method: 'Ví UniMove',
+      method: 'PayOS',
       createdAt: DateTime(2023, 9, 2, 10, 15),
       description: 'Hoàn 100% — hủy trước khi tài xế nhận',
     ),
@@ -51,8 +51,7 @@ abstract final class MockPaymentsData {
           escrowStatus: 'held',
           maskedAccount: 'PayOS · QR',
           breakdown: const [
-            PaymentBreakdownLine(label: 'Ví UniMove', amount: '35.000đ'),
-            PaymentBreakdownLine(label: 'PayOS', amount: '100.000đ'),
+            PaymentBreakdownLine(label: 'PayOS', amount: '135.000đ'),
           ],
         ),
       'pay-002' => PaymentDetail(
@@ -78,9 +77,9 @@ abstract final class MockPaymentsData {
           serviceCategory: 'Chuyển trọ',
           paidAt: DateTime(2023, 9, 2, 10, 15),
           escrowStatus: 'refunded',
-          maskedAccount: 'Ví UniMove',
+          maskedAccount: 'PayOS · QR',
           breakdown: const [
-            PaymentBreakdownLine(label: 'Ví UniMove', amount: '215.000đ'),
+            PaymentBreakdownLine(label: 'PayOS', amount: '215.000đ'),
           ],
         ),
       _ => PaymentDetail(

@@ -44,6 +44,12 @@ class _MoveSchedulePageState extends State<MoveSchedulePage> {
   DateTime get _combined =>
       DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day, _selectedTime.hour, _selectedTime.minute);
 
+  void _continueCombo(BookingFlowCubit cubit) {
+    _applySchedule(cubit);
+    if (!BookingFlowCubit.isValidPickupTime(_combined) || !mounted) return;
+    context.push('/booking/packages');
+  }
+
   Future<void> _submitQuote(BookingFlowCubit cubit) async {
     _applySchedule(cubit);
     if (!BookingFlowCubit.isValidPickupTime(_combined)) return;
@@ -222,7 +228,7 @@ class _MoveSchedulePageState extends State<MoveSchedulePage> {
                           Text(
                             state.isComboBooking
                                 ? 'Nhà xe chỉ đến lấy đồ đúng khung giờ — không chạy sớm.'
-                                : 'Giờ mong muốn — nhà xe xác nhận hoặc đề xuất lại khi báo giá.',
+                                : 'Khung giờ lấy đồ — nhà xe sẽ đến đúng lịch sau khi bạn chọn đối tác.',
                             style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
                           ),
                         ],
@@ -248,10 +254,7 @@ class _MoveSchedulePageState extends State<MoveSchedulePage> {
                     ? null
                     : () {
                         if (state.isComboBooking) {
-                          _applySchedule(cubit);
-                          if (BookingFlowCubit.isValidPickupTime(_combined) && context.mounted) {
-                            context.push('/booking/packages');
-                          }
+                          _continueCombo(cubit);
                         } else {
                           _submitQuote(cubit);
                         }
@@ -281,8 +284,7 @@ class _MoveSchedulePageState extends State<MoveSchedulePage> {
             child: Text(
               state.isComboBooking
                   ? 'Combo niêm yết — giá cố định, nhà xe đến đúng khung giờ bạn chọn.'
-                  : 'Giờ này là mong muốn của bạn. Khi báo giá, mỗi nhà xe sẽ ghi rõ có nhận đúng giờ, '
-                      'đề xuất giờ khác, hoặc không nhận khung này.',
+                  : 'Bước sau: gửi yêu cầu — các nhà xe Đà Nẵng sẽ báo giá theo khung giờ này.',
               style: TextStyle(fontSize: 12.sp, color: c.onSurface, height: 1.35),
             ),
           ),

@@ -20,7 +20,6 @@ import '../../features/booking/presentation/pages/quote_move_schedule_page.dart'
 import '../../features/booking/presentation/pages/quote_progress_page.dart';
 import '../../features/booking/presentation/pages/reference_prices_page.dart';
 import '../../features/booking/presentation/pages/service_packages_page.dart';
-import '../../features/chat/presentation/pages/chat_thread_page.dart';
 import '../../features/notifications/presentation/pages/notification_detail_page.dart';
 import '../../features/payments/domain/payment_method_models.dart';
 import '../../features/payments/presentation/pages/add_card_page.dart';
@@ -30,9 +29,11 @@ import '../../features/payments/presentation/pages/link_payment_method_page.dart
 import '../../features/payments/presentation/pages/payment_detail_page.dart';
 import '../../features/payments/presentation/pages/payment_methods_page.dart';
 import '../../features/pass_items/presentation/pages/create_pass_item_page.dart';
+import '../../features/pass_items/presentation/pages/listing_fee_pay_page.dart';
 import '../../features/pass_items/presentation/pages/pass_item_chat_page.dart';
 import '../../features/pass_items/presentation/pages/pass_item_detail_page.dart';
 import '../../features/pass_items/presentation/pages/pass_item_seller_page.dart';
+import '../../features/pass_items/presentation/pages/pass_item_transport_options_page.dart';
 import '../../features/pass_items/presentation/pages/pass_items_page.dart';
 import '../../features/auth/data/customer_auth_repository.dart';
 import '../../features/auth/presentation/pages/forgot_password_page.dart';
@@ -98,6 +99,10 @@ abstract final class AppRouter {
       GoRoute(path: '/booking/labor/configure', builder: (_, __) => const LaborConfigurePage()),
       GoRoute(path: '/booking/labor/providers', builder: (_, __) => const LaborProvidersPage()),
       GoRoute(path: '/booking/location', builder: (_, __) => const ChooseLocationPage()),
+      GoRoute(
+        path: '/booking/pass-item/transport',
+        builder: (_, __) => const PassItemTransportOptionsPage(),
+      ),
       GoRoute(path: '/booking/dorm-details', builder: (_, __) => const MoveDormDetailsPage()),
       GoRoute(path: '/booking/schedule', builder: (_, __) => const MoveSchedulePage()),
       GoRoute(
@@ -145,6 +150,17 @@ abstract final class AppRouter {
       GoRoute(path: '/booking/partners', builder: (_, __) => const ChoosePartnerPage()),
       GoRoute(path: '/pass-items', builder: (_, __) => const PassItemsPage()),
       GoRoute(path: '/pass-items/new', builder: (_, __) => const CreatePassItemPage()),
+      GoRoute(
+        path: '/pass-items/:listingId/pay-fee',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, state) {
+          final fee = int.tryParse(state.uri.queryParameters['fee'] ?? '') ?? 0;
+          return ListingFeePayPage(
+            listingId: state.pathParameters['listingId']!,
+            fee: fee,
+          );
+        },
+      ),
       GoRoute(
         path: '/pass-items/seller/:sellerId',
         builder: (_, state) => PassItemSellerPage(
@@ -238,7 +254,7 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: '/chat/:conversationId',
-        builder: (_, state) => ChatThreadPage(conversationId: state.pathParameters['conversationId']!),
+        redirect: (_, __) => '/home?tab=messages',
       ),
     ],
   );

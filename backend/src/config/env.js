@@ -28,7 +28,11 @@ const PAYOS_API_URL = process.env.PAYOS_API_URL || 'https://api-merchant.payos.v
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
 
-// Google Maps
+// Goong Maps (ưu tiên cho địa chỉ VN) — https://docs.goong.io/rest/
+const GOONG_API_KEY = process.env.GOONG_API_KEY || '';
+const GOONG_API_URL = process.env.GOONG_API_URL || 'https://rsapi.goong.io';
+
+// Google Maps (fallback)
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 
 // Google Sign-In — OAuth Web client ID dùng làm `audience` khi verify id_token.
@@ -80,6 +84,8 @@ module.exports = {
   PAYOS_API_URL,
   APP_URL,
   API_URL,
+  GOONG_API_KEY,
+  GOONG_API_URL,
   GOOGLE_MAPS_API_KEY,
   GOOGLE_CLIENT_ID,
   PORT,

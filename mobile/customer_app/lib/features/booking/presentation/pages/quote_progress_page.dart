@@ -65,13 +65,16 @@ class _QuoteProgressPageState extends State<QuoteProgressPage> {
       _snapshot = snap;
       _loading = false;
     });
-    _syncStatusPoll(snap?.status);
+    _syncStatusPoll(snap);
   }
 
-  void _syncStatusPoll(QuoteProgressStatus? status) {
+  void _syncStatusPoll(QuoteRequestSnapshot? snap) {
     _statusPoll?.cancel();
-    if (status == QuoteProgressStatus.scheduled ||
-        status == QuoteProgressStatus.depositPaid) {
+    if (snap == null) return;
+    final shouldPoll = snap.status == QuoteProgressStatus.waitingQuotes ||
+        snap.status == QuoteProgressStatus.scheduled ||
+        (snap.status == QuoteProgressStatus.depositPaid && !snap.providerTripConfirmed);
+    if (shouldPoll) {
       _statusPoll = Timer.periodic(const Duration(seconds: 3), (_) => _load(silent: true));
     }
   }
@@ -335,8 +338,8 @@ class _QuoteProgressPageState extends State<QuoteProgressPage> {
           ),
           SizedBox(height: 6.h),
           Text(
-            'Các nhà xe sẽ báo giá kèm khả năng nhận đúng giờ bạn chọn. '
-            'Bạn sẽ được thông báo ngay khi có báo giá.',
+            'Yêu cầu đã gửi tới các nhà xe Đà Nẵng. '
+            'Khi có nhà xe nhận đơn, báo giá sẽ hiện tại đây — thường trong vài phút.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.4),
           ),
@@ -779,7 +782,10 @@ class _QuoteProgressPageState extends State<QuoteProgressPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Nhà xe đã xác nhận lịch', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800)),
+        Text(
+          snap.orderId != null ? 'Đã chốt báo giá — đặt cọc giữ chỗ' : 'Nhà xe đã xác nhận lịch',
+          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800),
+        ),
         SizedBox(height: 12.h),
         if (q != null) _quoteCard(c, q),
         if (snap.scheduledSlotLabel != null) ...[
@@ -808,33 +814,73 @@ class _QuoteProgressPageState extends State<QuoteProgressPage> {
 
   Widget _depositPaidSection(UniMoveColors c, QuoteRequestSnapshot snap) {
     final q = snap.confirmedQuote;
+    final confirmed = snap.providerTripConfirmed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Đã đặt cọc — chờ ngày chuyển', style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800)),
+        Text(
+          confirmed ? 'Nhà xe đã nhận đơn' : 'Đã đặt cọc — chờ nhà xe xác nhận',
+          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800),
+        ),
         SizedBox(height: 12.h),
         if (q != null) _quoteCard(c, q),
+        if (snap.scheduledSlotLabel != null) ...[
+          SizedBox(height: 10.h),
+          _scheduleInfoCard(c, snap.scheduledSlotLabel!),
+        ],
         SizedBox(height: 12.h),
         Container(
           padding: EdgeInsets.all(14.w),
-          decoration: BoxDecoration(color: c.chipBg, borderRadius: BorderRadius.circular(14.r)),
+          decoration: BoxDecoration(
+            color: confirmed ? c.success.withValues(alpha: 0.12) : c.chipBg,
+            borderRadius: BorderRadius.circular(14.r),
+            border: confirmed ? Border.all(color: c.success.withValues(alpha: 0.3)) : null,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Chuyến đã sẵn sàng',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.sp),
+              Row(
+                children: [
+                  Icon(
+                    confirmed ? Icons.check_circle_rounded : Icons.hourglass_top_rounded,
+                    color: confirmed ? c.success : c.primary,
+                    size: 22.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      confirmed ? 'Chuyến đã sẵn sàng' : 'Đang chờ nhà xe nhận đơn',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.sp),
+                    ),
+                  ),
+                ],
               ),
               SizedBox(height: 6.h),
               Text(
-                'Nhà xe sẽ đến đúng khung giờ đã hẹn. '
-                'Bạn sẽ nhận thông báo khi đến ngày và giờ chuyển.',
+                confirmed
+                    ? 'Nhà xe sẽ đến đúng khung giờ đã hẹn. Bạn có thể theo dõi chuyến trên màn Hoạt động.'
+                    : 'Nhà xe sẽ xem đơn và nhận trên app. Trang tự cập nhật mỗi 3 giây.',
                 style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.4),
               ),
             ],
           ),
         ),
-        SizedBox(height: 16.h),
+        if (!confirmed) ...[
+          SizedBox(height: 12.h),
+          OutlinedButton.icon(
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Kiểm tra lại'),
+          ),
+        ],
+        if (confirmed && snap.orderId != null) ...[
+          SizedBox(height: 16.h),
+          SmoothCtaButton(
+            label: 'Theo dõi chuyến',
+            onPressed: () => context.push('/orders/${snap.orderId}/tracking'),
+          ),
+        ],
+        SizedBox(height: 10.h),
         OutlinedButton.icon(
           onPressed: () => _openChat(snap.conversationId),
           icon: const Icon(Icons.chat_bubble_outline),

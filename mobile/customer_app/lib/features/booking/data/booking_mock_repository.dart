@@ -1,34 +1,204 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/config/dev_config.dart';
 import '../../../core/constants/app_images.dart';
+import '../../../core/mock/mock_auth_session.dart';
+import '../../../core/network/api_client.dart';
 import '../domain/booking_models.dart';
 
 class BookingMockRepository {
-  Future<List<RecentPlace>> fetchRecentPlaces() async {
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    return const [
+  BookingMockRepository({ApiClient? api}) : _api = api ?? ApiClient.instance;
+
+  final ApiClient _api;
+
+  Future<bool> _useMockData() async {
+    if (DevConfig.useMockAuth && await MockAuthSession.isSignedIn()) return true;
+    return !(await AuthTokenStorage.instance.hasSession());
+  }
+
+  static const _mockRecentPlaces = [
       RecentPlace(
         id: '1',
-        title: 'Ký túc xá Khu B',
-        subtitle: 'Đường Mạc Đĩnh Chi, Dĩ An, Bình Dương',
+        title: 'KTX ĐH Đà Nẵng',
+        subtitle: 'Ngũ Hành Sơn, Đà Nẵng',
         icon: Icons.history,
       ),
       RecentPlace(
         id: '2',
-        title: '152 Nguyễn Văn Cừ',
-        subtitle: 'Phường Nguyễn Cư Trinh, Quận 1, TP.HCM',
+        title: '35 Nguyễn Minh Châu',
+        subtitle: 'Ngũ Hành Sơn, Đà Nẵng',
         icon: Icons.work_outline,
       ),
       RecentPlace(
         id: '3',
-        title: 'Chung cư Vinhomes Central Park',
-        subtitle: '208 Nguyễn Hữu Cảnh, Bình Thạnh',
+        title: 'Chung cư Monarchy',
+        subtitle: 'Ngũ Hành Sơn, Đà Nẵng',
         icon: Icons.home_outlined,
       ),
-    ];
+      RecentPlace(
+        id: '4',
+        title: '254 Nguyễn Văn Linh',
+        subtitle: 'Thanh Khê, Đà Nẵng',
+        icon: Icons.apartment_outlined,
+      ),
+  ];
+
+  static const _defaultComboHint =
+      'Combo — giá niêm yết, không chờ báo giá. Bước sau: mô tả trọ → chọn ngày giờ → chọn gói.';
+
+  static const _defaultQuoteHint = QuoteFlowHint(
+    title: 'Báo giá minh bạch',
+    subtitle: 'Bước tiếp: mô tả trọ → chọn giờ → nhà xe báo giá theo khung đó.',
+  );
+
+  List<RecentPlace> _mapRecentPlaces(List raw) {
+    return raw.asMap().entries.map((entry) {
+      final j = Map<String, dynamic>.from(entry.value as Map);
+      final address = j['address'] as String? ?? '';
+      return RecentPlace(
+        id: 'rp-${entry.key}-$address',
+        title: j['title'] as String? ?? address,
+        subtitle: address,
+        icon: Icons.history,
+        lat: _toDouble(j['lat']),
+        lng: _toDouble(j['lng']),
+      );
+    }).toList();
   }
 
-  /// Combo chuyển trọ: xe + khuân vác gộp; thêm người rẻ hơn thuê riêng.
+  double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  Future<BookingLocationsPayload> fetchBookingLocations() async {
+    if (await _useMockData()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      return BookingLocationsPayload(
+        recentPlaces: _mockRecentPlaces,
+        comboFlowHint: _defaultComboHint,
+        quoteFlowHint: _defaultQuoteHint,
+      );
+    }
+
+    try {
+      final envelope = await _api.guard(() => _api.get('/customers/me/booking-locations'));
+      final data = envelope['data'];
+      if (data is! Map) {
+        return const BookingLocationsPayload(
+          comboFlowHint: _defaultComboHint,
+          quoteFlowHint: _defaultQuoteHint,
+        );
+      }
+      final j = Map<String, dynamic>.from(data);
+      final pickup = j['default_pickup'];
+      String? defaultPickup;
+      double? defaultPickupLat;
+      double? defaultPickupLng;
+      if (pickup is Map) {
+        final p = Map<String, dynamic>.from(pickup);
+        defaultPickup = p['address'] as String? ?? p['title'] as String?;
+        defaultPickupLat = _toDouble(p['lat']);
+        defaultPickupLng = _toDouble(p['lng']);
+      }
+      final recentRaw = j['recent_places'];
+      final recent = recentRaw is List ? _mapRecentPlaces(recentRaw) : <RecentPlace>[];
+      final quoteRaw = j['quote_flow_hint'];
+      QuoteFlowHint? quoteHint;
+      if (quoteRaw is Map) {
+        final q = Map<String, dynamic>.from(quoteRaw);
+        quoteHint = QuoteFlowHint(
+          title: q['title'] as String? ?? _defaultQuoteHint.title,
+          subtitle: q['subtitle'] as String? ?? _defaultQuoteHint.subtitle,
+        );
+      }
+      return BookingLocationsPayload(
+        defaultPickup: defaultPickup,
+        defaultPickupLat: defaultPickupLat,
+        defaultPickupLng: defaultPickupLng,
+        recentPlaces: recent,
+        comboFlowHint: j['combo_flow_hint'] as String? ?? _defaultComboHint,
+        quoteFlowHint: quoteHint ?? _defaultQuoteHint,
+        mapPreviewUrl: j['map_preview_url'] as String?,
+      );
+    } catch (_) {
+      return const BookingLocationsPayload(
+        comboFlowHint: _defaultComboHint,
+        quoteFlowHint: _defaultQuoteHint,
+      );
+    }
+  }
+
+  Future<List<RecentPlace>> fetchRecentPlaces() async {
+    final payload = await fetchBookingLocations();
+    return payload.recentPlaces;
+  }
+
+  Future<void> clearRecentPlaces() async {
+    if (await _useMockData()) return;
+    try {
+      await _api.guard(() => _api.delete('/customers/me/recent-places'));
+    } catch (_) {}
+  }
+
+  /// Lưu địa chỉ vào recent — POST /customers/me/recent-places
+  Future<RecentPlace?> saveRecentPlace({
+    required String address,
+    required String title,
+    double? lat,
+    double? lng,
+  }) async {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty) return null;
+    if (await _useMockData()) {
+      return RecentPlace(
+        id: 'mock-$trimmed',
+        title: title,
+        subtitle: trimmed,
+        icon: Icons.history,
+        lat: lat,
+        lng: lng,
+      );
+    }
+    try {
+      final envelope = await _api.guard(
+        () => _api.post('/customers/me/recent-places', body: {
+          'title': title,
+          'address': trimmed,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        }),
+      );
+      final data = envelope['data'];
+      if (data is Map) {
+        final j = Map<String, dynamic>.from(data);
+        return RecentPlace(
+          id: 'saved-$trimmed',
+          title: j['title'] as String? ?? title,
+          subtitle: j['address'] as String? ?? trimmed,
+          icon: Icons.history,
+          lat: _toDouble(j['lat']),
+          lng: _toDouble(j['lng']),
+        );
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Lưu điểm đi mặc định — PATCH /customers/me (default_pickup_address).
+  Future<void> saveDefaultPickup(String address) async {
+    final trimmed = address.trim();
+    if (trimmed.isEmpty || await _useMockData()) return;
+    try {
+      await _api.guard(
+        () => _api.patch('/customers/me', body: {'default_pickup_address': trimmed}),
+      );
+    } catch (_) {}
+  }
+
+  /// Combo chuyển trọ — chưa có API backend; giữ mock.
   Future<List<ServicePackage>> fetchPackages() async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     return const [
@@ -95,7 +265,7 @@ class BookingMockRepository {
     ];
   }
 
-  /// Gói bảo hiểm đồ đạc khi chuyển trọ.
+  /// Gói bảo hiểm — chưa có API backend; giữ mock.
   Future<List<CargoInsurancePlan>> fetchInsurancePlans() async {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     return const [
@@ -148,18 +318,19 @@ class BookingMockRepository {
     ];
   }
 
-  /// Nhà xe đăng ký combo niêm yết — mock cho đến khi có API.
+  /// Nhà xe combo niêm yết — chưa có API backend; giữ mock.
   Future<List<PartnerOffer>> fetchComboPartners(ServiceTier tier) async {
     final all = await fetchPartners();
     return all.where((p) => p.offersCombo(tier)).toList();
   }
 
+  /// Nhà xe linh hoạt (demo auth) — session thật dùng `ProvidersRepository.browse`.
   Future<List<PartnerOffer>> fetchPartners() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
     return [
       const PartnerOffer(
         id: 'p1',
-        name: 'Minh Quân Logistics',
+        name: 'UniMove Test Transport',
         distanceKm: 1.2,
         rating: 4.9,
         reviewCount: 148,
@@ -206,7 +377,7 @@ class BookingMockRepository {
       ),
       const PartnerOffer(
         id: 'p2',
-        name: 'FastMove SV',
+        name: 'Hùng Move Express',
         distanceKm: 2.4,
         rating: 4.7,
         reviewCount: 96,

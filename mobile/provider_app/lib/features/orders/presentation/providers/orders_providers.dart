@@ -16,3 +16,9 @@ final providerOrderDetailProvider =
     FutureProvider.autoDispose.family<ProviderOrder, String>((ref, id) async {
   return ref.watch(providerOrdersRepositoryProvider).fetchById(id);
 });
+
+/// Chuyển tab shell + lọc đơn (từ Trang chủ).
+final providerShellTabIndexProvider = StateProvider<int>((ref) => 0);
+final providerOrdersFilterProvider = StateProvider<OrderInboxFilter>(
+  (ref) => OrderInboxFilter.ready,
+);

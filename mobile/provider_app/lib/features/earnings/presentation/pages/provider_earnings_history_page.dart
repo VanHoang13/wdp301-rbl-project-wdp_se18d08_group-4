@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../orders/domain/provider_order.dart';
@@ -274,7 +273,9 @@ class _ProviderEarningsHistoryPageState extends ConsumerState<ProviderEarningsHi
     ProviderOrder o,
     int index,
   ) {
-    final customer = MockProviderData.customerNameOf(o.customerId);
+    final customer = o.pickupPoint.contactName.isNotEmpty
+        ? o.pickupPoint.contactName
+        : 'Khách hàng';
     final (Color tint, IconData icon) = switch (true) {
       _ when o.isCompleted => (c.success, LucideIcons.circleCheck),
       _ when o.isCancelled => (c.onSurfaceMuted, LucideIcons.circleX),

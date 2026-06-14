@@ -13,8 +13,9 @@ class CustomerAuthRepository {
   final _storage = AuthTokenStorage.instance;
 
   Future<bool> get isSignedIn async {
+    if (await _storage.hasSession()) return true;
     if (DevConfig.useMockAuth && await MockAuthSession.isSignedIn()) return true;
-    return _storage.hasSession();
+    return false;
   }
 
   static String normalizePhone(String input) {
@@ -41,6 +42,7 @@ class CustomerAuthRepository {
       }),
     );
 
+    await MockAuthSession.signOut();
     await _persistAuth(envelope);
     await _validateCustomerRole();
   }
@@ -65,6 +67,7 @@ class CustomerAuthRepository {
       }),
     );
 
+    await MockAuthSession.signOut();
     await _persistAuth(envelope);
   }
 
@@ -76,6 +79,7 @@ class CustomerAuthRepository {
       () => _api.post('/auth/google', body: {'id_token': idToken}),
     );
 
+    await MockAuthSession.signOut();
     await _persistAuth(envelope);
     await _validateCustomerRole();
   }
@@ -120,6 +124,18 @@ class CustomerAuthRepository {
   }
 
   Future<CustomerProfile> fetchMe() async {
+    if (await _storage.hasSession()) {
+      try {
+        final envelope = await _api.guard(() => _api.get('/customers/me'));
+        final user = Map<String, dynamic>.from(envelope['data'] as Map);
+        return CustomerProfile.fromJson(user);
+      } catch (_) {
+        final envelope = await _api.guard(() => _api.get('/auth/me'));
+        final user = Map<String, dynamic>.from(envelope['data'] as Map);
+        return CustomerProfile.fromJson(user);
+      }
+    }
+
     if (await MockAuthSession.isSignedIn()) {
       return const CustomerProfile(
         id: 'mock',
@@ -129,15 +145,7 @@ class CustomerAuthRepository {
       );
     }
 
-    try {
-      final envelope = await _api.guard(() => _api.get('/customers/me'));
-      final user = Map<String, dynamic>.from(envelope['data'] as Map);
-      return CustomerProfile.fromJson(user);
-    } catch (_) {
-      final envelope = await _api.guard(() => _api.get('/auth/me'));
-      final user = Map<String, dynamic>.from(envelope['data'] as Map);
-      return CustomerProfile.fromJson(user);
-    }
+    throw const AuthException('Chưa đăng nhập.');
   }
 
   /// POST /auth/forgot-password — gửi OTP qua email (SMTP).

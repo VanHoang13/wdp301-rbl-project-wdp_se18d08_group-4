@@ -6,8 +6,20 @@ const { httpError } = require('../services/auth.helpers');
 /** API-062 — POST /api/marketplace/listings */
 async function createListing(req, res, next) {
   try {
-    const data = await marketplaceService.createListing(req.user.id, req.body);
-    res.status(201).json({ success: true, data });
+    const result = await marketplaceService.createListing(req.user.id, req.body);
+    res.status(201).json({
+      success: true,
+      data: result.listing,
+      listing_fee: result.listing_fee,
+    });
+  } catch (error) { next(error); }
+}
+
+/** PASS-03 — POST /api/marketplace/listings/:id/listing-fee/pay */
+async function payListingFee(req, res, next) {
+  try {
+    const data = await marketplaceService.payListingFee(req.user.id, req.params.id, req.body);
+    res.json({ success: true, data });
   } catch (error) { next(error); }
 }
 
@@ -169,7 +181,7 @@ async function uploadListingImage(req, res, next) {
 }
 
 module.exports = {
-  createListing, browseListings, getMyListings,
+  createListing, payListingFee, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
