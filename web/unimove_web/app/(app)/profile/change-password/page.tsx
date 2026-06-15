@@ -1,15 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getStoredUser } from "@/lib/auth";
 import React, { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { authApi } from "@/lib/api";
-import { getStoredUser } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
 
-export default function ChangePasswordPage() {
+function ChangePasswordContent() {
   const {toast}=useToast();
   const role=getStoredUser()?.role;
   const isProvider=role==="provider";
@@ -31,7 +33,6 @@ export default function ChangePasswordPage() {
   };
 
   const gradient=isProvider?"linear-gradient(135deg,#15803d,#22c55e)":"linear-gradient(135deg,#1d4ed8,#3b82f6)";
-
   return (
     <div className="min-h-screen" style={{ backgroundColor:"var(--bg)" }}>
       <div className="px-4 pt-12 pb-4" style={{ backgroundColor:"var(--card)", borderBottom:"1px solid var(--border)" }}>
@@ -48,4 +49,17 @@ export default function ChangePasswordPage() {
       </form>
     </div>
   );
+}
+
+export default function ChangePasswordPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const r = getStoredUser()?.role ?? null;
+    if (r === "customer") { router.replace("/tai-khoan/doi-mat-khau"); }
+  }, [router]);
+
+  const role = getStoredUser()?.role;
+  if (role === "customer") return null;
+  return <ChangePasswordContent />;
 }

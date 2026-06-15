@@ -65,7 +65,7 @@ export function isAuthenticated(): boolean {
 export function getRoleHome(role: UserRole): string {
   if (role === "admin") return "/admin/dashboard";
   if (role === "provider") return "/dashboard";
-  return "/home";
+  return "/trang-chu";
 }
 
 /** Lưu session admin (dùng chung token với unimove + admin_token cho API admin) */

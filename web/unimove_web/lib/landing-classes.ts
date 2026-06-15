@@ -1,5 +1,33 @@
 import { cn } from "@/lib/utils";
 
+/* ─── UniMove brand landing classes ──────────────────────── */
+export const brandBluePrimary   = "#2563EB";
+export const brandYellowPrimary = "#FFCC00";
+
+export const btnBrandBlue = cn(
+  "inline-flex items-center justify-center gap-2 rounded-full bg-[#2563EB]",
+  "font-bold text-white no-underline shadow-[0_8px_24px_rgba(37,99,235,0.35)]",
+  "transition-all duration-200 hover:scale-[1.03] hover:brightness-110 active:scale-[0.98]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+);
+
+export const btnBrandYellow = cn(
+  "inline-flex items-center justify-center gap-2 rounded-full bg-[#FFCC00]",
+  "font-bold text-[#111827] no-underline",
+  "transition-all duration-200 hover:scale-[1.03] hover:bg-[#E6B800] active:scale-[0.98]"
+);
+
+export const btnBrandOutlineBlue = cn(
+  "inline-flex items-center justify-center gap-2 rounded-full border-2 border-[#2563EB]",
+  "font-semibold text-[#2563EB] no-underline bg-transparent",
+  "transition-all duration-200 hover:bg-[#EFF6FF] hover:scale-[1.03] active:scale-[0.98]"
+);
+
+export const brandYellowTag = cn(
+  "inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold",
+  "bg-[#FFFBEB] text-[#E6B800] border border-[#FFCC00]"
+);
+
 /** Minimalist Modern — Tailwind class bundles */
 export const displayFont = "font-[family-name:var(--font-display),Georgia,serif]";
 export const monoFont = "font-[family-name:var(--font-mono),monospace]";
