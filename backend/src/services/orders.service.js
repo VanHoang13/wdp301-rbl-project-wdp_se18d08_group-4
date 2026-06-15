@@ -1,6 +1,10 @@
 const { supabaseAdmin } = require('./supabase.service');
+const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
+const paymentsService = require('./payments.service');
 const { isDaNangCity, isDaNangOrder } = require('../utils/da_nang');
+
+const CANCELLABLE_STATUSES = ['pending', 'accepted'];
 
 const DELIVERY_PHOTOS_BUCKET = 'delivery-photos';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -346,35 +350,121 @@ async function completeOrder(orderId, providerId) {
   return enrichOrderWithProvider(data);
 }
 
-// ── PATCH /api/orders/:id/cancel ──────────────────────────────────────────────
+/**
+ * BE-025 — PATCH /api/orders/:id/cancel
+ * Khách hủy → tự tạo yêu cầu hoàn tiền pending (nếu có payment).
+ * Provider hủy → hủy đơn đơn giản (không refund).
+ */
 async function cancelOrder(orderId, userId, reason) {
+  const trimmedReason = String(reason || '').trim();
+
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
-    .select('id, status, customer_id, provider_id')
+    .select('id, status, customer_id, provider_id, order_number')
     .eq('id', orderId)
     .maybeSingle();
 
   if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
   if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
-  if (order.customer_id !== userId && order.provider_id !== userId)
+  if (order.customer_id !== userId && order.provider_id !== userId) {
     throw Object.assign(new Error('Bạn không có quyền hủy đơn hàng này'), { status: 403 });
-  if (['completed', 'cancelled'].includes(order.status))
+  }
+  if (order.status === 'cancelled') {
+    throw httpError(400, 'Đơn hàng đã được hủy trước đó', 'already_cancelled');
+  }
+  if (order.status === 'completed') {
     throw Object.assign(new Error('Đơn hàng đã hoàn thành hoặc đã hủy'), { status: 409 });
+  }
 
-  const { data, error } = await supabaseAdmin
+  const isCustomer = order.customer_id === userId;
+
+  if (isCustomer) {
+    if (!trimmedReason) {
+      throw httpError(400, 'Lý do hủy không được để trống', 'validation_error');
+    }
+    if (!CANCELLABLE_STATUSES.includes(order.status)) {
+      throw httpError(
+        400,
+        `Không thể hủy đơn ở trạng thái "${order.status}"`,
+        'cannot_cancel',
+      );
+    }
+  }
+
+  const previousStatus = order.status;
+
+  const { data: updated, error: updateError } = await supabaseAdmin
     .from('orders')
     .update({
       status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
+      cancellation_reason: trimmedReason || null,
       cancelled_by: userId,
-      cancellation_reason: reason || null,
+      cancelled_at: new Date().toISOString(),
     })
     .eq('id', orderId)
     .select('*')
     .single();
 
-  if (error) throw Object.assign(new Error(error.message), { status: 500 });
-  return enrichOrderWithProvider(data);
+  if (updateError) {
+    if (isCustomer) throw httpError(500, updateError.message, 'db_error');
+    throw Object.assign(new Error(updateError.message), { status: 500 });
+  }
+
+  if (!isCustomer) {
+    return enrichOrderWithProvider(updated);
+  }
+
+  await supabaseAdmin.from('order_status_history').insert({
+    order_id: orderId,
+    from_status: previousStatus,
+    to_status: 'cancelled',
+    changed_by: userId,
+    notes: `Khách hàng hủy đơn: ${trimmedReason}`,
+  });
+
+  await createNotification(
+    userId,
+    'order_cancelled',
+    'Đơn hàng đã bị hủy',
+    `Đơn ${order.order_number} đã được hủy thành công.`,
+    { priority: 'normal', actionData: { order_id: orderId } },
+  );
+
+  if (order.provider_id) {
+    await createNotification(
+      order.provider_id,
+      'order_cancelled',
+      'Đơn hàng đã bị hủy',
+      `Đơn ${order.order_number} đã bị khách hủy. Lý do: ${trimmedReason}`,
+      { priority: 'high', actionData: { order_id: orderId } },
+    );
+  }
+
+  let refundRequest = null;
+  let refundSkipReason = null;
+  try {
+    refundRequest = await paymentsService.requestRefundForOrder(
+      userId,
+      orderId,
+      trimmedReason,
+      {
+        statusBeforeCancel: previousStatus,
+        hadProvider: Boolean(order.provider_id),
+      },
+    );
+  } catch (err) {
+    if (err.code === 'no_refundable_payment') {
+      refundSkipReason = 'no_refundable_payment';
+    } else {
+      throw err;
+    }
+  }
+
+  return {
+    order: await enrichOrderWithProvider(updated),
+    refund_request: refundRequest,
+    refund_skip_reason: refundSkipReason,
+  };
 }
 
 // ── POST /api/orders/:id/delivery-photo ───────────────────────────────────────

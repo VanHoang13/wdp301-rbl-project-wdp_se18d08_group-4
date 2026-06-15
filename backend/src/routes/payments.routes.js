@@ -13,9 +13,21 @@ router.post('/me/payment-methods', requireAuth, requireRole('customer'), payment
 router.patch('/me/payment-methods/:id', requireAuth, requireRole('customer'), paymentsController.updatePaymentMethod);
 router.delete('/me/payment-methods/:id', requireAuth, requireRole('customer'), paymentsController.deletePaymentMethod);
 
-// Payment APIs
-router.get('/me', requireAuth, requireRole('customer'), paymentsController.getPayments);
-router.get('/me/:id', requireAuth, requireRole('customer'), paymentsController.getPayment);
 router.post('/deposit', requireAuth, requireRole('customer'), paymentsController.createDeposit);
+
+// PayOS redirect callbacks — không cần auth (PayOS gọi / redirect trình duyệt)
+router.get('/payos/return', paymentsController.payosReturn);
+router.get('/payos/cancel', paymentsController.payosCancel);
+
+// BE-032 — Hoàn tiền (đặt trước /:id để tránh conflict)
+router.post('/refund', requireAuth, requireRole('customer'), paymentsController.createRefund);
+
+// Đồng bộ trạng thái PayOS sau khi thanh toán (localhost không nhận webhook)
+router.post('/:id/sync', requireAuth, requireRole('customer'), paymentsController.syncPayment);
+
+// BE-035 — Lịch sử & chi tiết giao dịch (đặt sau /me/* để tránh conflict)
+router.get('/', requireAuth, requireRole('customer'), paymentsController.getPayments);
+router.get('/me', requireAuth, requireRole('customer'), paymentsController.getPayments);
+router.get('/:id', requireAuth, requireRole('customer'), paymentsController.getPayment);
 
 module.exports = router;

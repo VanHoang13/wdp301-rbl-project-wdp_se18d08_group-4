@@ -95,10 +95,18 @@ async function completeOrder(req, res, next) {
   }
 }
 
+/** BE-025 — PATCH /api/orders/:id/cancel */
 async function cancelOrder(req, res, next) {
   try {
-    const data = await ordersService.cancelOrder(req.params.id, req.user.id, req.body.reason);
-    res.json({ success: true, data });
+    const { reason } = req.body || {};
+    const data = await ordersService.cancelOrder(req.params.id, req.user.id, reason);
+    let msg = 'Hủy đơn hàng thành công';
+    if (data.refund_request) {
+      msg = 'Hủy đơn thành công. Yêu cầu hoàn tiền đã gửi, chờ admin duyệt.';
+    } else if (data.refund_skip_reason === 'no_refundable_payment') {
+      msg = 'Hủy đơn thành công. Không có khoản thanh toán đã hoàn tất — không tạo yêu cầu hoàn tiền.';
+    }
+    res.json({ success: true, message: msg, data });
   } catch (error) {
     next(error);
   }
@@ -114,4 +122,15 @@ async function uploadDeliveryPhoto(req, res, next) {
   }
 }
 
-module.exports = { listOrders, createOrder, getOrder, respondToOrder, acceptOrder, startOrder, declineOrder, completeOrder, cancelOrder, uploadDeliveryPhoto };
+module.exports = {
+  listOrders,
+  createOrder,
+  getOrder,
+  respondToOrder,
+  acceptOrder,
+  startOrder,
+  declineOrder,
+  completeOrder,
+  cancelOrder,
+  uploadDeliveryPhoto,
+};

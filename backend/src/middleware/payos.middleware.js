@@ -1,64 +1,22 @@
-const crypto = require('crypto');
-const env = require('../config/env');
+const payosService = require('../services/payos.service');
 
 /**
- * Middleware to verify PayOS webhook signature
- * PayOS sử dụng HMAC-SHA256 để sign webhook payload
- * 
- * Headers:
- * - x-payos-signature: HMAC-SHA256(body, secret)
+ * PayOS v2 webhook — chữ ký nằm trong body.signature,
+ * được tính từ object `data` (không phải x-payos-signature header).
  */
 function verifyPayOSSignature(req, res, next) {
   try {
-    // Get signature from header
-    const signature = req.headers['x-payos-signature'];
-    if (!signature) {
-      return res.status(401).json({
-        success: false,
-        message: 'Missing PayOS signature header',
-        code: 'missing_signature',
-      });
-    }
+    const result = payosService.verifyWebhookSignature(req.body);
 
-    // Get raw body (must be string/Buffer for HMAC)
-    const rawBody = req.rawBody || JSON.stringify(req.body);
-
-    // Get PayOS secret from env
-    const payosSecret = env.PAYOS_CHECKSUM_KEY || env.PAYOS_SECRET;
-    if (!payosSecret) {
-      console.error('PAYOS_CHECKSUM_KEY or PAYOS_SECRET not configured');
-      return res.status(500).json({
-        success: false,
-        message: 'PayOS configuration error',
-        code: 'config_error',
-      });
-    }
-
-    // Compute HMAC-SHA256
-    const computedSignature = crypto
-      .createHmac('sha256', payosSecret)
-      .update(rawBody)
-      .digest('hex');
-
-    // Compare signatures (timing-safe comparison)
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(computedSignature)
-    ).valueOf();
-
-    if (!isValid) {
-      console.warn('PayOS signature verification failed', {
-        expected: computedSignature,
-        received: signature,
-      });
+    if (!result.valid) {
+      console.warn('[PayOS] Webhook signature failed:', result.reason);
       return res.status(401).json({
         success: false,
         message: 'Invalid PayOS signature',
-        code: 'invalid_signature',
+        code: result.reason || 'invalid_signature',
       });
     }
 
-    // Signature verified
     req.payosVerified = true;
     next();
   } catch (error) {

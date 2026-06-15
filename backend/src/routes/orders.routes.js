@@ -8,6 +8,7 @@ const router = express.Router();
 
 router.get('/', requireAuth, ordersController.listOrders);
 router.post('/', requireAuth, requireRole('customer'), ordersController.createOrder);
+router.patch('/:id/cancel', requireAuth, requireRole('customer'), ordersController.cancelOrder);
 router.get('/:id', requireAuth, ordersController.getOrder);
 router.get('/:id/quotes', requireAuth, orderQuotesController.listQuotes);
 router.post(
