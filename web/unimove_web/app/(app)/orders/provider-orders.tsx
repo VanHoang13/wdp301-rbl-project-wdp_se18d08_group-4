@@ -54,7 +54,7 @@ export default function ProviderOrdersPage() {
   );
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="w-full space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: "var(--text)" }}>Quản lý đơn hàng</h1>
@@ -73,7 +73,7 @@ export default function ProviderOrdersPage() {
             </button>
           ))}
         </div>
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
           <input placeholder="Tìm kiếm..." value={search} onChange={e => setSearch(e.target.value)}
             className="w-full h-9 pl-9 pr-3 rounded-xl border text-sm"
@@ -94,25 +94,26 @@ export default function ProviderOrdersPage() {
             <p className="font-semibold" style={{ color: "var(--text)" }}>Không có đơn hàng</p>
           </div>
         ) : (
-          <table>
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr>
-                <th>Mã đơn</th>
-                <th>Địa điểm</th>
-                <th>Khách hàng</th>
-                <th>Giá</th>
-                <th>Trạng thái</th>
-                <th>Thời gian</th>
-                <th>Hành động</th>
+              <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                <th className="text-left px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Mã đơn</th>
+                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wide min-w-[280px]" style={{ color: "var(--muted)" }}>Địa điểm</th>
+                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Khách hàng</th>
+                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Giá</th>
+                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Trạng thái</th>
+                <th className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Thời gian</th>
+                <th className="text-right px-5 py-3 text-xs font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "var(--muted)" }}>Hành động</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
               {filtered.map(o => {
                 const sc = getOrderStatusColor(o.status);
                 const isPending = o.status === "pending";
                 return (
-                  <tr key={o.id}>
-                    <td>
+                  <tr key={o.id} className="hover:bg-black/[0.02] transition-colors">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         {isPending && <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--warning)" }} />}
                         <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
@@ -121,19 +122,19 @@ export default function ProviderOrdersPage() {
                         </span>
                       </div>
                     </td>
-                    <td>
-                      <div className="max-w-[200px]">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "var(--primary)" }} />
-                          <p className="text-sm truncate">{o.pickup_address}</p>
+                    <td className="px-4 py-3.5">
+                      <div className="min-w-[240px] max-w-xl">
+                        <div className="flex items-start gap-1.5 mb-1">
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: "var(--primary)" }} />
+                          <p className="text-sm leading-snug">{o.pickup_address}</p>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin size={8} className="shrink-0" style={{ color: "var(--success)" }} />
-                          <p className="text-sm truncate font-medium">{o.dropoff_address}</p>
+                        <div className="flex items-start gap-1.5">
+                          <MapPin size={10} className="shrink-0 mt-0.5" style={{ color: "var(--success)" }} />
+                          <p className="text-sm font-medium leading-snug">{o.dropoff_address}</p>
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td className="px-4 py-3.5">
                       {o.customer ? (
                         <div>
                           <p className="text-sm">{o.customer.full_name}</p>
@@ -141,11 +142,11 @@ export default function ProviderOrdersPage() {
                         </div>
                       ) : <span style={{ color: "var(--muted)" }}>—</span>}
                     </td>
-                    <td><span className="text-sm font-semibold" style={{ color: "var(--success)" }}>{(o.final_price ?? o.estimated_price) ? formatVND(o.final_price ?? o.estimated_price ?? 0) : "—"}</span></td>
-                    <td><Badge style={{ backgroundColor: sc + "22", color: sc, border: `1px solid ${sc}44` }}>{getOrderStatusLabel(o.status)}</Badge></td>
-                    <td><span className="text-xs" style={{ color: "var(--muted)" }}>{timeAgo(o.created_at)}</span></td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
+                    <td className="px-4 py-3.5 whitespace-nowrap"><span className="text-sm font-semibold" style={{ color: "var(--success)" }}>{(o.final_price ?? o.estimated_price) ? formatVND(o.final_price ?? o.estimated_price ?? 0) : "—"}</span></td>
+                    <td className="px-4 py-3.5 whitespace-nowrap"><Badge style={{ backgroundColor: sc + "22", color: sc, border: `1px solid ${sc}44` }}>{getOrderStatusLabel(o.status)}</Badge></td>
+                    <td className="px-4 py-3.5 whitespace-nowrap"><span className="text-xs" style={{ color: "var(--muted)" }}>{timeAgo(o.created_at)}</span></td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         {isPending && (
                           <>
                             <button onClick={() => handle(o.id, "reject")}
@@ -173,6 +174,7 @@ export default function ProviderOrdersPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
         {filtered.length > 0 && (
           <div className="px-5 py-3 text-xs" style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>

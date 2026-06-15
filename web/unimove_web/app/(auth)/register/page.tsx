@@ -6,6 +6,8 @@ import { Mail, Lock, User, Phone, Building2, Eye, EyeOff, AlertCircle, ChevronLe
 import { authApi } from "@/lib/api";
 import { storeAuth, getRoleHome, type AuthUser, type UserRole } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { handleGoogleAuthResponse } from "@/lib/handle-google-auth";
 
 type Step = "role" | "form";
 
@@ -63,6 +65,20 @@ export default function RegisterPage() {
       window.location.href = getRoleHome(user.role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi kết nối");
+    } finally { setLoading(false); }
+  };
+
+  const handleGoogle = async (idToken: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const redirect = await handleGoogleAuthResponse(idToken, setError);
+      if (redirect) {
+        toast("Đăng ký Google thành công!", "success");
+        window.location.href = redirect;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Đăng ký Google thất bại");
     } finally { setLoading(false); }
   };
 
@@ -253,6 +269,17 @@ export default function RegisterPage() {
             </span>
           </button>
         </form>
+
+        {!isProvider && (
+          <>
+            <div className="flex items-center gap-3 my-5">
+              <div className="flex-1 h-px bg-gray-100" />
+              <span className="text-xs text-gray-400">hoặc đăng ký bằng Google</span>
+              <div className="flex-1 h-px bg-gray-100" />
+            </div>
+            <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
+          </>
+        )}
 
         <p className="text-center text-sm text-gray-500 mt-5">
           Đã có tài khoản?{" "}

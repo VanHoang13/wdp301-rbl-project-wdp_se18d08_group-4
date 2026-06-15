@@ -9,6 +9,106 @@ const CANCELLABLE_STATUSES = ['pending', 'accepted'];
 const DELIVERY_PHOTOS_BUCKET = 'delivery-photos';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
+function splitAddress(raw) {
+  const address = String(raw || '').trim() || 'Chưa nhập địa chỉ';
+  return { address, city: 'TP.HCM', district: 'Quận 1' };
+}
+
+function mapVehicleSize(body) {
+  const raw = body.vehicle_size ?? body.vehicle_type;
+  const map = {
+    motorbike: 'small_truck',
+    van: 'small_truck',
+    truck: 'medium_truck',
+    pickup: 'medium_truck',
+    truck_1t: 'medium_truck',
+    truck_2t: 'large_truck',
+    truck_5t: 'large_truck',
+  };
+  if (raw && map[raw]) return map[raw];
+  if (raw) return raw;
+  const st = body.service_type || 'standard';
+  if (st === 'premium') return 'large_truck';
+  if (st === 'express') return 'medium_truck';
+  return 'small_truck';
+}
+
+function defaultPricing(serviceType, floorNumber) {
+  const baseByType = { standard: 500000, express: 800000, premium: 1200000 };
+  const basePrice = baseByType[serviceType] || 500000;
+  const floorPrice = Math.max(0, Number(floorNumber) || 0) * 50000;
+  return {
+    base_price: basePrice,
+    distance_price: 0,
+    floor_price: floorPrice,
+    service_fee: 0,
+    total_price: basePrice + floorPrice,
+  };
+}
+
+async function normalizeCreatePayload(customerId, payload) {
+  const body = payload || {};
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('full_name, phone')
+    .eq('id', customerId)
+    .single();
+
+  const contactName = body.pickup_contact_name || profile?.full_name || 'Khách hàng';
+  const contactPhone = body.pickup_contact_phone || profile?.phone || '+84900000000';
+  const serviceType = body.service_type || 'standard';
+  const pickup = splitAddress(body.pickup_address);
+  const delivery = splitAddress(body.delivery_address || body.dropoff_address);
+  const floor = body.pickup_floor ?? body.floor_number ?? 1;
+
+  const notes = [body.description, body.special_notes, body.pickup_notes, body.note]
+    .filter(Boolean)
+    .map(String)
+    .join('\n');
+
+  const noPrices = body.total_price == null && body.base_price == null;
+  const quoteRequest =
+    body.quote_request === true
+    || (body.quote_request !== false && noPrices && !!(body.description || body.special_notes));
+
+  let pricing;
+  if (quoteRequest) {
+    pricing = { base_price: 0, distance_price: 0, floor_price: 0, service_fee: 0, total_price: 0 };
+  } else if (!noPrices) {
+    pricing = {
+      base_price: body.base_price,
+      distance_price: body.distance_price || 0,
+      floor_price: body.floor_price || 0,
+      service_fee: body.service_fee || 0,
+      total_price: body.total_price,
+    };
+  } else {
+    pricing = defaultPricing(serviceType, floor);
+  }
+
+  return {
+    ...body,
+    vehicle_size: mapVehicleSize(body),
+    service_type: serviceType,
+    pickup_address: pickup.address,
+    pickup_city: body.pickup_city || pickup.city,
+    pickup_district: body.pickup_district || pickup.district,
+    pickup_floor: floor,
+    pickup_contact_name: contactName,
+    pickup_contact_phone: contactPhone,
+    pickup_notes: notes || body.pickup_notes || null,
+    delivery_address: delivery.address,
+    delivery_city: body.delivery_city || delivery.city,
+    delivery_district: body.delivery_district || delivery.district,
+    delivery_contact_name: body.delivery_contact_name || contactName,
+    delivery_contact_phone: body.delivery_contact_phone || contactPhone,
+    number_of_helpers: body.number_of_helpers ?? body.num_helpers ?? 0,
+    quote_request: quoteRequest,
+    ...pricing,
+  };
+}
+
 async function enrichOrderWithProvider(order) {
   if (!order?.provider_id) return order;
 
@@ -111,43 +211,44 @@ async function notifyDaNangProvidersNewOrder(order) {
 }
 
 async function createOrder(customerId, payload) {
+  const p = await normalizeCreatePayload(customerId, payload);
   const baseRow = {
     customer_id: customerId,
-    vehicle_size: payload.vehicle_size,
-    service_type: payload.service_type || 'standard',
-    pickup_address: payload.pickup_address,
-    pickup_city: payload.pickup_city,
-    pickup_district: payload.pickup_district,
-    pickup_floor: payload.pickup_floor ?? 1,
-    pickup_has_elevator: payload.pickup_has_elevator ?? false,
-    pickup_notes: payload.pickup_notes || null,
-    pickup_latitude: payload.pickup_latitude ?? null,
-    pickup_longitude: payload.pickup_longitude ?? null,
-    pickup_contact_name: payload.pickup_contact_name,
-    pickup_contact_phone: payload.pickup_contact_phone,
-    delivery_address: payload.delivery_address,
-    delivery_city: payload.delivery_city,
-    delivery_district: payload.delivery_district,
-    delivery_floor: payload.delivery_floor ?? 1,
-    delivery_has_elevator: payload.delivery_has_elevator ?? false,
-    delivery_notes: payload.delivery_notes || null,
-    delivery_latitude: payload.delivery_latitude ?? null,
-    delivery_longitude: payload.delivery_longitude ?? null,
-    delivery_contact_name: payload.delivery_contact_name,
-    delivery_contact_phone: payload.delivery_contact_phone,
-    base_price: payload.quote_request === true ? 0 : payload.base_price,
-    distance_price: payload.quote_request === true ? 0 : payload.distance_price || 0,
-    floor_price: payload.quote_request === true ? 0 : payload.floor_price || 0,
-    service_fee: payload.quote_request === true ? 0 : payload.service_fee || 0,
-    total_price: payload.quote_request === true ? 0 : payload.total_price,
-    scheduled_pickup_time: payload.scheduled_pickup_time,
-    number_of_rooms: payload.number_of_rooms || 1,
-    requires_helpers: payload.requires_helpers ?? false,
-    number_of_helpers: payload.number_of_helpers ?? 0,
+    vehicle_size: p.vehicle_size,
+    service_type: p.service_type || 'standard',
+    pickup_address: p.pickup_address,
+    pickup_city: p.pickup_city,
+    pickup_district: p.pickup_district,
+    pickup_floor: p.pickup_floor ?? 1,
+    pickup_has_elevator: p.pickup_has_elevator ?? false,
+    pickup_notes: p.pickup_notes || null,
+    pickup_latitude: p.pickup_latitude ?? null,
+    pickup_longitude: p.pickup_longitude ?? null,
+    pickup_contact_name: p.pickup_contact_name,
+    pickup_contact_phone: p.pickup_contact_phone,
+    delivery_address: p.delivery_address,
+    delivery_city: p.delivery_city,
+    delivery_district: p.delivery_district,
+    delivery_floor: p.delivery_floor ?? 1,
+    delivery_has_elevator: p.delivery_has_elevator ?? false,
+    delivery_notes: p.delivery_notes || null,
+    delivery_latitude: p.delivery_latitude ?? null,
+    delivery_longitude: p.delivery_longitude ?? null,
+    delivery_contact_name: p.delivery_contact_name,
+    delivery_contact_phone: p.delivery_contact_phone,
+    base_price: p.quote_request === true ? 0 : p.base_price,
+    distance_price: p.quote_request === true ? 0 : p.distance_price || 0,
+    floor_price: p.quote_request === true ? 0 : p.floor_price || 0,
+    service_fee: p.quote_request === true ? 0 : p.service_fee || 0,
+    total_price: p.quote_request === true ? 0 : p.total_price,
+    scheduled_pickup_time: p.scheduled_pickup_time,
+    number_of_rooms: p.number_of_rooms || 1,
+    requires_helpers: p.requires_helpers ?? false,
+    number_of_helpers: p.number_of_helpers ?? 0,
     status: 'pending',
   };
 
-  let insertRow = { ...baseRow, quote_request: payload.quote_request === true };
+  let insertRow = { ...baseRow, quote_request: p.quote_request === true };
   let { data, error } = await supabaseAdmin.from('orders').insert(insertRow).select('*').single();
 
   if (error && /quote_request/i.test(error.message)) {

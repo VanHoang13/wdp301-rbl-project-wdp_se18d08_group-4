@@ -209,7 +209,7 @@ export default function TinCuaToiPage() {
     if (!deleteId) return
     setIsDeleting(true)
     try {
-      await marketplaceApi.delete(deleteId)
+      await marketplaceApi.updateStatus(deleteId, 'hidden')
       showSuccess('Đã xoá tin')
       setDeleteId(null)
       load()
