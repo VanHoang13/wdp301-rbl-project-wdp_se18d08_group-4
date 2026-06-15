@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { Truck, Mail, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,8 +48,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12" style={{ backgroundColor: "var(--bg)" }}>
-      <div className="w-full max-w-md animate-fade-in">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden" style={{ backgroundColor: "var(--bg)" }}>
+      <div className="absolute inset-0 -z-10 opacity-40">
+        <div className="absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl animate-mesh-1" style={{ background: "var(--glow-primary)" }} />
+        <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full blur-3xl animate-mesh-2" style={{ background: "var(--glow-secondary)" }} />
+      </div>
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
         {/* Header */}
         <div className="text-center mb-8">
           <div
@@ -135,7 +145,7 @@ export default function LoginPage() {
           Bằng cách tiếp tục, bạn đồng ý với{" "}
           <span className="underline">Điều khoản dịch vụ</span> của UniMove
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

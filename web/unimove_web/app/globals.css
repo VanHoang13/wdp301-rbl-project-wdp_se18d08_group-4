@@ -90,6 +90,7 @@
   --z-raised:    10;
   --z-dropdown:  20;
   --z-sticky:    30;
+  --z-index-topnav: 50;
   --z-topnav:    40;
   --z-overlay:   40;
   --z-bottomnav: 50;
@@ -116,6 +117,22 @@
 /* ============================================================
    KEYFRAMES
    ============================================================ */
+@keyframes meshFloat1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-24px, 16px); }
+}
+@keyframes meshFloat2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(20px, -12px); }
+}
+@keyframes meshFloat3 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-12px, -20px); }
+}
+.animate-mesh-1 { animation: meshFloat1 12s ease-in-out infinite; }
+.animate-mesh-2 { animation: meshFloat2 15s ease-in-out infinite; }
+.animate-mesh-3 { animation: meshFloat3 18s ease-in-out infinite; }
+
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-10px); }
@@ -195,6 +212,9 @@
 
   /* Navigation */
   --nav-bg:     rgba(255, 255, 255, 0.92);
+  --glass-bg:   rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(37, 99, 235, 0.12);
+  --glass-shadow: 0 8px 32px rgba(37, 99, 235, 0.08);
   --nav-border: #E2E8F0;
 
   /* Admin compat */

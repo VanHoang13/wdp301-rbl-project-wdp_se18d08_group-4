@@ -1,7 +1,8 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { Heart, MapPin, Tag } from 'lucide-react'
+import { Heart, MapPin } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useMarketplaceStore, CONDITION_LABELS } from '@/lib/stores/useMarketplaceStore'
 
 /* ── Types ──────────────────────────────────────────────────── */
@@ -31,15 +32,10 @@ function timeAgoShort(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
   if (m < 1) return 'vừa xong'
-  if (m < 60) return `${m}ph`
+  if (m < 60) return `${m} phút`
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h`
-  return `${Math.floor(h / 24)}ng`
-}
-
-function isNewListing(created_at?: string): boolean {
-  if (!created_at) return false
-  return Date.now() - new Date(created_at).getTime() < 24 * 60 * 60 * 1000
+  if (h < 24) return `${h} giờ`
+  return `${Math.floor(h / 24)} ngày`
 }
 
 /* ── Save button ────────────────────────────────────────────── */
@@ -72,21 +68,31 @@ function SaveButton({ id, className }: { id: string; className?: string }) {
 /* ── Grid variant (redesigned) ──────────────────────────────── */
 
 function GridCard({ data, href = '#' }: { data: ProductCardData; href?: string }) {
-  const sellerInitial  = data.seller_name?.[0]?.toUpperCase() ?? '?'
-  const sellerShort    = data.seller_name ? data.seller_name.split(' ').pop()! : null
+  const sellerInitial = data.seller_name?.[0]?.toUpperCase() ?? '?'
+  const sellerName = data.seller_name ?? 'Sinh viên'
   const conditionLabel = data.condition
     ? (CONDITION_LABELS[data.condition as keyof typeof CONDITION_LABELS] ?? data.condition)
     : null
-  const showNewBadge = isNewListing(data.created_at)
+
+  const conditionStyle = (() => {
+    switch (data.condition) {
+      case 'moi':
+        return 'bg-[#0047FF] text-white'
+      case 'nhu-moi':
+        return 'bg-emerald-500 text-white'
+      case 'con-tot':
+        return 'bg-amber-500 text-white'
+      default:
+        return 'bg-gray-600/80 text-white'
+    }
+  })()
 
   return (
     <Link
       href={href}
-      className="group flex flex-col overflow-hidden rounded-xl bg-white border border-gray-100 transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]"
-      style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+      className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
-      {/* Image 1:1 */}
-      <div className="relative aspect-square overflow-hidden bg-gray-50">
+      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
         {data.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -98,81 +104,52 @@ function GridCard({ data, href = '#' }: { data: ProductCardData; href?: string }
           <div className="flex h-full items-center justify-center text-4xl select-none">📦</div>
         )}
 
-        {/* Badges top-left */}
-        <div className="absolute left-2 top-2 flex flex-col gap-1">
-          {showNewBadge && (
-            <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white leading-none"
-              style={{ backgroundColor: PRIMARY }}>
-              Mới
-            </span>
-          )}
-          {data.isUrgent && (
-            <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-              Gấp
-            </span>
-          )}
-        </div>
-
-        {/* Heart top-right */}
-        <SaveButton id={data.id} className="absolute right-2 top-2" />
-      </div>
-
-      {/* Card body */}
-      <div className="flex flex-col p-2.5 gap-1.5">
-        {/* Title — 2 lines, 13px medium */}
-        <p className="line-clamp-2 text-[13px] font-medium text-gray-900 leading-snug min-h-[2.5rem]">
-          {data.title}
-        </p>
-
-        {/* Price — 17px bold, primary */}
-        <p className="text-[17px] font-extrabold leading-none" style={{ color: PRIMARY }}>
-          {formatPrice(data.price)}
-          {data.isNegotiable && (
-            <span className="ml-1 text-xs font-normal text-gray-400">• TL</span>
-          )}
-        </p>
-
-        {/* Divider */}
-        <div className="border-t border-gray-100" />
-
-        {/* Condition + Location */}
-        {(conditionLabel || data.location) && (
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate">
-            {conditionLabel && (
-              <span className="flex items-center gap-0.5 shrink-0">
-                <Tag size={9} />
-                {conditionLabel}
-              </span>
+        {conditionLabel && (
+          <span
+            className={cn(
+              'absolute bottom-2.5 left-2.5 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+              conditionStyle
             )}
-            {conditionLabel && data.location && (
-              <span className="text-gray-300">·</span>
-            )}
-            {data.location && (
-              <span className="flex items-center gap-0.5 truncate">
-                <MapPin size={9} />
-                {data.location}
-              </span>
-            )}
-          </div>
+          >
+            {conditionLabel}
+          </span>
         )}
 
-        {/* Seller row */}
-        <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-          {/* Avatar circle */}
-          <div
-            className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-bold shrink-0"
-            style={{ backgroundColor: PRIMARY }}
-          >
-            {sellerInitial}
+        {data.isUrgent && !conditionLabel && (
+          <span className="absolute bottom-2.5 left-2.5 rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            Gấp
+          </span>
+        )}
+
+        <SaveButton id={data.id} className="absolute right-2.5 top-2.5" />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-2 p-3.5">
+        <p className="line-clamp-2 text-sm font-bold text-gray-900 leading-snug">{data.title}</p>
+
+        <p className="text-base font-extrabold text-[#0047FF]">
+          {formatPrice(data.price)}
+          {data.isNegotiable && <span className="ml-1 text-xs font-normal text-gray-400">• TL</span>}
+        </p>
+
+        {data.location && (
+          <p className="flex items-center gap-1 text-xs text-gray-500">
+            <MapPin size={12} className="shrink-0" />
+            <span className="truncate">{data.location}</span>
+          </p>
+        )}
+
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-gray-50 pt-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0047FF] text-[10px] font-bold text-white">
+              {sellerInitial}
+            </div>
+            <span className="truncate text-xs font-medium text-gray-700">{sellerName}</span>
           </div>
-          {sellerShort && <span className="truncate max-w-[60px]">{sellerShort}</span>}
           {(data.created_at || data.postedAt) && (
-            <>
-              {sellerShort && <span className="text-gray-200">·</span>}
-              <span className="shrink-0">
-                {data.created_at ? `${timeAgoShort(data.created_at)} trước` : data.postedAt}
-              </span>
-            </>
+            <span className="shrink-0 text-[11px] text-gray-400">
+              {data.created_at ? `${timeAgoShort(data.created_at)} trước` : data.postedAt}
+            </span>
           )}
         </div>
       </div>

@@ -1,267 +1,88 @@
 ﻿'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, SlidersHorizontal, X, ChevronDown, Clock, Flame, Armchair, Smartphone, BookOpen, Shirt, ChefHat, Package } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
+import {
+  Search,
+  SlidersHorizontal,
+  X,
+  Armchair,
+  Smartphone,
+  BookOpen,
+  Shirt,
+  ChefHat,
+  Package,
+  LayoutGrid,
+  Heart,
+  Plus,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProductCard, type ProductCardData } from '@/components/cards/ProductCard'
 import { ErrorState } from '@/components/shared/ErrorState'
 import {
   useMarketplaceStore,
   CATEGORY_LABELS,
-  SORT_LABELS,
   type ListingCategory,
-  type SortOption,
 } from '@/lib/stores/useMarketplaceStore'
 import { marketplaceApi } from '@/lib/api'
 import type { AsyncState } from '@/lib/types/states'
 
-/* ── Types ──────────────────────────────────────────────────── */
-
 interface ApiListing {
-  id:          string
-  title:       string
-  price?:      number
-  category:    string
-  condition?:  string
-  city?:       string
-  status:      string
-  images?:     string[]
-  created_at:  string
-  is_urgent?:  boolean
-  seller?:     { full_name?: string }
+  id: string
+  title: string
+  price?: number
+  category: string
+  condition?: string
+  city?: string
+  status: string
+  images?: string[]
+  created_at: string
+  is_urgent?: boolean
+  seller?: { full_name?: string }
 }
 
 function toListing(l: ApiListing): ProductCardData {
   return {
-    id:          l.id,
-    title:       l.title,
-    price:       l.price ?? 0,
+    id: l.id,
+    title: l.title,
+    price: l.price ?? 0,
     isNegotiable: false,
-    condition:   l.condition,
-    location:    l.city,
-    imageUrl:    l.images?.[0],
-    isUrgent:    l.is_urgent,
-    created_at:  l.created_at,
+    condition: l.condition,
+    location: l.city,
+    imageUrl: l.images?.[0],
+    isUrgent: l.is_urgent,
+    created_at: l.created_at,
     seller_name: l.seller?.full_name,
   }
 }
 
-const PRIMARY = '#1E40AF'
-const ACCENT  = '#FACC15'
+const CATEGORIES = Object.keys(CATEGORY_LABELS) as ListingCategory[]
 
-/* ── Skeleton card ──────────────────────────────────────────── */
+const CATEGORY_ICONS: Record<ListingCategory, React.ElementType> = {
+  'noi-that': Armchair,
+  'dien-tu': Smartphone,
+  'sach-tai-lieu': BookOpen,
+  'quan-ao': Shirt,
+  'do-bep': ChefHat,
+  khac: Package,
+}
+
+const PAGE_SIZE = 12
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl overflow-hidden bg-white border border-gray-100">
-      <div className="aspect-square bg-gray-100 animate-pulse" />
-      <div className="p-2.5 space-y-2">
-        <div className="h-3 bg-gray-100 rounded animate-pulse w-5/6" />
-        <div className="h-3 bg-gray-100 rounded animate-pulse w-3/5" />
-        <div className="h-4 bg-gray-100 rounded animate-pulse w-2/5 mt-1" />
-        <div className="border-t border-gray-50 my-1" />
-        <div className="h-2.5 bg-gray-100 rounded animate-pulse w-4/6" />
-        <div className="h-2.5 bg-gray-100 rounded animate-pulse w-3/6" />
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <div className="aspect-[4/3] animate-pulse bg-gray-100" />
+      <div className="space-y-2 p-3.5">
+        <div className="h-4 w-5/6 animate-pulse rounded bg-gray-100" />
+        <div className="h-5 w-2/5 animate-pulse rounded bg-gray-100" />
+        <div className="h-3 w-3/5 animate-pulse rounded bg-gray-100" />
       </div>
     </div>
   )
 }
 
-/* ── Sort dropdown ──────────────────────────────────────────── */
-
-const SORT_OPTIONS: SortOption[] = ['moi-nhat', 'gia-tang', 'gia-giam', 'gan-nhat']
-const SORT_SHORT: Record<SortOption, string> = {
-  'moi-nhat': 'Mới nhất',
-  'gia-tang': 'Giá ↑',
-  'gia-giam': 'Giá ↓',
-  'gan-nhat': 'Gần nhất',
-}
-
-function SortDropdown({
-  value,
-  onChange,
-}: {
-  value:    SortOption
-  onChange: (s: SortOption) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:border-gray-300 transition-colors"
-      >
-        {SORT_SHORT[value]}
-        <ChevronDown size={11} className={cn('transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-36 bg-white rounded-xl border border-gray-100 shadow-lg overflow-hidden">
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt}
-              onClick={() => { onChange(opt); setOpen(false) }}
-              className={cn(
-                'w-full px-3 py-2.5 text-xs font-medium text-left transition-colors',
-                value === opt
-                  ? 'text-white font-semibold'
-                  : 'text-gray-700 hover:bg-gray-50'
-              )}
-              style={value === opt ? { backgroundColor: PRIMARY } : undefined}
-            >
-              {SORT_LABELS[opt]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Search bar with recent search dropdown ─────────────────── */
-
-const RECENT_KEY = 'unimove_csvsv_recent'
-
-function getRecentSearches(): string[] {
-  if (typeof window === 'undefined') return []
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') } catch { return [] }
-}
-
-function saveRecentSearch(q: string) {
-  const prev = getRecentSearches().filter((r) => r !== q)
-  localStorage.setItem(RECENT_KEY, JSON.stringify([q, ...prev].slice(0, 5)))
-}
-
-function SearchBar({
-  value,
-  onChange,
-  onSearch,
-  onFilter,
-  hasActiveFilter,
-}: {
-  value:           string
-  onChange:        (v: string) => void
-  onSearch:        (q: string) => void
-  onFilter:        () => void
-  hasActiveFilter: boolean
-}) {
-  const [focused,  setFocused]  = useState(false)
-  const [recents,  setRecents]  = useState<string[]>([])
-  const inputRef = useRef<HTMLInputElement>(null)
-  const wrapRef  = useRef<HTMLDivElement>(null)
-
-  const showRecent = focused && !value && recents.length > 0
-
-  useEffect(() => {
-    if (focused) setRecents(getRecentSearches())
-  }, [focused])
-
-  useEffect(() => {
-    if (!showRecent) return
-    const handler = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setFocused(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showRecent])
-
-  const commit = (q: string) => {
-    if (q.trim()) { saveRecentSearch(q.trim()); onSearch(q.trim()) }
-    setFocused(false)
-    inputRef.current?.blur()
-  }
-
-  return (
-    <div className="flex gap-2 px-4 py-3">
-      <div ref={wrapRef} className="relative flex-1">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden />
-        <input
-          ref={inputRef}
-          type="search"
-          placeholder="Tìm đồ dùng sinh viên..."
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onKeyDown={(e) => { if (e.key === 'Enter') commit(value) }}
-          className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#1E40AF] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1E40AF]/20 transition-all"
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={() => { onChange(''); onSearch('') }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X size={14} />
-          </button>
-        )}
-
-        {/* Recent searches */}
-        {showRecent && (
-          <div className="absolute top-12 left-0 right-0 z-50 bg-white rounded-xl border border-gray-100 shadow-lg overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-50">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tìm kiếm gần đây</p>
-            </div>
-            {recents.map((r) => (
-              <button
-                key={r}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => { onChange(r); commit(r) }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left transition-colors"
-              >
-                <Clock size={13} className="text-gray-300 shrink-0" />
-                {r}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Filter button with label */}
-      <button
-        type="button"
-        onClick={onFilter}
-        className={cn(
-          'flex h-11 items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-colors shrink-0',
-          hasActiveFilter
-            ? 'border-[#1E40AF] bg-[#EFF6FF] text-[#1E40AF]'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-        )}
-      >
-        <SlidersHorizontal size={14} strokeWidth={1.75} />
-        Bộ lọc
-      </button>
-    </div>
-  )
-}
-
-/* ── Category bar ───────────────────────────────────────────── */
-
-const CATEGORIES = Object.keys(CATEGORY_LABELS) as ListingCategory[]
-
-const CATEGORY_LUCIDE_ICONS: Record<ListingCategory, React.ElementType> = {
-  'noi-that':      Armchair,
-  'dien-tu':       Smartphone,
-  'sach-tai-lieu': BookOpen,
-  'quan-ao':       Shirt,
-  'do-bep':        ChefHat,
-  'khac':          Package,
-}
-
-const CHIP_ACTIVE   = { backgroundColor: '#1E3A8A', color: '#FFFFFF' }
-const CHIP_INACTIVE = { backgroundColor: '#F3F4F6', color: '#374151' }
-
-function CategoryBar({
+function CategorySidebar({
   selected,
   onChange,
 }: {
@@ -269,93 +90,133 @@ function CategoryBar({
   onChange: (c: ListingCategory | null) => void
 }) {
   return (
-    <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-none">
-      {/* "Tất cả" chip */}
-      <button
-        onClick={() => onChange(null)}
-        className="shrink-0 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.96]"
-        style={selected === null ? CHIP_ACTIVE : CHIP_INACTIVE}
-      >
-        Tất cả
-      </button>
-
-      {CATEGORIES.map((cat) => {
-        const Icon     = CATEGORY_LUCIDE_ICONS[cat]
-        const isActive = selected === cat
-        return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-bold text-gray-900">Categories</h2>
+        <p className="mt-0.5 text-xs text-gray-400">Filter by type</p>
+        <nav className="mt-4 space-y-1">
           <button
-            key={cat}
-            onClick={() => onChange(isActive ? null : cat)}
-            className="shrink-0 flex items-center rounded-lg text-xs font-semibold transition-all active:scale-[0.96]"
-            style={{
-              ...(isActive ? CHIP_ACTIVE : CHIP_INACTIVE),
-              gap: 6,
-              padding: '8px 14px',
-            }}
+            type="button"
+            onClick={() => onChange(null)}
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors',
+              selected === null
+                ? 'bg-[#0047FF] text-white'
+                : 'text-gray-600 hover:bg-gray-50'
+            )}
           >
-            <Icon size={13} strokeWidth={2} aria-hidden />
-            {CATEGORY_LABELS[cat]}
+            <LayoutGrid size={16} className="shrink-0" />
+            Tất cả
           </button>
-        )
-      })}
+          {CATEGORIES.map((cat) => {
+            const Icon = CATEGORY_ICONS[cat]
+            const active = selected === cat
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => onChange(cat)}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors',
+                  active ? 'bg-[#0047FF] text-white' : 'text-gray-600 hover:bg-gray-50'
+                )}
+              >
+                <Icon size={16} className="shrink-0" />
+                {CATEGORY_LABELS[cat]}
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
+      <div className="space-y-1 border-t border-gray-100 pt-4">
+        <Link
+          href="/cho-sinh-vien/yeu-thich"
+          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-gray-600 hover:bg-white hover:text-gray-900"
+        >
+          <Heart size={16} />
+          Yêu thích
+        </Link>
+        <Link
+          href="/cho-sinh-vien/tin-cua-toi"
+          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-gray-600 hover:bg-white hover:text-gray-900"
+        >
+          <Package size={16} />
+          Tin của tôi
+        </Link>
+        <Link
+          href="/cho-sinh-vien/dang-tin"
+          className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-[#0047FF] hover:bg-white"
+        >
+          <Plus size={16} />
+          Đăng tin
+        </Link>
+      </div>
     </div>
   )
 }
 
-/* ── Featured strip ─────────────────────────────────────────── */
-
-function FeaturedSection({ listings }: { listings: ProductCardData[] }) {
-  if (!listings.length) return null
+function MobileCategoryChips({
+  selected,
+  onChange,
+}: {
+  selected: ListingCategory | null
+  onChange: (c: ListingCategory | null) => void
+}) {
   return (
-    <section className="mb-3">
-      <div className="flex items-center gap-1.5 px-4 pb-2.5">
-        <Flame size={14} className="text-orange-500" />
-        <h2 className="text-[13px] font-bold text-gray-900">Đang hot</h2>
-      </div>
-      <div className="flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-none">
-        {listings.map((l) => (
-          <div key={l.id} className="w-[156px] shrink-0">
-            <ProductCard data={l} variant="grid" href={`/cho-sinh-vien/${l.id}`} />
-          </div>
-        ))}
-      </div>
-    </section>
+    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none lg:hidden">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={cn(
+          'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold',
+          selected === null ? 'bg-[#0047FF] text-white' : 'bg-white text-gray-600 border border-gray-200'
+        )}
+      >
+        Tất cả
+      </button>
+      {CATEGORIES.map((cat) => (
+        <button
+          key={cat}
+          type="button"
+          onClick={() => onChange(cat)}
+          className={cn(
+            'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold',
+            selected === cat ? 'bg-[#0047FF] text-white' : 'bg-white text-gray-600 border border-gray-200'
+          )}
+        >
+          {CATEGORY_LABELS[cat]}
+        </button>
+      ))}
+    </div>
   )
 }
 
-/* ── Main page ──────────────────────────────────────────────── */
-
 export default function KhamPhaPage() {
-  const searchQuery      = useMarketplaceStore((s) => s.searchQuery)
+  const searchQuery = useMarketplaceStore((s) => s.searchQuery)
   const selectedCategory = useMarketplaceStore((s) => s.selectedCategory)
-  const sortBy           = useMarketplaceStore((s) => s.sortBy)
-  const setSearch        = useMarketplaceStore((s) => s.setSearch)
-  const setCategory      = useMarketplaceStore((s) => s.setCategory)
-  const setSort          = useMarketplaceStore((s) => s.setSort)
+  const sortBy = useMarketplaceStore((s) => s.sortBy)
+  const setSearch = useMarketplaceStore((s) => s.setSearch)
+  const setCategory = useMarketplaceStore((s) => s.setCategory)
+  const setSort = useMarketplaceStore((s) => s.setSort)
 
-  const [state,    setState]    = useState<AsyncState<ProductCardData[]>>({ status: 'loading' })
-  const [featured, setFeatured] = useState<ProductCardData[]>([])
-
-  const hasActiveFilter = selectedCategory !== null
+  const [state, setState] = useState<AsyncState<ProductCardData[]>>({ status: 'loading' })
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [localSearch, setLocalSearch] = useState(searchQuery)
 
   const load = useCallback(async (query: string, category: ListingCategory | null) => {
     setState({ status: 'loading' })
+    setVisibleCount(PAGE_SIZE)
     try {
       const res = await marketplaceApi.list({
-        search:   query || undefined,
+        search: query || undefined,
         category: category || undefined,
       })
       if (res.success) {
         const raw: ApiListing[] = Array.isArray(res.data)
           ? (res.data as ApiListing[])
           : ((res.data as { listings?: ApiListing[] })?.listings ?? [])
-        const listings = raw.map(toListing)
-        setState({ status: 'success', data: listings })
-        if (!query && !category) {
-          setFeatured(listings.filter((l) => l.isUrgent).slice(0, 6))
-        } else {
-          setFeatured([])
-        }
+        setState({ status: 'success', data: raw.map(toListing) })
       } else {
         setState({ status: 'error', error: 'Không tải được danh sách sản phẩm.' })
       }
@@ -369,85 +230,187 @@ export default function KhamPhaPage() {
     return () => clearTimeout(timer)
   }, [searchQuery, selectedCategory, load])
 
-  // Client-side sort
-  const sorted: ProductCardData[] = state.status === 'success'
-    ? [...state.data].sort((a, b) => {
-        if (sortBy === 'gia-tang') return a.price - b.price
-        if (sortBy === 'gia-giam') return b.price - a.price
-        return 0
-      })
-    : []
+  useEffect(() => {
+    setLocalSearch(searchQuery)
+  }, [searchQuery])
+
+  const sorted: ProductCardData[] =
+    state.status === 'success'
+      ? [...state.data].sort((a, b) => {
+          if (sortBy === 'gia-tang') return a.price - b.price
+          if (sortBy === 'gia-giam') return b.price - a.price
+          return 0
+        })
+      : []
+
+  const visible = sorted.slice(0, visibleCount)
+  const hasMore = visibleCount < sorted.length
+
+  const commitSearch = () => setSearch(localSearch.trim())
 
   return (
-    <div className="min-h-full" style={{ backgroundColor: '#FAFAFA' }}>
-      <SearchBar
-        value={searchQuery}
-        onChange={setSearch}
-        onSearch={(q) => setSearch(q)}
-        onFilter={() => { /* TODO: bottom sheet */ }}
-        hasActiveFilter={hasActiveFilter}
-      />
+    <div className="mx-auto max-w-7xl px-4 py-5 lg:px-8 lg:py-8">
+      <div className="flex gap-8">
+        <aside className="hidden w-56 shrink-0 lg:block">
+          <CategorySidebar selected={selectedCategory} onChange={setCategory} />
+        </aside>
 
-      <CategoryBar selected={selectedCategory} onChange={setCategory} />
+        <main className="min-w-0 flex-1">
+          {/* Hero */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0047FF] via-[#0039CC] to-[#1e3a8a] px-6 py-8 text-white shadow-lg sm:px-8 sm:py-10">
+            <span className="inline-block rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold backdrop-blur-sm">
+              Platform dành cho sinh viên
+            </span>
+            <h1 className="mt-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
+              Chợ sinh viên
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-blue-100 sm:text-base">
+              Hệ sinh thái mua bán, thanh lý đồ dùng nội thất, điện tử dành riêng cho cộng đồng sinh
+              viên với giá ưu đãi.
+            </p>
+          </div>
 
-      {state.status === 'loading' && (
-        <div className="grid grid-cols-2 gap-3 px-4 lg:grid-cols-3 xl:grid-cols-4 pb-4">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-      )}
-
-      {state.status === 'error' && (
-        <ErrorState
-          type="network"
-          message={state.error as string}
-          onRetry={() => load(searchQuery, selectedCategory)}
-          className="mt-8"
-        />
-      )}
-
-      {state.status === 'success' && sorted.length === 0 && (
-        <div className="mx-4 py-14 text-center bg-white rounded-xl border border-gray-100">
-          <div className="text-5xl mb-3">🔍</div>
-          <p className="font-bold text-gray-900 mb-1">Không tìm thấy sản phẩm</p>
-          <p className="text-sm text-gray-500 mb-5 max-w-xs mx-auto">
-            {searchQuery
-              ? `Không có kết quả cho "${searchQuery}"`
-              : 'Thử chọn danh mục khác hoặc đăng tin đầu tiên!'}
-          </p>
-          <a href="/cho-sinh-vien/dang-tin">
-            <button
-              className="px-5 py-2.5 rounded-lg text-sm font-bold text-gray-900"
-              style={{ backgroundColor: ACCENT }}
-            >
-              Đăng tin bán đồ
-            </button>
-          </a>
-        </div>
-      )}
-
-      {state.status === 'success' && sorted.length > 0 && (
-        <div className="pb-4">
-          <FeaturedSection listings={featured} />
-
-          <section>
-            <div className="flex items-center justify-between px-4 pb-3 pt-1">
-              <div>
-                <h2 className="text-[13px] font-bold text-gray-900">
-                  {searchQuery || selectedCategory ? 'Kết quả tìm kiếm' : 'Tất cả sản phẩm'}
-                </h2>
-                <p className="text-[11px] text-gray-400">{sorted.length} sản phẩm</p>
+          {/* Mobile search + categories */}
+          <div className="mt-4 space-y-3 lg:mt-6">
+            <div className="relative flex gap-2">
+              <div className="relative flex-1">
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="search"
+                  placeholder="Tìm đồ dùng sinh viên..."
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && commitSearch()}
+                  className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-8 text-sm focus:border-[#0047FF] focus:outline-none focus:ring-2 focus:ring-[#0047FF]/20"
+                />
+                {localSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalSearch('')
+                      setSearch('')
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              <SortDropdown value={sortBy} onChange={setSort} />
+              <button
+                type="button"
+                className="flex h-10 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600"
+              >
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">Bộ lọc</span>
+              </button>
             </div>
+            <MobileCategoryChips selected={selectedCategory} onChange={setCategory} />
+          </div>
 
-            <div className="grid grid-cols-2 gap-3 px-4 lg:grid-cols-3 xl:grid-cols-4">
-              {sorted.map((l) => (
-                <ProductCard key={l.id} data={l} variant="grid" href={`/cho-sinh-vien/${l.id}`} />
+          {/* Listing header */}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-bold text-gray-900">
+                {searchQuery || selectedCategory ? 'Kết quả tìm kiếm' : 'Tất cả sản phẩm'}
+              </h2>
+              {state.status === 'success' && (
+                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+                  {sorted.length.toLocaleString('vi-VN')} kết quả
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-xl border border-gray-200 bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSort('moi-nhat')}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                    sortBy === 'moi-nhat' ? 'bg-blue-50 text-[#0047FF]' : 'text-gray-500'
+                  )}
+                >
+                  Mới nhất
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSort('gia-tang')}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+                    sortBy === 'gia-tang' ? 'bg-blue-50 text-[#0047FF]' : 'text-gray-500'
+                  )}
+                >
+                  Giá thấp nhất
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {state.status === 'loading' && (
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i} />
               ))}
             </div>
-          </section>
-        </div>
-      )}
+          )}
+
+          {state.status === 'error' && (
+            <ErrorState
+              type="network"
+              message={state.error as string}
+              onRetry={() => load(searchQuery, selectedCategory)}
+              className="mt-8"
+            />
+          )}
+
+          {state.status === 'success' && sorted.length === 0 && (
+            <div className="mt-6 rounded-2xl border border-gray-100 bg-white py-14 text-center">
+              <p className="text-4xl">🔍</p>
+              <p className="mt-3 font-bold text-gray-900">Không tìm thấy sản phẩm</p>
+              <p className="mx-auto mt-1 max-w-xs text-sm text-gray-500">
+                {searchQuery
+                  ? `Không có kết quả cho "${searchQuery}"`
+                  : 'Thử chọn danh mục khác hoặc đăng tin đầu tiên!'}
+              </p>
+              <Link
+                href="/cho-sinh-vien/dang-tin"
+                className="mt-5 inline-flex rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-gray-900"
+              >
+                Đăng tin bán đồ
+              </Link>
+            </div>
+          )}
+
+          {state.status === 'success' && sorted.length > 0 && (
+            <>
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {visible.map((l) => (
+                  <ProductCard
+                    key={l.id}
+                    data={l}
+                    variant="grid"
+                    href={`/cho-sinh-vien/${l.id}`}
+                  />
+                ))}
+              </div>
+
+              {hasMore && (
+                <div className="mt-8 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+                    className="rounded-full border-2 border-gray-200 bg-white px-8 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-[#0047FF] hover:text-[#0047FF]"
+                  >
+                    Xem thêm sản phẩm
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

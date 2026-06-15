@@ -1,5 +1,6 @@
 export { useAuthStore }         from './useAuthStore'
 export { useBookingStore }      from './useBookingStore'
+export { useBookingFlowStore }  from './useBookingFlowStore'
 export { useMarketplaceStore }  from './useMarketplaceStore'
 export { useNotificationStore } from './useNotificationStore'
 export { useUIStore }           from './useUIStore'

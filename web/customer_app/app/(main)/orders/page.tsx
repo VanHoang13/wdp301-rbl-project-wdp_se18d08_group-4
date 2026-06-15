@@ -74,7 +74,7 @@ export default function OrdersPage() {
         style={{ backgroundColor: "var(--card)", borderBottom: "1px solid var(--border)" }}
       >
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>Đơn hàng</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>Lịch sử đơn hàng</h1>
           <button onClick={() => fetchOrders(TABS[activeTab].key, 1)} className="p-2 rounded-xl" style={{ backgroundColor: "var(--surface)" }}>
             <RefreshCw size={18} style={{ color: "var(--muted)" }} />
           </button>

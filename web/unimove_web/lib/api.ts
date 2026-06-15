@@ -1,4 +1,5 @@
 import { getStoredToken } from "./auth";
+import { toApiCategory } from "@/lib/marketplace/categories";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -18,7 +19,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
+  } catch {
+    const err: ApiError = new Error("Không kết nối được máy chủ. Vui lòng thử lại sau.");
+    err.status = 0;
+    throw err;
+  }
   const data = await res.json();
   if (!res.ok) {
     const err: ApiError = new Error(data.message || data.error || "API error");
@@ -32,7 +40,14 @@ async function upload<T>(endpoint: string, formData: FormData): Promise<ApiRespo
   const token = getStoredToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers, body: formData });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers, body: formData });
+  } catch {
+    const err: ApiError = new Error("Không kết nối được máy chủ. Vui lòng thử lại sau.");
+    err.status = 0;
+    throw err;
+  }
   const data = await res.json();
   if (!res.ok) { const err: ApiError = new Error(data.message || data.error || "Upload failed"); err.status = res.status; throw err; }
   return data;
@@ -271,11 +286,16 @@ export const notificationsApi = {
 };
 
 /* ── Marketplace ── */
+
 export const marketplaceApi = {
   list: async (p?: Record<string, unknown>) => {
     const params = p ? { ...p } : {};
     if (params.search) { params.keyword = params.search; delete params.search; }
-    if (params.category === "kitchen") params.category = "appliances";
+    if (params.category) {
+      const apiCategory = toApiCategory(String(params.category));
+      if (apiCategory) params.category = apiCategory;
+      else delete params.category;
+    }
     const res = await get("/marketplace/listings", params);
     return normalizeListingsResponse(res);
   },
