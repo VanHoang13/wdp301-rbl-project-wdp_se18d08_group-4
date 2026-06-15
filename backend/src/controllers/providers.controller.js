@@ -25,4 +25,47 @@ async function getById(req, res, next) {
   }
 }
 
-module.exports = { browse, getById };
+async function getEarnings(req, res, next) {
+  try {
+    const data = await providersService.getEarnings(req.user.id, req.query.period || 'week');
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getSchedule(req, res, next) {
+  try {
+    const data = await providersService.getSchedule(req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateSchedule(req, res, next) {
+  try {
+    const data = await providersService.updateSchedule(req.user.id, req.body.slots);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function uploadDocuments(req, res, next) {
+  try {
+    const data = await providersService.uploadProviderDocuments(req.user.id, req.files || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  browse,
+  getById,
+  getEarnings,
+  getSchedule,
+  updateSchedule,
+  uploadDocuments,
+};

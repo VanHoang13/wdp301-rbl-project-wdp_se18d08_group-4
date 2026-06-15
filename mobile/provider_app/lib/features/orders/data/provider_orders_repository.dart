@@ -1,4 +1,8 @@
+import 'package:dio/dio.dart';
+
 import '../../../core/auth/auth_token_storage.dart';
+import '../../../core/config/api_config.dart';
+import '../../../core/mock/mock_provider_data.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/provider_order.dart';
 
@@ -31,6 +35,77 @@ class ProviderOrdersRepository {
           if (declineReason != null && declineReason.isNotEmpty)
             'decline_reason': declineReason,
         },
+      ),
+    );
+  }
+
+  Future<void> accept(String orderId) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'in_progress');
+      return;
+    }
+    await _api.guard(() => _api.patch('/orders/$orderId/accept'));
+  }
+
+  Future<void> start(String orderId) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'in_progress');
+      return;
+    }
+    await _api.guard(() => _api.patch('/orders/$orderId/start'));
+  }
+
+  Future<void> decline(String orderId, {String? reason}) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'declined');
+      return;
+    }
+    await _api.guard(
+      () => _api.patch(
+        '/orders/$orderId/decline',
+        body: reason != null && reason.isNotEmpty ? {'reason': reason} : null,
+      ),
+    );
+  }
+
+  Future<void> complete(String orderId) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'completed');
+      return;
+    }
+    await _api.guard(() => _api.patch('/orders/$orderId/complete'));
+  }
+
+  Future<void> uploadDeliveryPhoto(String orderId, FormData formData) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      return;
+    }
+    final token = AuthTokenStorage.instance.cachedToken ?? '';
+    final dio = Dio(BaseOptions(
+      baseUrl: '${ApiConfig.baseUrl}${ApiConfig.apiPrefix}',
+      headers: {'Authorization': 'Bearer $token'},
+    ));
+    final response = await dio.post<dynamic>('/orders/$orderId/delivery-photo', data: formData);
+    if (response.data is Map && response.data['success'] == false) {
+      throw ApiException(response.data['message'] as String? ?? 'Upload thất bại');
+    }
+  }
+
+  Future<void> cancel(String orderId, {String? reason}) async {
+    if (await AuthTokenStorage.instance.isMockSession()) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      MockProviderData.updateStatus(orderId, 'cancelled');
+      return;
+    }
+    await _api.guard(
+      () => _api.patch(
+        '/orders/$orderId/cancel',
+        body: reason != null && reason.isNotEmpty ? {'reason': reason} : null,
       ),
     );
   }
