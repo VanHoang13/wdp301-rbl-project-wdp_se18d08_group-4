@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../../../orders/presentation/providers/orders_providers.dart';
 
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
@@ -9,14 +12,14 @@ import '../../../messages/presentation/pages/messages_tab_page.dart';
 import '../../../orders/presentation/pages/orders_inbox_page.dart';
 import '../../../profile/presentation/pages/provider_profile_tab_page.dart';
 
-class ProviderShellPage extends StatefulWidget {
+class ProviderShellPage extends ConsumerStatefulWidget {
   const ProviderShellPage({super.key});
 
   @override
-  State<ProviderShellPage> createState() => _ProviderShellPageState();
+  ConsumerState<ProviderShellPage> createState() => _ProviderShellPageState();
 }
 
-class _ProviderShellPageState extends State<ProviderShellPage> {
+class _ProviderShellPageState extends ConsumerState<ProviderShellPage> {
   int _index = 0;
 
   static const _tabs = [
@@ -40,6 +43,13 @@ class _ProviderShellPageState extends State<ProviderShellPage> {
 
   @override
   Widget build(BuildContext context) {
+    final shellTab = ref.watch(providerShellTabIndexProvider);
+    if (shellTab != _index) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _index = shellTab);
+      });
+    }
+
     final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
@@ -66,7 +76,10 @@ class _ProviderShellPageState extends State<ProviderShellPage> {
                       final active = i == _index;
                       return Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _index = i),
+                          onTap: () {
+                            setState(() => _index = i);
+                            ref.read(providerShellTabIndexProvider.notifier).state = i;
+                          },
                           behavior: HitTestBehavior.opaque,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 6),

@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
+import '../../../auth/data/auth_repository.dart';
 import '../../domain/provider_order.dart';
 import '../providers/orders_providers.dart';
 
@@ -21,11 +21,88 @@ class OrderDetailPage extends ConsumerStatefulWidget {
 
 class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   final _declineReasonCtrl = TextEditingController();
+  final _basePriceCtrl = TextEditingController();
+  final _surchargeLabelCtrl = TextEditingController(text: 'Phụ phí tầng / hẻm');
+  final _surchargeAmountCtrl = TextEditingController();
+  final _quoteNoteCtrl = TextEditingController();
   bool _submitting = false;
+  bool _loadingQuote = false;
+  Map<String, dynamic>? _myQuote;
+  String _scheduleFit = 'exact_match';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMyQuote());
+  }
+
+  Future<void> _loadMyQuote() async {
+    setState(() => _loadingQuote = true);
+    try {
+      final quotes = await ref.read(providerOrdersRepositoryProvider).fetchQuotes(widget.orderId);
+      if (!mounted) return;
+      setState(() {
+        _myQuote = quotes.isNotEmpty ? quotes.first : null;
+        _loadingQuote = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingQuote = false);
+    }
+  }
+
+  Future<void> _submitQuote(ProviderOrder order) async {
+    final base = int.tryParse(_basePriceCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (base == null || base <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nhập giá cơ bản hợp lệ')),
+      );
+      return;
+    }
+
+    final surcharges = <Map<String, dynamic>>[];
+    final surchargeAmount = int.tryParse(_surchargeAmountCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (surchargeAmount != null && surchargeAmount > 0) {
+      surcharges.add({
+        'label': _surchargeLabelCtrl.text.trim().isEmpty ? 'Phụ phí' : _surchargeLabelCtrl.text.trim(),
+        'amount': surchargeAmount,
+      });
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final result = await ref.read(providerOrdersRepositoryProvider).submitQuote(
+            orderId: widget.orderId,
+            basePrice: base,
+            surcharges: surcharges,
+            scheduleFit: _scheduleFit,
+            proposedPickupAt: _scheduleFit == 'alternate_proposed' ? order.scheduledPickupTime : null,
+            note: _quoteNoteCtrl.text.trim(),
+          );
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerOrderDetailProvider(widget.orderId));
+      if (!mounted) return;
+      setState(() {
+        _myQuote = result;
+        _submitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi báo giá — chờ khách chốt')),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
 
   @override
   void dispose() {
     _declineReasonCtrl.dispose();
+    _basePriceCtrl.dispose();
+    _surchargeLabelCtrl.dispose();
+    _surchargeAmountCtrl.dispose();
+    _quoteNoteCtrl.dispose();
     super.dispose();
   }
 
@@ -142,7 +219,13 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('Lỗi: $e', style: TextStyle(color: c.onSurface))),
             data: (order) {
-              final customer = MockProviderData.customerNameOf(order.customerId);
+              final myId = ref.watch(providerProfileProvider).asData?.value?.id;
+              final customer = order.pickupPoint.contactName.isNotEmpty
+                  ? order.pickupPoint.contactName
+                  : 'Khách hàng';
+              final showQuoteFlow = order.isOpenQuoteRequest ||
+                  (order.quoteRequest && !order.isAssignedTo(myId) && order.status == 'pending');
+              final showConfirmedPricing = order.isAssignedTo(myId) && order.totalPrice > 0;
               return CustomScrollView(
                 slivers: [
                   SliverAppBar(
@@ -174,7 +257,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
-                                    order.statusLabel,
+                                    order.statusLabelFor(myId),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w700,
@@ -220,7 +303,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
-                        _quickStats(c, order),
+                        _quickStats(c, order, myId: myId, myQuoteTotal: _quoteTotal(_myQuote)),
                         const SizedBox(height: 16),
                         _sectionTitle(c, 'Hành trình'),
                         const SizedBox(height: 10),
@@ -240,9 +323,26 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           _itemsCard(c, theme, order),
                         ],
                         const SizedBox(height: 20),
-                        _sectionTitle(c, 'Chi phí'),
-                        const SizedBox(height: 10),
-                        _pricingCard(c, theme, order),
+                        if (showQuoteFlow) ...[
+                          _sectionTitle(c, 'Báo giá'),
+                          const SizedBox(height: 10),
+                          _quoteRequestSection(c, theme, order, myId),
+                        ] else if (showConfirmedPricing) ...[
+                          _sectionTitle(c, 'Giá đã chốt'),
+                          const SizedBox(height: 10),
+                          _confirmedPricingCard(c, theme, order, myId),
+                        ] else if (!order.quoteRequest) ...[
+                          _sectionTitle(c, 'Chi phí'),
+                          const SizedBox(height: 10),
+                          _pricingCard(c, theme, order),
+                        ],
+                        if (order.isAssignedTo(myId) &&
+                            (order.isAwaitingDeposit(myId) || order.isDepositConfirmed(myId))) ...[
+                          const SizedBox(height: 20),
+                          _sectionTitle(c, 'Trạng thái'),
+                          const SizedBox(height: 10),
+                          _bookingStatusCard(c, theme, order, myId),
+                        ],
                         if (order.scheduledPickupTime != null ||
                             order.actualPickupTime != null ||
                             order.completedAt != null) ...[
@@ -267,7 +367,25 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                             child: const Text('Nhắn tin cho khách'),
                           ),
                         ],
-                        if (order.isPending) ...[
+                        if (order.isReadyToAccept(myId)) ...[
+                          const SizedBox(height: 24),
+                          ShadButton(
+                            width: double.infinity,
+                            onPressed: _submitting ? null : () => _respond('accepted'),
+                            child: _submitting
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Nhận đơn — bắt đầu chuẩn bị'),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Khách đã đặt cọc qua UniMove. Nhận đơn để bắt đầu chuẩn bị lấy hàng.',
+                            style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.35),
+                          ),
+                        ] else if (order.isPending && !order.quoteRequest) ...[
                           const SizedBox(height: 24),
                           ShadButton(
                             width: double.infinity,
@@ -335,6 +453,228 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
+  Widget _quoteRequestSection(UniMoveColors c, ShadThemeData theme, ProviderOrder order, String? myId) {
+    if (_loadingQuote) {
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+    }
+
+    if (_myQuote != null) {
+      final total = ((_myQuote!['total_price'] as num?) ?? 0).round();
+      final fit = _myQuote!['schedule_fit'] as String? ?? 'exact_match';
+      final quoteStatus = _myQuote!['status'] as String? ?? 'submitted';
+
+      if (quoteStatus == 'expired') {
+        return GlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Khách chọn nhà xe khác', style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                'Báo giá ${ProviderOrder.formatMoney(total)} không được chọn lần này.',
+                style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Báo giá đã gửi', style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              '${ProviderOrder.formatMoney(total)} · '
+              '${fit == 'alternate_proposed' ? 'Đề xuất giờ khác' : 'Nhận đúng giờ khách chọn'}',
+              style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Chờ khách so sánh và chốt. Bạn sẽ nhận thông báo khi được chọn.',
+              style: theme.textTheme.small.copyWith(height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Gửi báo giá', style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(
+            'Khách đang chờ nhiều nhà xe báo giá — nhập giá và khung giờ bạn nhận.',
+            style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.35),
+          ),
+          const SizedBox(height: 16),
+          Text('Giá cơ bản (VNĐ)', style: theme.textTheme.small.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          ShadInput(
+            controller: _basePriceCtrl,
+            keyboardType: TextInputType.number,
+            placeholder: const Text('Nhập giá của bạn (VNĐ)'),
+          ),
+          const SizedBox(height: 12),
+          Text('Phụ phí (tuỳ chọn)', style: theme.textTheme.small.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          ShadInput(controller: _surchargeLabelCtrl, placeholder: const Text('Tầng / hẻm / khuân vác')),
+          const SizedBox(height: 8),
+          ShadInput(
+            controller: _surchargeAmountCtrl,
+            keyboardType: TextInputType.number,
+            placeholder: const Text('50000'),
+          ),
+          const SizedBox(height: 12),
+          Text('Khung giờ', style: theme.textTheme.small.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Nhận đúng giờ'),
+                selected: _scheduleFit == 'exact_match',
+                onSelected: (_) => setState(() => _scheduleFit = 'exact_match'),
+              ),
+              ChoiceChip(
+                label: const Text('Đề xuất giờ khác'),
+                selected: _scheduleFit == 'alternate_proposed',
+                onSelected: (_) => setState(() => _scheduleFit = 'alternate_proposed'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ShadInput(
+            controller: _quoteNoteCtrl,
+            maxLines: 2,
+            placeholder: const Text('Ghi chú cho khách (tuỳ chọn)'),
+          ),
+          const SizedBox(height: 16),
+          ShadButton(
+            width: double.infinity,
+            onPressed: _submitting ? null : () => _submitQuote(order),
+            child: _submitting
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Gửi báo giá'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _confirmedPricingCard(
+    UniMoveColors c,
+    ShadThemeData theme,
+    ProviderOrder order,
+    String? myId,
+  ) {
+    final deposit = order.depositAmount > 0
+        ? order.depositAmount
+        : (order.totalPrice * 0.3).round();
+    final remaining = order.remainingAmount > 0 ? order.remainingAmount : order.totalPrice - deposit;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _priceRow(c, theme, 'Giá chốt với khách', order.totalPrice, highlight: true),
+          if (order.depositPaid) ...[
+            _priceRow(c, theme, 'Khách đã cọc (UniMove giữ)', deposit, valueColor: c.success),
+            _priceRow(c, theme, 'Còn lại sau chuyến', remaining),
+          ],
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+          Row(
+            children: [
+              Text('Thu nhập dự kiến', style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800)),
+              const Spacer(),
+              Text(
+                ProviderOrder.formatMoney(order.netEarnings),
+                style: theme.textTheme.h3.copyWith(fontWeight: FontWeight.w800, color: c.primaryLight),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Sau phí nền tảng ~15%. Tiền cọc chuyển cho bạn khi khách xác nhận hoàn thành.',
+            style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bookingStatusCard(UniMoveColors c, ShadThemeData theme, ProviderOrder order, String? myId) {
+    final steps = <({String title, String subtitle, bool done})>[
+      (
+        title: 'Khách chốt báo giá của bạn',
+        subtitle: order.quoteReferenceCode != null ? 'Mã ${order.quoteReferenceCode}' : 'Đã gán đơn cho bạn',
+        done: true,
+      ),
+      (
+        title: 'Khách đặt cọc qua UniMove',
+        subtitle: order.depositPaid
+            ? 'Đã cọc ${ProviderOrder.formatMoney(order.depositAmount > 0 ? order.depositAmount : (order.totalPrice * 0.3).round())}'
+            : 'Chờ khách quét QR đặt cọc 30%',
+        done: order.depositPaid,
+      ),
+      (
+        title: 'Bạn nhận đơn & chuẩn bị chuyến',
+        subtitle: order.status == 'accepted' ? 'Đã nhận — sẵn sàng lấy hàng' : 'Nhấn "Nhận đơn" sau khi khách cọc',
+        done: order.status == 'accepted' || order.isActive,
+      ),
+    ];
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  steps[i].done ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: steps[i].done ? c.success : c.onSurfaceMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        steps[i].title,
+                        style: theme.textTheme.p.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: steps[i].done ? c.onSurface : c.onSurfaceMuted,
+                        ),
+                      ),
+                      Text(
+                        steps[i].subtitle,
+                        style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _sectionTitle(UniMoveColors c, String text) {
     return Text(
       text,
@@ -342,20 +682,51 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
-  Widget _quickStats(UniMoveColors c, ProviderOrder order) {
+  int? _quoteTotal(Map<String, dynamic>? quote) {
+    if (quote == null) return null;
+    final total = (quote['total_price'] as num?)?.round();
+    return total != null && total > 0 ? total : null;
+  }
+
+  String _revenueLabel(ProviderOrder order, {int? myQuoteTotal}) {
+    if (order.quoteRequest && order.isPending) {
+      if (myQuoteTotal != null) return ProviderOrder.formatMoney(myQuoteTotal);
+      return 'Chờ báo giá';
+    }
+    if (order.totalPrice > 0) return ProviderOrder.formatMoney(order.totalPrice);
+    return '—';
+  }
+
+  Widget _quickStats(UniMoveColors c, ProviderOrder order, {String? myId, int? myQuoteTotal}) {
+    final revenueLabel = order.isAssignedTo(myId) && order.totalPrice > 0
+        ? ProviderOrder.formatMoney(order.totalPrice)
+        : _revenueLabel(order, myQuoteTotal: myQuoteTotal);
+    final revenueTitle = order.isDepositConfirmed(myId)
+        ? 'Giá chốt'
+        : (order.quoteRequest && order.isOpenQuoteRequest ? 'Báo giá' : 'Tổng thu');
+
     return Row(
       children: [
         Expanded(child: _statTile(c, Icons.route_outlined, 'Quãng đường', '${order.distanceKm?.toStringAsFixed(1) ?? '—'} km')),
         const SizedBox(width: 10),
-        Expanded(child: _statTile(c, Icons.schedule_outlined, 'ETA', order.etaMinutes != null ? '${order.etaMinutes} phút' : '—')),
+        Expanded(
+          child: _statTile(
+            c,
+            Icons.schedule_outlined,
+            'Hẹn lấy',
+            order.scheduledPickupTime != null
+                ? ProviderOrder.formatDateTime(order.scheduledPickupTime).split(' · ').last
+                : '—',
+          ),
+        ),
         const SizedBox(width: 10),
         Expanded(
           child: _statTile(
             c,
             Icons.payments_outlined,
-            'Tổng thu',
-            ProviderOrder.formatMoney(order.totalPrice),
-            highlight: true,
+            revenueTitle,
+            revenueLabel,
+            highlight: order.isAssignedTo(myId) || myQuoteTotal != null,
           ),
         ),
       ],
@@ -413,6 +784,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             title: 'Điểm lấy',
             address: pickup.address,
             meta: _locationMeta(pickup),
+            notes: pickup.notes != null ? _formatCustomerNotes(pickup.notes!) : null,
           ),
           Padding(
             padding: const EdgeInsets.only(left: 15),
@@ -442,10 +814,15 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             title: 'Điểm giao',
             address: delivery.address,
             meta: _locationMeta(delivery),
+            notes: delivery.notes,
           ),
         ],
       ),
     );
+  }
+
+  String _formatCustomerNotes(String raw) {
+    return raw.replaceAll(RegExp(r'\s*·\s*Mã báo giá:\s*\S+'), '').trim();
   }
 
   String _locationMeta(OrderLocationPoint p) {
@@ -464,6 +841,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     required String title,
     required String address,
     required String meta,
+    String? notes,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,6 +862,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               Text(address, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: c.onSurface, height: 1.35)),
               const SizedBox(height: 4),
               Text(meta, style: TextStyle(fontSize: 12, color: c.onSurfaceMuted, height: 1.3)),
+              if (notes != null && notes.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(notes, style: TextStyle(fontSize: 12, color: c.onSurface, height: 1.35)),
+              ],
             ],
           ),
         ),
@@ -516,11 +898,18 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   phone.isNotEmpty ? phone : 'Chưa có SĐT',
                   style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
                 ),
+                if (order.quoteReferenceCode != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Mã báo giá: ${order.quoteReferenceCode}',
+                    style: theme.textTheme.small.copyWith(color: c.primary, fontWeight: FontWeight.w600),
+                  ),
+                ],
                 if (order.pickupPoint.notes != null && order.pickupPoint.notes!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    order.pickupPoint.notes!,
-                    style: theme.textTheme.small.copyWith(color: c.onSurface, fontStyle: FontStyle.italic),
+                    _formatCustomerNotes(order.pickupPoint.notes!),
+                    style: theme.textTheme.small.copyWith(color: c.onSurface, fontStyle: FontStyle.italic, height: 1.35),
                   ),
                 ],
               ],
@@ -708,8 +1097,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     String label,
     int amount, {
     Color? valueColor,
+    bool highlight = false,
   }) {
-    if (amount == 0 && label != 'Giá cơ bản') return const SizedBox.shrink();
+    if (amount == 0 && label != 'Giá cơ bản' && !highlight) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(

@@ -1,10 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../../core/dev/dev_session_bootstrap.dart';
-import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
@@ -13,6 +13,8 @@ import '../../../documents/presentation/providers/documents_providers.dart';
 import '../../../notifications/presentation/providers/notifications_providers.dart';
 import '../../../orders/domain/provider_order.dart';
 import '../../../orders/presentation/providers/orders_providers.dart';
+import '../../../orders/presentation/widgets/provider_order_list_card.dart';
+import '../../../orders/presentation/widgets/provider_order_status_tiles.dart';
 
 class ProviderDashboardPage extends ConsumerStatefulWidget {
   const ProviderDashboardPage({super.key});
@@ -23,6 +25,23 @@ class ProviderDashboardPage extends ConsumerStatefulWidget {
 
 class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
   bool _online = true;
+  Timer? _ordersPoll;
+
+  @override
+  void initState() {
+    super.initState();
+    _ordersPoll = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (!mounted) return;
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerUnreadNotificationsProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ordersPoll?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,12 +66,11 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
                     Text('Lỗi: $e', textAlign: TextAlign.center, style: TextStyle(color: c.onSurface)),
                     const SizedBox(height: 16),
                     ShadButton(
-                      onPressed: () async {
-                        await DevSessionBootstrap.apply();
+                      onPressed: () {
                         ref.invalidate(providerProfileProvider);
                         ref.invalidate(providerOrdersListProvider);
                       },
-                      child: const Text('Thử lại (phiên demo)'),
+                      child: const Text('Thử lại'),
                     ),
                     const SizedBox(height: 8),
                     ShadButton.outline(
@@ -64,10 +82,13 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
               ),
             ),
             data: (profile) {
+              final myId = profile?.id;
               final orders = ordersAsync.asData?.value ?? const <ProviderOrder>[];
               final completed = orders.where((o) => o.isCompleted).toList();
               final active = orders.where((o) => o.isActive).toList();
-              final pending = orders.where((o) => o.isPending).toList();
+              final readyToStart = orders.where((o) => o.isReadyToAccept(myId)).toList();
+              final awaitingDeposit = orders.where((o) => o.isAwaitingDeposit(myId)).toList();
+              final openQuotes = orders.where((o) => o.isOpenQuoteRequest).toList();
               final earnings = completed.fold<int>(0, (s, o) => s + o.netEarnings);
 
               return RefreshIndicator(
@@ -95,46 +116,46 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
                     const SizedBox(height: 16),
                     _earningsHero(theme, c, earnings, completed.length),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _statCard(theme, c, LucideIcons.circleCheck, '${completed.length}',
-                              'Chuyến hoàn thành', c.success),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _statCard(theme, c, LucideIcons.star,
-                              '${profile?.rating ?? 0}', 'Đánh giá', c.primary),
-                        ),
-                      ],
+                    _quickStatsRow(theme, c, completed.length, profile?.rating ?? 0),
+                    const SizedBox(height: 20),
+                    _ordersHub(
+                      theme,
+                      c,
+                      myId: myId,
+                      ready: readyToStart.length,
+                      quotes: openQuotes.length,
+                      awaiting: awaitingDeposit.length,
+                      active: active.length,
+                      onOpenTab: (filter) {
+                        ref.read(providerOrdersFilterProvider.notifier).state = filter;
+                        ref.read(providerShellTabIndexProvider.notifier).state = 1;
+                      },
                     ),
                     if (active.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      _sectionTitle(theme, c, 'Đơn đang thực hiện'),
+                      const SizedBox(height: 16),
+                      _sectionTitle(theme, c, 'Đang chạy', trailing: '${active.length} đơn'),
                       const SizedBox(height: 10),
-                      _activeOrderCard(theme, c, active.first),
+                      ProviderOrderListCard(
+                        order: active.first,
+                        myId: myId,
+                        filter: OrderInboxFilter.active,
+                        onTap: () => context.push('/orders/${active.first.id}'),
+                        onPrimaryAction: () => context.push('/orders/${active.first.id}/tracking'),
+                        primaryActionLabel: 'Theo dõi GPS',
+                      ),
+                    ] else if (readyToStart.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _sectionTitle(theme, c, 'Cần nhận ngay', trailing: '${readyToStart.length} đơn'),
+                      const SizedBox(height: 10),
+                      ProviderOrderListCard(
+                        order: readyToStart.first,
+                        myId: myId,
+                        filter: OrderInboxFilter.ready,
+                        onTap: () => context.push('/orders/${readyToStart.first.id}'),
+                        onPrimaryAction: () => context.push('/orders/${readyToStart.first.id}'),
+                        primaryActionLabel: 'Nhận đơn ngay',
+                      ),
                     ],
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(child: _sectionTitle(theme, c, 'Đơn mới')),
-                        GestureDetector(
-                          onTap: () => context.push('/orders'),
-                          child: Text(
-                            '${pending.length} chờ nhận',
-                            style: theme.textTheme.small.copyWith(
-                              color: c.primaryLight,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    if (pending.isEmpty)
-                      _emptyRequests(theme, c)
-                    else
-                      ...pending.map((o) => _requestCard(theme, c, o)),
                   ],
                 ),
               );
@@ -275,9 +296,13 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
   // ---------- Online toggle ----------
   Widget _onlineCard(ShadThemeData theme, UniMoveColors c, {required bool canGoOnline}) {
     final effectiveOnline = canGoOnline && _online;
-    return GlassCard(
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      radius: 18,
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: effectiveOnline ? c.success.withValues(alpha: 0.3) : c.border),
+      ),
       child: Row(
         children: [
           Container(
@@ -407,218 +432,119 @@ class _ProviderDashboardPageState extends ConsumerState<ProviderDashboardPage> {
     );
   }
 
-  Widget _statCard(ShadThemeData theme, UniMoveColors c, IconData icon, String value, String label, Color tint) {
-    return GlassCard(
-      padding: const EdgeInsets.all(16),
-      radius: 18,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(color: tint.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, size: 20, color: tint),
-          ),
-          const SizedBox(height: 10),
-          Text(value, style: theme.textTheme.h3.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
-          Text(label, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted)),
-        ],
+  Widget _quickStatsRow(ShadThemeData theme, UniMoveColors c, int trips, double rating) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.border),
       ),
-    );
-  }
-
-  Widget _sectionTitle(ShadThemeData theme, UniMoveColors c, String text) {
-    return Text(text, style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w800, color: c.onSurface));
-  }
-
-  // ---------- Active order ----------
-  Widget _activeOrderCard(ShadThemeData theme, UniMoveColors c, ProviderOrder o) {
-    final customer = MockProviderData.customerNameOf(o.customerId);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: () => context.push('/orders/${o.id}'),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [c.primaryLight, c.primary],
-            ),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(LucideIcons.truck, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '#${o.orderNumber ?? o.id} · $customer',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.p.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(o.statusLabel, style: theme.textTheme.small.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _routeLine(theme, LucideIcons.circleDot, 'Điểm lấy', o.pickupAddress),
-              const SizedBox(height: 8),
-              _routeLine(theme, LucideIcons.mapPin, 'Điểm giao', o.deliveryAddress),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: c.primary,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => context.push('/orders/${o.id}/tracking'),
-                      child: const Text('Theo dõi GPS', style: TextStyle(fontWeight: FontWeight.w800)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white70),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => context.push('/orders/${o.id}'),
-                      child: const Text('Chi tiết', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _routeLine(ShadThemeData theme, IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: Colors.white70, size: 16),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: theme.textTheme.small.copyWith(color: Colors.white60)),
-              Text(
-                value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.small.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ---------- Request card ----------
-  Widget _requestCard(ShadThemeData theme, UniMoveColors c, ProviderOrder o) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => context.push('/orders/${o.id}'),
-          child: GlassCard(
-            padding: const EdgeInsets.all(16),
-            radius: 18,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: c.chipBg, borderRadius: BorderRadius.circular(20)),
-                      child: Text(
-                        'Gói ${o.serviceLabel}',
-                        style: theme.textTheme.small.copyWith(color: c.primaryLight, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      _money(o.totalPrice),
-                      style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800, color: c.primary),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _reqRow(theme, c, LucideIcons.circleDot, o.pickupAddress),
-                const SizedBox(height: 6),
-                _reqRow(theme, c, LucideIcons.mapPin, o.deliveryAddress),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _reqRow(ShadThemeData theme, UniMoveColors c, IconData icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 14, color: c.onSurfaceMuted),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.small.copyWith(color: c.onSurface),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _emptyRequests(ShadThemeData theme, UniMoveColors c) {
-    return GlassCard(
-      padding: const EdgeInsets.all(20),
-      radius: 18,
       child: Row(
         children: [
-          Icon(LucideIcons.inbox, color: c.onSurfaceMuted),
-          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'Chưa có đơn mới. Bật "Đang nhận đơn" để nhận yêu cầu.',
-              style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.4),
-            ),
+            child: _inlineStat(theme, c, LucideIcons.circleCheck, '$trips', 'Chuyến xong', c.success),
+          ),
+          Container(width: 1, height: 36, color: c.border),
+          Expanded(
+            child: _inlineStat(theme, c, LucideIcons.star, '$rating', 'Đánh giá', c.primary),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _inlineStat(ShadThemeData theme, UniMoveColors c, IconData icon, String value, String label, Color tint) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 16, color: tint),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: theme.textTheme.p.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
+            Text(label, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, fontSize: 11)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(ShadThemeData theme, UniMoveColors c, String text, {String? trailing}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(text, style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w800, color: c.onSurface)),
+        ),
+        if (trailing != null)
+          Text(trailing, style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  Widget _ordersHub(
+    ShadThemeData theme,
+    UniMoveColors c, {
+    required String? myId,
+    required int ready,
+    required int quotes,
+    required int awaiting,
+    required int active,
+    required void Function(OrderInboxFilter filter) onOpenTab,
+  }) {
+    final total = ready + quotes + awaiting + active;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đơn hàng',
+                    style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w800, color: c.onSurface),
+                  ),
+                  if (total > 0)
+                    Text(
+                      '$total đơn cần xử lý',
+                      style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+                    ),
+                ],
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => onOpenTab(OrderInboxFilter.defaultFor(
+                ref.read(providerOrdersListProvider).asData?.value ?? [],
+                myId,
+              )),
+              icon: Icon(LucideIcons.arrowRight, size: 16, color: c.primaryLight),
+              label: Text(
+                'Xem tất cả',
+                style: theme.textTheme.small.copyWith(color: c.primaryLight, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ProviderOrderStatusTiles(
+          ready: ready,
+          quotes: quotes,
+          awaiting: awaiting,
+          active: active,
+          onTap: onOpenTab,
+        ),
+      ],
     );
   }
 

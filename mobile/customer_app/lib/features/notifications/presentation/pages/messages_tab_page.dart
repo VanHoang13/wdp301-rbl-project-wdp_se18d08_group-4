@@ -153,8 +153,7 @@ class _MessagesTabPageState extends State<MessagesTabPage> {
           ),
           SizedBox(height: 6.h),
           Text(
-            'Chat mở khi nhà xe xác nhận lịch chuyển trọ. '
-            'Vào Tiến trình báo giá → bấm "Nhắn tin với nhà xe".',
+            'Chat đơn hàng chưa khả dụng. Bạn vẫn nhận cập nhật trạng thái qua thông báo.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.4),
           ),

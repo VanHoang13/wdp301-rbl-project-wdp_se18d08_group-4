@@ -1,11 +1,19 @@
+import '../../../../core/location/geo_distance.dart';
 import '../../domain/booking_models.dart';
 import '../../domain/quote_models.dart';
 
 class BookingFlowState {
   const BookingFlowState({
     this.serviceType = BookingServiceType.fullMove,
-    this.pickup = 'Ký túc xá Khu B',
+    this.pickup = '',
+    this.pickupLat,
+    this.pickupLng,
     this.destination = '',
+    this.destinationLat,
+    this.destinationLng,
+    this.placeSuggestions = const [],
+    this.loadingPlaceSuggestions = false,
+    this.resolvingDestination = false,
     this.selectedTier = ServiceTier.standard,
     this.selectedPartnerId,
     this.selectedLaborProviderId,
@@ -13,6 +21,7 @@ class BookingFlowState {
     this.discountCode = '',
     this.discountApplied = false,
     this.loadingPlaces = false,
+    this.loadingPickup = false,
     this.loadingPartners = false,
     this.loadingLaborQuotes = false,
     this.recentPlaces = const [],
@@ -53,11 +62,29 @@ class BookingFlowState {
     this.selectedInsurancePlanId,
     this.loadingInsurancePlans = false,
     this.scheduledPickupAt,
+    this.comboFlowHint,
+    this.quoteFlowHint,
+    this.mapPreviewUrl,
   });
+
+  static const defaultComboFlowHint =
+      'Combo — giá niêm yết, không chờ báo giá. Bước sau: mô tả trọ → chọn ngày giờ → chọn gói.';
+
+  static const defaultQuoteFlowHint = QuoteFlowHint(
+    title: 'Báo giá minh bạch',
+    subtitle: 'Bước tiếp: mô tả trọ → chọn giờ → nhà xe báo giá theo khung đó.',
+  );
 
   final BookingServiceType serviceType;
   final String pickup;
+  final double? pickupLat;
+  final double? pickupLng;
   final String destination;
+  final double? destinationLat;
+  final double? destinationLng;
+  final List<PlaceSuggestion> placeSuggestions;
+  final bool loadingPlaceSuggestions;
+  final bool resolvingDestination;
   final ServiceTier selectedTier;
   final String? selectedPartnerId;
   final String? selectedLaborProviderId;
@@ -65,6 +92,7 @@ class BookingFlowState {
   final String discountCode;
   final bool discountApplied;
   final bool loadingPlaces;
+  final bool loadingPickup;
   final bool loadingPartners;
   final bool loadingLaborQuotes;
   final List<RecentPlace> recentPlaces;
@@ -145,8 +173,40 @@ class BookingFlowState {
 
   /// Thời điểm nhà xe bắt đầu lấy đồ — vận chuyển chỉ diễn ra từ khung giờ này.
   final DateTime? scheduledPickupAt;
+  final String? comboFlowHint;
+  final QuoteFlowHint? quoteFlowHint;
+  final String? mapPreviewUrl;
 
   bool get hasScheduledPickup => scheduledPickupAt != null;
+
+  /// Khoảng cách ước lượng điểm lấy → điểm giao (km), khi đủ tọa độ.
+  double? get routeDistanceKm {
+    if (pickupLat == null || pickupLng == null || destinationLat == null || destinationLng == null) {
+      return null;
+    }
+    return haversineKm(pickupLat!, pickupLng!, destinationLat!, destinationLng!);
+  }
+
+  /// Gợi ý loại đặt xe cho luồng pass đồ.
+  String get passItemTransportHint {
+    final km = routeDistanceKm;
+    if (km == null) {
+      return 'Nhập địa chỉ nhận để xem khoảng cách và chọn combo hay chuyến thường.';
+    }
+    final label = km.toStringAsFixed(1);
+    if (km <= 8) {
+      return 'Khoảng $label km — combo thường rẻ và gọn cho đồ lẻ trong thành phố.';
+    }
+    if (km <= 15) {
+      return 'Khoảng $label km — combo hoặc chuyến thường đều phù hợp, tùy ngân sách.';
+    }
+    return 'Khoảng $label km — nên đặt chuyến thường để nhà xe báo giá linh hoạt theo km.';
+  }
+
+  bool get passItemPrefersCombo {
+    final km = routeDistanceKm;
+    return km != null && km <= 10;
+  }
 
   bool get isLaborOnly => serviceType == BookingServiceType.laborOnly;
 
@@ -325,7 +385,17 @@ class BookingFlowState {
   BookingFlowState copyWith({
     BookingServiceType? serviceType,
     String? pickup,
+    double? pickupLat,
+    double? pickupLng,
     String? destination,
+    bool clearPickupCoords = false,
+    double? destinationLat,
+    double? destinationLng,
+    List<PlaceSuggestion>? placeSuggestions,
+    bool? loadingPlaceSuggestions,
+    bool? resolvingDestination,
+    bool clearDestinationCoords = false,
+    bool clearPlaceSuggestions = false,
     ServiceTier? selectedTier,
     String? selectedPartnerId,
     String? selectedLaborProviderId,
@@ -333,6 +403,7 @@ class BookingFlowState {
     String? discountCode,
     bool? discountApplied,
     bool? loadingPlaces,
+    bool? loadingPickup,
     bool? loadingPartners,
     bool? loadingLaborQuotes,
     List<RecentPlace>? recentPlaces,
@@ -375,6 +446,9 @@ class BookingFlowState {
     String? selectedInsurancePlanId,
     bool? loadingInsurancePlans,
     DateTime? scheduledPickupAt,
+    String? comboFlowHint,
+    QuoteFlowHint? quoteFlowHint,
+    String? mapPreviewUrl,
     bool clearScheduledPickup = false,
     bool clearLinkedOrder = false,
     bool clearLaborProvider = false,
@@ -383,7 +457,15 @@ class BookingFlowState {
     return BookingFlowState(
       serviceType: serviceType ?? this.serviceType,
       pickup: pickup ?? this.pickup,
+      pickupLat: clearPickupCoords ? null : (pickupLat ?? this.pickupLat),
+      pickupLng: clearPickupCoords ? null : (pickupLng ?? this.pickupLng),
       destination: destination ?? this.destination,
+      destinationLat: clearDestinationCoords ? null : (destinationLat ?? this.destinationLat),
+      destinationLng: clearDestinationCoords ? null : (destinationLng ?? this.destinationLng),
+      placeSuggestions:
+          clearPlaceSuggestions ? const [] : (placeSuggestions ?? this.placeSuggestions),
+      loadingPlaceSuggestions: loadingPlaceSuggestions ?? this.loadingPlaceSuggestions,
+      resolvingDestination: resolvingDestination ?? this.resolvingDestination,
       selectedTier: selectedTier ?? this.selectedTier,
       selectedPartnerId: selectedPartnerId ?? this.selectedPartnerId,
       selectedLaborProviderId: clearLaborProvider
@@ -393,6 +475,7 @@ class BookingFlowState {
       discountCode: discountCode ?? this.discountCode,
       discountApplied: discountApplied ?? this.discountApplied,
       loadingPlaces: loadingPlaces ?? this.loadingPlaces,
+      loadingPickup: loadingPickup ?? this.loadingPickup,
       loadingPartners: loadingPartners ?? this.loadingPartners,
       loadingLaborQuotes: loadingLaborQuotes ?? this.loadingLaborQuotes,
       recentPlaces: recentPlaces ?? this.recentPlaces,
@@ -439,6 +522,9 @@ class BookingFlowState {
       loadingInsurancePlans: loadingInsurancePlans ?? this.loadingInsurancePlans,
       scheduledPickupAt:
           clearScheduledPickup ? null : (scheduledPickupAt ?? this.scheduledPickupAt),
+      comboFlowHint: comboFlowHint ?? this.comboFlowHint,
+      quoteFlowHint: quoteFlowHint ?? this.quoteFlowHint,
+      mapPreviewUrl: mapPreviewUrl ?? this.mapPreviewUrl,
     );
   }
 }

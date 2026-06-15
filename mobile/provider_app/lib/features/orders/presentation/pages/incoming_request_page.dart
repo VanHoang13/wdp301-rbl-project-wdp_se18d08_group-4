@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../domain/provider_order.dart';
@@ -25,12 +24,13 @@ class _IncomingRequestPageState extends ConsumerState<IncomingRequestPage> {
   int _remaining = _totalSeconds;
   Timer? _timer;
   bool _submitting = false;
+  bool _loading = true;
   ProviderOrder? _order;
 
   @override
   void initState() {
     super.initState();
-    _order = MockProviderData.orderById(widget.orderId);
+    _loadOrder();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       setState(() => _remaining -= 1);
@@ -45,6 +45,21 @@ class _IncomingRequestPageState extends ConsumerState<IncomingRequestPage> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadOrder() async {
+    try {
+      final order = await ref.read(providerOrdersRepositoryProvider).fetchById(widget.orderId);
+      if (!mounted) return;
+      setState(() {
+        _order = order;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   void _onExpired() {
@@ -88,7 +103,9 @@ class _IncomingRequestPageState extends ConsumerState<IncomingRequestPage> {
             children: [
               _mapBackdrop(c),
               SafeArea(
-                child: order == null
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : order == null
                     ? Center(child: Text('Không tìm thấy yêu cầu', style: TextStyle(color: c.onSurfaceMuted)))
                     : Column(
                         children: [

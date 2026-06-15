@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('../services/supabase.service');
 const paymentsService = require('../services/payments.service');
 const payosService = require('../services/payos.service');
+const marketplaceService = require('../services/marketplace.service');
 const env = require('../config/env');
 const { httpError } = require('../services/auth.helpers');
 
@@ -80,6 +81,56 @@ async function getPayments(req, res, next) {
   }
 }
 
+/** Đồng bộ trạng thái PayOS khi client poll (hữu ích khi webhook chưa tới localhost). */
+async function syncPaymentFromPayOS(payment) {
+  if (payment.status !== 'pending' || !payment.payos_order_id) return payment;
+
+  try {
+    const payosData = await payosService.getPaymentStatus(payment.payos_order_id);
+    if (payosData.status !== 'PAID') return payment;
+
+    const amountPaid = payosData.amountPaid || payosData.amount || 0;
+    if (amountPaid < payment.amount) return payment;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('payments')
+      .update({
+        status: 'completed',
+        paid_at: new Date().toISOString(),
+        escrow_status: 'held',
+        payos_transaction_id: payosData.transactions?.[0]?.transactionDateTime || null,
+      })
+      .eq('id', payment.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[PayOS] sync update failed:', error.message, { paymentId: payment.id });
+      return payment;
+    }
+    if (!updated) return payment;
+
+    if (updated.payment_purpose === 'deposit' && updated.order_id) {
+      await supabaseAdmin
+        .from('orders')
+        .update({
+          deposit_paid: true,
+          deposit_paid_at: new Date().toISOString(),
+        })
+        .eq('id', updated.order_id);
+    }
+
+    if (updated.marketplace_listing_id) {
+      await marketplaceService.finalizeListingFeePayment(updated.marketplace_listing_id);
+    }
+
+    return updated;
+  } catch (err) {
+    console.warn('[PayOS] sync on poll failed:', err.message);
+    return payment;
+  }
+}
+
 /** GET /api/customers/me/payments/:id — Lấy chi tiết một payment */
 async function getPayment(req, res, next) {
   try {
@@ -100,7 +151,8 @@ async function getPayment(req, res, next) {
       return next(httpError(404, 'Không tìm thấy payment', 'payment_not_found'));
     }
 
-    res.json({ success: true, data: payment });
+    const synced = await syncPaymentFromPayOS(payment);
+    res.json({ success: true, data: synced });
   } catch (error) {
     next(error);
   }
@@ -185,7 +237,7 @@ async function createDeposit(req, res, next) {
     const { error: updateError } = await supabaseAdmin
       .from('payments')
       .update({
-        payos_order_id: payosResponse.orderCode.toString(),
+        payos_order_id: String(payosResponse.orderCode),
         payos_payment_url: payosResponse.checkoutUrl,
         payos_qr_code: payosResponse.qrCode,
         expires_at: payosResponse.expiresAt.toISOString(),
@@ -273,7 +325,7 @@ async function payosWebhook(req, res, next) {
     // Find payment by payment_code
     const { data: payment, error: findError } = await supabaseAdmin
       .from('payments')
-      .select('id, customer_id, order_id, amount, status')
+      .select('id, customer_id, order_id, marketplace_listing_id, amount, status')
       .eq('payment_code', paymentCode)
       .single();
 
@@ -348,6 +400,21 @@ async function payosWebhook(req, res, next) {
       .from('payments')
       .update(updatePayload)
       .eq('id', payment.id);
+
+    if (!updateError && newStatus === 'completed') {
+      if (payment.order_id) {
+        await supabaseAdmin
+          .from('orders')
+          .update({
+            deposit_paid: true,
+            deposit_paid_at: new Date().toISOString(),
+          })
+          .eq('id', payment.order_id);
+      }
+      if (payment.marketplace_listing_id) {
+        await marketplaceService.finalizeListingFeePayment(payment.marketplace_listing_id);
+      }
+    }
 
     if (updateError) {
       console.error('PayOS webhook: failed to update payment', updateError);

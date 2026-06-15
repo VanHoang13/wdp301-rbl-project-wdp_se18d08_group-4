@@ -11,7 +11,13 @@ router.get('/browse', providersController.browse);
 router.get('/me/earnings', requireAuth, requireRole('provider'), providersController.getEarnings);
 router.get('/me/schedule', requireAuth, requireRole('provider'), providersController.getSchedule);
 router.patch('/me/schedule', requireAuth, requireRole('provider'), providersController.updateSchedule);
-router.post('/me/documents', requireAuth, requireRole('provider'), handleProviderDocsUpload, providersController.uploadDocuments);
+router.post(
+  '/me/documents',
+  requireAuth,
+  requireRole('provider'),
+  handleProviderDocsUpload,
+  providersController.uploadDocuments,
+);
 
 router.get('/:id', requireAuth, requireRole('customer'), providersController.getById);
 

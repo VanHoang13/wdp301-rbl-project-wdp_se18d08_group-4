@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
+import '../../data/payments_repository.dart';
 import '../../domain/payment_method_models.dart';
 
 /// Liên kết MoMo hoặc PayOS.
@@ -15,6 +17,7 @@ class LinkPaymentMethodPage extends StatefulWidget {
 }
 
 class _LinkPaymentMethodPageState extends State<LinkPaymentMethodPage> {
+  final _repo = PaymentsRepository();
   bool _linking = false;
 
   String get _name => switch (widget.kind) {
@@ -45,14 +48,31 @@ class _LinkPaymentMethodPageState extends State<LinkPaymentMethodPage> {
 
   Future<void> _link() async {
     setState(() => _linking = true);
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() => _linking = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Đã liên kết $_name')),
-    );
-    Navigator.of(context).pop();
-    Navigator.of(context).pop();
+    try {
+      await _repo.addPaymentMethod(
+        kind: widget.kind,
+        label: '$_name · đã liên kết',
+        tokenRef: '${widget.kind.name}_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã liên kết $_name')),
+      );
+      Navigator.of(context).pop();
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade700),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không liên kết được. Kiểm tra đăng nhập và backend.')),
+      );
+    } finally {
+      if (mounted) setState(() => _linking = false);
+    }
   }
 
   @override

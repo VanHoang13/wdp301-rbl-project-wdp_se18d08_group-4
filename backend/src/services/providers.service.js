@@ -42,6 +42,19 @@ async function browseProviders({ city, minRating, limit = 20 }) {
   const { data, error } = await query;
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
 
+  if (city) {
+    const needle = String(city).toLowerCase();
+    return (data || []).filter((row) => {
+      const areas = Array.isArray(row.service_area) ? row.service_area : [];
+      if (areas.length === 0) return needle.includes('đà nẵng') || needle.includes('da nang');
+      return areas.some(
+        (a) =>
+          String(a).toLowerCase().includes(needle) ||
+          needle.includes(String(a).toLowerCase()),
+      );
+    });
+  }
+
   return data;
 }
 
@@ -120,6 +133,7 @@ async function loadProviderRow(providerId) {
   return loadProviderFromProfilesOnly(providerId);
 }
 
+/** Gộp profiles (metadata) + provider_profiles (nhà xe) — tránh SELECT cột không có trên profiles. */
 async function loadProviderFromProfilesOnly(providerId) {
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
@@ -392,7 +406,9 @@ async function uploadProviderDocuments(providerId, filesMap) {
 
     if (uploadError) throw httpError(500, uploadError.message, 'storage_error');
 
-    const { data: urlData } = supabaseAdmin.storage.from(PROVIDER_DOCS_BUCKET).getPublicUrl(objectPath);
+    const { data: urlData } = supabaseAdmin.storage
+      .from(PROVIDER_DOCS_BUCKET)
+      .getPublicUrl(objectPath);
     const url = urlData?.publicUrl;
     if (!url) throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
 

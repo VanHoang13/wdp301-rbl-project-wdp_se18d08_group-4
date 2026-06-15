@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,7 +6,6 @@ import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/documents/presentation/pages/documents_page.dart';
 import '../../features/earnings/presentation/pages/provider_earnings_history_page.dart';
 import '../../features/payments/presentation/pages/provider_payout_settings_page.dart';
-import '../../features/messages/presentation/pages/chat_thread_page.dart';
 import '../../features/notifications/presentation/pages/provider_notification_detail_page.dart';
 import '../../features/notifications/presentation/pages/provider_notifications_page.dart';
 import '../../features/profile/presentation/pages/provider_reviews_page.dart';
@@ -64,7 +62,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/payout/settings', builder: (_, __) => const ProviderPayoutSettingsPage()),
       GoRoute(
         path: '/chat/:threadId',
-        builder: (_, state) => ChatThreadPage(threadId: state.pathParameters['threadId']!),
+        redirect: (_, __) => '/home',
       ),
       GoRoute(path: '/profile/reviews', builder: (_, __) => const ProviderReviewsPage()),
       GoRoute(path: '/notifications', builder: (_, __) => const ProviderNotificationsPage()),

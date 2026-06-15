@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+import '../../../../core/auth/auth_token_storage.dart';
 import '../../../../core/mock/mock_customer_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../data/chat_repository.dart';
@@ -74,9 +75,11 @@ class _ChatThreadBodyState extends State<ChatThreadBody> {
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty) return;
     _input.clear();
+    final user = await AuthTokenStorage.instance.loadUser();
+    final senderId = user?['id'] as String? ?? MockCustomerData.userId;
     final msg = await _repo.sendMessage(
       conversationId: widget.conversationId,
-      senderId: MockCustomerData.userId,
+      senderId: senderId,
       content: text,
     );
     if (!mounted) return;

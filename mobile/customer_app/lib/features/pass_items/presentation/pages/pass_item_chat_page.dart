@@ -391,15 +391,19 @@ class _PassItemChatPageState extends State<PassItemChatPage> {
     );
   }
 
-  void _startDelivery(PassItemPost post) {
+  Future<void> _startDelivery(PassItemPost post) async {
     if (!post.dealConfirmed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chờ người bán chốt đơn trong chat trước khi đặt xe')),
       );
       return;
     }
-    context.read<BookingFlowCubit>().startPassItemDelivery(pickup: post.area, passItemId: post.id);
-    context.push('/booking/location');
+    await context.read<BookingFlowCubit>().preparePassItemDelivery(
+          pickup: post.area,
+          passItemId: post.id,
+        );
+    if (!mounted) return;
+    context.push('/booking/pass-item/transport');
   }
 
   Future<void> _cancelDealConfirmation() async {

@@ -61,4 +61,11 @@ async function uploadDocuments(req, res, next) {
   }
 }
 
-module.exports = { browse, getById, getEarnings, getSchedule, updateSchedule, uploadDocuments };
+module.exports = {
+  browse,
+  getById,
+  getEarnings,
+  getSchedule,
+  updateSchedule,
+  uploadDocuments,
+};
