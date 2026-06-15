@@ -272,6 +272,7 @@ export const marketplaceApi = {
   sellerStats: (sellerId: string) => get(`/marketplace/seller/${sellerId}/stats`),
   rate: (id: string, rating: number, comment?: string) => post(`/marketplace/listings/${id}/rating`, { rating, comment }),
   bump: (id: string) => post(`/marketplace/listings/${id}/bump`, {}),
+  delete: (id: string) => del(`/marketplace/listings/${id}`),
 };
 
 /* ── Payments ── */

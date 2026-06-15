@@ -1,47 +1,40 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Calistoga } from "next/font/google";
+import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeInit } from "@/components/shared/theme-init";
 import "./globals.css";
 
-const inter = Inter({
+const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const calistoga = Calistoga({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-display",
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
   display: "swap",
 });
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin", "vietnamese"],
   weight: ["400", "500"],
-  variable: "--font-mono",
+  variable: "--font-mono-code",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "UniMove - Chuyển trọ thông minh",
-  description: "Nền tảng vận chuyển và chuyển trọ dành cho sinh viên",
+  title: "UniMove - Chuyển trọ & Chợ sinh viên",
+  description: "Nền tảng chuyển đồ và mua bán đồ dùng sinh viên",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#0052FF",
+  themeColor: "#2563EB",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" suppressHydrationWarning>
       <body
-        className={`${inter.className} ${inter.variable} ${calistoga.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} antialiased`}
       >
         <ThemeInit />
         <ToastProvider>{children}</ToastProvider>
