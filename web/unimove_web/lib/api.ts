@@ -281,6 +281,14 @@ export const paymentsApi = {
     post("/payments/deposit", { order_id: orderId, amount, payment_method: method }),
 };
 
+/* ── Conversations (Chat với khách hàng) ── */
+export const conversationsApi = {
+  list: () => get("/conversations"),
+  getMessages: (orderId: string) => get(`/conversations/${orderId}/messages`),
+  sendMessage: (orderId: string, content: string) =>
+    post(`/conversations/${orderId}/messages`, { content }),
+};
+
 /* ── Provider profile (upload docs) ── */
 export const providerApi = {
   uploadDocuments: (files: Record<string, File>) => {

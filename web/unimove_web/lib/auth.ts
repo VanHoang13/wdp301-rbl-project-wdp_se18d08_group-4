@@ -12,6 +12,8 @@ export interface AuthUser {
   /* customer extras */
   student_id?: string;
   loyalty_points?: number;
+  /* common extras */
+  address?: string;
   /* provider extras */
   business_name?: string;
   vehicle_type?: string;

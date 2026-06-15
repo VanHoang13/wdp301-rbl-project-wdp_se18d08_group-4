@@ -56,7 +56,8 @@ function requireRole(...roles) {
         });
       }
 
-      if (profile.status && profile.status !== 'active') {
+      const ALLOWED_STATUSES = ['active', 'pending_verification'];
+      if (profile.status && !ALLOWED_STATUSES.includes(profile.status)) {
         return res.status(403).json({
           success: false,
           message: 'Tài khoản đã bị vô hiệu hóa',

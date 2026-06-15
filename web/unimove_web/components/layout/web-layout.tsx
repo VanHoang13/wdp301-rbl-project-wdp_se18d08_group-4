@@ -28,15 +28,14 @@ const customerNav: NavItem[] = [
 ];
 
 const providerNav: NavItem[] = [
-  { href: "/dashboard",  label: "Tổng quan",  icon: LayoutDashboard },
-  { href: "/orders",     label: "Đơn hàng",   icon: ClipboardList },
-  { href: "/earnings",   label: "Thu nhập",   icon: DollarSign },
-  { href: "/messages",   label: "Thông báo",  icon: MessageSquare },
-  { href: "/documents",  label: "Giấy tờ",    icon: FileText },
+  { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
+  { href: "/orders",    label: "Đơn hàng",  icon: ClipboardList },
+  { href: "/earnings",  label: "Thu nhập",  icon: DollarSign },
+  { href: "/messages",  label: "Tin nhắn",  icon: MessageSquare },
 ];
 
-const GREEN = "#16A34A";
-const BLUE  = "#2563EB";
+const BRAND = "#1A56DB";  // provider primary (royal blue)
+const BLUE  = "#2563EB";  // customer primary
 
 export function WebLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -64,21 +63,28 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
         }
       }).catch(() => {});
     } else if (u?.role === "provider") {
+      // Always fetch fresh data — localStorage may have stale is_verified after admin approval
       authApi.getMe().then(r => {
         if (r.success && r.data) {
-          const profile = { ...u, ...(r.data as AuthUser) };
-          setUser(profile);
+          const fresh = { ...u, ...(r.data as AuthUser) };
           const token = localStorage.getItem("unimove_token");
-          if (token) storeAuth(profile, token);
+          if (token) storeAuth(fresh, token);
+          setUser(fresh);
+          if (!fresh.is_verified) router.replace("/cho-duyet");
+        } else {
+          // API failed → fall back to cached value
+          if (!u?.is_verified) router.replace("/cho-duyet");
         }
-      }).catch(() => {});
+      }).catch(() => {
+        if (!u?.is_verified) router.replace("/cho-duyet");
+      });
     }
-  }, []);
+  }, [pathname]); // re-run on every route change
 
   const logout     = () => logoutToHome(router);
   const isProvider = user?.role === "provider";
   const nav        = isProvider ? providerNav : customerNav;
-  const accent     = isProvider ? GREEN : BLUE;
+  const accent     = isProvider ? BRAND : BLUE;
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white">
@@ -90,7 +96,7 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
         </div>
         <span
           className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white shrink-0"
-          style={{ backgroundColor: isProvider ? GREEN : BLUE }}
+          style={{ backgroundColor: isProvider ? BRAND : BLUE }}
         >
           {isProvider ? "Tài xế" : "Khách hàng"}
         </span>
@@ -199,7 +205,7 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
               user={user}
               accentGradient={
                 isProvider
-                  ? "linear-gradient(135deg, #15803d, #16a34a)"
+                  ? "linear-gradient(135deg, #1648C0, #1A56DB)"
                   : "linear-gradient(135deg, #1e40af, #2563eb)"
               }
             />

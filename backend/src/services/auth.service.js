@@ -209,6 +209,19 @@ async function login(body) {
     throw httpError(401, 'Invalid email or password', 'auth_failed');
   }
 
+  // For providers, include is_verified from provider_profiles
+  if (profile.role === 'provider') {
+    const { data: pp } = await supabaseAdmin
+      .from('provider_profiles')
+      .select('business_name, is_verified, rating')
+      .eq('id', profile.id)
+      .maybeSingle();
+    const user = publicProfile(profile, pp || undefined);
+    const { signAccessToken } = require('../utils/jwt');
+    const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
+    return { user, accessToken };
+  }
+
   return buildAuthResponse(profile);
 }
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Truck, DollarSign, Package, Clock, MapPin,
   AlertTriangle, ChevronRight, TrendingUp, Users,
@@ -20,11 +21,13 @@ interface Order {
   customer?: { full_name: string; phone: string };
 }
 
-const GREEN = "#16A34A";
+const BRAND   = "#1A56DB";  // provider primary
+const SUCCESS = "#16A34A";  // semantic: hoàn thành, +tiền
 const BLUE  = "#2563EB";
 
 export default function ProviderDashboardPage() {
   const { toast }  = useToast();
+  const router     = useRouter();
   const [user,      setUser]      = useState<AuthUser | null>(null);
   const [hydrated,  setHydrated]  = useState(false);
   const [pending,   setPending]   = useState<Order[]>([]);
@@ -54,7 +57,12 @@ export default function ProviderDashboardPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setUser(getStoredUser()); setHydrated(true); }, []);
+  useEffect(() => {
+    const u = getStoredUser();
+    setUser(u);
+    setHydrated(true);
+    if (u && !u.is_verified) router.replace("/cho-duyet");
+  }, [router]);
 
   const totalEarnings = completed.reduce((s, o) => s + (o.estimated_price ?? 0), 0);
 
@@ -88,9 +96,9 @@ export default function ProviderDashboardPage() {
         <StatCard label="Đang thực hiện" value={active.length.toString()}
           icon={<Truck size={20} />} color={BLUE} bg="#EFF6FF" />
         <StatCard label="Đã hoàn thành" value={completed.length.toString()}
-          icon={<TrendingUp size={20} />} color={GREEN} bg="#F0FDF4" />
+          icon={<TrendingUp size={20} />} color={SUCCESS} bg="#F0FDF4" />
         <StatCard label="Tổng thu nhập" value={formatVND(totalEarnings * 0.9)}
-          icon={<DollarSign size={20} />} color={GREEN} bg="#F0FDF4" />
+          icon={<DollarSign size={20} />} color={SUCCESS} bg="#F0FDF4" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -151,7 +159,7 @@ export default function ProviderDashboardPage() {
                           ) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className="font-bold" style={{ color: GREEN }}>
+                          <span className="font-bold" style={{ color: BRAND }}>
                             {o.estimated_price ? formatVND(o.estimated_price) : "Chờ báo giá"}
                           </span>
                         </td>
@@ -167,7 +175,7 @@ export default function ProviderDashboardPage() {
                             <button
                               onClick={() => respond(o.id, "accept")}
                               className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
-                              style={{ backgroundColor: GREEN }}
+                              style={{ backgroundColor: BRAND }}
                             >
                               Chấp nhận
                             </button>
@@ -211,7 +219,7 @@ export default function ProviderDashboardPage() {
                           <span className="text-xs text-gray-400">{timeAgo(o.created_at)}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <MapPin size={13} className="text-green-500 shrink-0" />
+                          <MapPin size={13} className="text-blue-400 shrink-0" />
                           <p className="text-sm font-medium text-gray-900 truncate">{o.dropoff_address}</p>
                         </div>
                       </div>
@@ -227,11 +235,11 @@ export default function ProviderDashboardPage() {
             <h2 className="text-base font-bold text-gray-900 mb-3">Truy cập nhanh</h2>
             <div className="space-y-2">
               {[
-                { href: "/earnings",  label: "Thu nhập của tôi",         icon: DollarSign, color: GREEN, bg: "#F0FDF4" },
+                { href: "/earnings",  label: "Thu nhập của tôi",         icon: DollarSign, color: BRAND, bg: "#EFF4FE" },
                 { href: "/documents", label: hydrated && user?.is_verified ? "Đã xác minh ✓" : "Upload giấy tờ",
                   icon: Users,
-                  color: hydrated && user?.is_verified ? GREEN : "#D97706",
-                  bg:    hydrated && user?.is_verified ? "#F0FDF4" : "#FFFBEB" },
+                  color: hydrated && user?.is_verified ? SUCCESS : "#D97706",
+                  bg:    hydrated && user?.is_verified ? "#F0FDF4"  : "#FFFBEB" },
                 { href: "/orders",    label: "Tất cả đơn hàng",           icon: Package, color: BLUE, bg: "#EFF6FF" },
               ].map(item => (
                 <Link key={item.href} href={item.href}>

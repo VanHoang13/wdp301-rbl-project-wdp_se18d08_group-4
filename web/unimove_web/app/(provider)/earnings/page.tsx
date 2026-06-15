@@ -11,7 +11,8 @@ interface Completed {
   created_at: string; dropoff_address: string;
 }
 
-const GREEN = "#16A34A";
+const BRAND   = "#1A56DB";  // provider primary
+const SUCCESS = "#16A34A";  // semantic: +tiền, hoàn thành
 
 export default function EarningsPage() {
   const [orders,  setOrders]  = useState<Completed[]>([]);
@@ -63,10 +64,10 @@ export default function EarningsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Revenue hero card */}
         <div className="rounded-2xl p-5 lg:col-span-2 text-white"
-          style={{ background: "linear-gradient(135deg, #14532d 0%, #16a34a 100%)" }}>
+          style={{ background: "linear-gradient(135deg, #1648C0 0%, #1A56DB 100%)" }}>
           <div className="flex items-center gap-2 mb-3">
-            <DollarSign size={17} className="text-green-200" />
-            <p className="text-green-100 text-sm font-medium">Tổng doanh thu</p>
+            <DollarSign size={17} className="text-blue-200" />
+            <p className="text-blue-100 text-sm font-medium">Tổng doanh thu</p>
           </div>
           {loading
             ? <div className="h-9 w-40 rounded-lg mb-1 animate-pulse bg-white/20" />
@@ -74,11 +75,11 @@ export default function EarningsPage() {
           }
           <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/20">
             <div>
-              <p className="text-green-200 text-xs mb-0.5">Thực nhận (90%)</p>
+              <p className="text-blue-200 text-xs mb-0.5">Thực nhận (90%)</p>
               <p className="text-xl font-bold">{formatVND(net)}</p>
             </div>
             <div>
-              <p className="text-green-200 text-xs mb-0.5">Phí nền tảng (10%)</p>
+              <p className="text-blue-200 text-xs mb-0.5">Phí nền tảng (10%)</p>
               <p className="text-xl font-bold text-yellow-200">{formatVND(fee)}</p>
             </div>
           </div>
@@ -116,8 +117,8 @@ export default function EarningsPage() {
                     <p className="text-xs text-gray-400">{data.count} chuyến</p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <ArrowUpRight size={13} style={{ color: GREEN }} />
-                    <span className="font-bold text-sm" style={{ color: GREEN }}>{formatVND(data.total)}</span>
+                    <ArrowUpRight size={13} style={{ color: SUCCESS }} />
+                    <span className="font-bold text-sm" style={{ color: SUCCESS }}>{formatVND(data.total)}</span>
                   </div>
                 </div>
               ))}
@@ -158,7 +159,7 @@ export default function EarningsPage() {
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-                              <Package size={14} style={{ color: GREEN }} />
+                              <Package size={14} style={{ color: SUCCESS }} />
                             </div>
                             <span className="font-medium text-gray-900 max-w-[160px] truncate block">
                               {o.dropoff_address}
@@ -169,7 +170,7 @@ export default function EarningsPage() {
                         <td className="px-4 py-3.5 text-right font-semibold text-gray-900">
                           {formatVND(o.final_price ?? o.estimated_price ?? 0)}
                         </td>
-                        <td className="px-5 py-3.5 text-right font-bold" style={{ color: GREEN }}>
+                        <td className="px-5 py-3.5 text-right font-bold" style={{ color: SUCCESS }}>
                           +{formatVND((o.final_price ?? o.estimated_price ?? 0) * 0.9)}
                         </td>
                       </tr>

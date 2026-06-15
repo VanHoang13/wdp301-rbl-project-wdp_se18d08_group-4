@@ -7,6 +7,7 @@ async function listConversations(userId, role) {
   const isCustomer = role === 'customer';
   const filterCol = isCustomer ? 'customer_id' : 'provider_id';
 
+  // Fetch conversations + order info (no profiles join — FK may not be cached)
   const { data, error } = await supabaseAdmin
     .from('conversations')
     .select(`
@@ -17,27 +18,44 @@ async function listConversations(userId, role) {
       last_message_at,
       customer_unread_count,
       provider_unread_count,
+      customer_id,
+      provider_id,
       created_at,
-      order:orders!order_id(id, status, service_type, created_at),
-      customer:profiles!customer_id(id, full_name, avatar_url, phone),
-      provider:profiles!provider_id(id, full_name, avatar_url, phone)
+      order:orders!order_id(id, status, service_type, created_at)
     `)
     .eq(filterCol, userId)
     .order('last_message_at', { ascending: false, nullsFirst: false });
 
   if (error) throw httpError(500, error.message, 'db_error');
+  if (!data || data.length === 0) return [];
 
-  return (data || []).map((conv) => ({
-    id: conv.id,
-    order_id: conv.order_id,
-    is_active: conv.is_active,
-    last_message_preview: conv.last_message_preview,
-    last_message_at: conv.last_message_at,
-    unread_count: isCustomer ? conv.customer_unread_count : conv.provider_unread_count,
-    created_at: conv.created_at,
-    order: conv.order,
-    counterpart: isCustomer ? conv.provider : conv.customer,
-  }));
+  // Collect counterpart IDs and fetch profiles separately
+  const counterpartIds = data.map(c => isCustomer ? c.provider_id : c.customer_id).filter(Boolean);
+  const uniqueIds = [...new Set(counterpartIds)];
+
+  let profileMap = {};
+  if (uniqueIds.length > 0) {
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, avatar_url, phone')
+      .in('id', uniqueIds);
+    (profiles || []).forEach(p => { profileMap[p.id] = p; });
+  }
+
+  return data.map((conv) => {
+    const counterpartId = isCustomer ? conv.provider_id : conv.customer_id;
+    return {
+      id: conv.id,
+      order_id: conv.order_id,
+      is_active: conv.is_active,
+      last_message_preview: conv.last_message_preview,
+      last_message_at: conv.last_message_at,
+      unread_count: isCustomer ? conv.customer_unread_count : conv.provider_unread_count,
+      created_at: conv.created_at,
+      order: conv.order,
+      counterpart: profileMap[counterpartId] ?? null,
+    };
+  });
 }
 
 // ── GET /api/conversations/:orderId/messages ──────────────────────────────────
@@ -85,15 +103,26 @@ async function getMessages(orderId, userId) {
       location_name,
       is_read,
       read_at,
-      created_at,
-      sender:profiles!sender_id(id, full_name, avatar_url),
-      reply_to:messages!reply_to_id(id, content, sender_id)
+      sender_id,
+      reply_to_id,
+      created_at
     `)
     .eq('conversation_id', conv.id)
     .eq('is_deleted', false)
     .order('created_at', { ascending: true });
 
   if (msgsErr) throw httpError(500, msgsErr.message, 'db_error');
+
+  // Fetch sender profiles separately
+  const senderIds = [...new Set((msgs || []).map(m => m.sender_id).filter(Boolean))];
+  let senderMap = {};
+  if (senderIds.length > 0) {
+    const { data: senders } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', senderIds);
+    (senders || []).forEach(s => { senderMap[s.id] = s; });
+  }
 
   return {
     conversation_id: conv.id,
@@ -108,9 +137,9 @@ async function getMessages(orderId, userId) {
       location_name: m.location_name ?? null,
       is_read: m.is_read,
       read_at: m.read_at ?? null,
-      is_mine: m.sender?.id === userId,
-      sender: m.sender,
-      reply_to: m.reply_to ?? null,
+      is_mine: m.sender_id === userId,
+      sender: senderMap[m.sender_id] ?? null,
+      reply_to: null,
       created_at: m.created_at,
     })),
   };

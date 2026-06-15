@@ -2,29 +2,60 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Truck, RefreshCw, Search, CheckCircle, XCircle, MapPin } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Truck, RefreshCw, Search, CheckCircle, XCircle,
+  MapPin, Package, Clock,
+} from "lucide-react";
 import { ordersApi } from "@/lib/api";
-import { getOrderStatusLabel, getOrderStatusColor, timeAgo, formatVND } from "@/lib/utils";
+import { timeAgo, formatVND } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
-interface Order { id: string; status: string; pickup_address: string; dropoff_address: string; estimated_price?: number; final_price?: number; created_at: string; customer?: { full_name: string; phone: string }; }
+interface Order {
+  id: string; status: string;
+  pickup_address: string; dropoff_address: string;
+  estimated_price?: number; final_price?: number;
+  created_at: string;
+  customer?: { full_name: string; phone: string };
+}
+
+const GREEN = "#16A34A";
 
 const TABS = [
-  { key: "", label: "Tất cả" },
-  { key: "pending", label: "Chờ xác nhận" },
+  { key: "",                            label: "Tất cả" },
+  { key: "pending",                     label: "Chờ xác nhận" },
   { key: "accepted,picking_up,in_progress", label: "Đang thực hiện" },
-  { key: "completed", label: "Hoàn thành" },
-  { key: "cancelled", label: "Đã hủy" },
+  { key: "completed",                   label: "Hoàn thành" },
+  { key: "cancelled",                   label: "Đã hủy" },
 ];
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  pending:     { label: "Chờ xác nhận",    bg: "#FEF9C3", text: "#A16207", dot: "#EAB308" },
+  accepted:    { label: "Đã chấp nhận",    bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
+  picking_up:  { label: "Đang đến",        bg: "#EDE9FE", text: "#6D28D9", dot: "#8B5CF6" },
+  in_progress: { label: "Đang vận chuyển", bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
+  completed:   { label: "Hoàn thành",      bg: "#DCFCE7", text: "#15803D", dot: "#16A34A" },
+  cancelled:   { label: "Đã hủy",          bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
+  disputed:    { label: "Khiếu nại",       bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
+  matched:     { label: "Đã ghép đơn",     bg: "#F0FDF4", text: "#15803D", dot: "#16A34A" },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? { label: status, bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" };
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
+      style={{ backgroundColor: cfg.bg, color: cfg.text }}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cfg.dot }} />
+      {cfg.label}
+    </span>
+  );
+}
 
 export default function ProviderOrdersPage() {
   const { toast } = useToast();
-  const [tab, setTab] = useState(0);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [tab,     setTab]     = useState(0);
+  const [orders,  setOrders]  = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search,  setSearch]  = useState("");
 
   const load = useCallback(async (status: string) => {
     setLoading(true);
@@ -42,141 +73,212 @@ export default function ProviderOrdersPage() {
   const handle = async (id: string, action: "accept" | "reject") => {
     try {
       await ordersApi.respond(id, action);
-      toast(action === "accept" ? "Đã chấp nhận!" : "Đã từ chối", action === "accept" ? "success" : "info");
+      toast(action === "accept" ? "Đã chấp nhận đơn!" : "Đã từ chối đơn",
+        action === "accept" ? "success" : "info");
       load(TABS[tab].key);
     } catch { toast("Thử lại sau", "error"); }
   };
 
   const filtered = orders.filter(o =>
     !search ||
-    (o.dropoff_address?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+    o.dropoff_address?.toLowerCase().includes(search.toLowerCase()) ||
+    o.pickup_address?.toLowerCase().includes(search.toLowerCase()) ||
     (o.customer?.full_name?.toLowerCase().includes(search.toLowerCase()) ?? false)
   );
 
+  const pendingCount = orders.filter(o => o.status === "pending").length;
+
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6">
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: "var(--text)" }}>Quản lý đơn hàng</h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>Nhận và xử lý đơn hàng từ khách</p>
+          <h1 className="text-2xl font-bold text-gray-900">Quản lý đơn hàng</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Nhận và xử lý đơn hàng từ khách</p>
         </div>
+        {pendingCount > 0 && (
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold text-white"
+            style={{ backgroundColor: "#EAB308" }}>
+            <Clock size={14} />
+            {pendingCount} chờ xác nhận
+          </span>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* Tabs + Search bar */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-1.5 p-1 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="flex gap-1 p-1 rounded-2xl bg-gray-100">
           {TABS.map((t, i) => (
             <button key={i} onClick={() => setTab(i)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
-              style={{ backgroundColor: tab === i ? "var(--provider)" : "transparent", color: tab === i ? "white" : "var(--muted)" }}>
+              className="px-3.5 py-1.5 rounded-xl text-sm font-semibold transition-all"
+              style={tab === i
+                ? { backgroundColor: GREEN, color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }
+                : { backgroundColor: "transparent", color: "#6B7280" }}>
               {t.label}
             </button>
           ))}
         </div>
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-          <input placeholder="Tìm kiếm..." value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 rounded-xl border text-sm"
-            style={{ backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--text)" }} />
+
+        <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-sm ml-auto">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              placeholder="Tìm theo địa chỉ, khách hàng..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A] focus:border-[#16A34A]"
+            />
+          </div>
+          <button onClick={() => load(TABS[tab].key)}
+            className="h-10 w-10 rounded-xl flex items-center justify-center border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 transition-colors shrink-0">
+            <RefreshCw size={15} />
+          </button>
         </div>
-        <button onClick={() => load(TABS[tab].key)} className="h-9 w-9 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>
-          <RefreshCw size={15} />
-        </button>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+      {/* Table card */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-5 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          <div className="p-6 space-y-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="flex gap-4 items-center animate-pulse">
+                <div className="h-4 w-24 rounded bg-gray-100" />
+                <div className="h-4 flex-1 rounded bg-gray-100" />
+                <div className="h-4 w-20 rounded bg-gray-100" />
+                <div className="h-4 w-16 rounded bg-gray-100" />
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="py-14 text-center">
-            <Truck size={40} className="mx-auto mb-3 opacity-20" style={{ color: "var(--muted)" }} />
-            <p className="font-semibold" style={{ color: "var(--text)" }}>Không có đơn hàng</p>
+          <div className="py-16 text-center">
+            <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-gray-50">
+              <Package size={28} className="text-gray-300" />
+            </div>
+            <p className="font-semibold text-gray-500">Không có đơn hàng</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {search ? "Không tìm thấy kết quả phù hợp" : "Chưa có đơn hàng nào"}
+            </p>
           </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Mã đơn</th>
-                <th>Địa điểm</th>
-                <th>Khách hàng</th>
-                <th>Giá</th>
-                <th>Trạng thái</th>
-                <th>Thời gian</th>
-                <th>Hành động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(o => {
-                const sc = getOrderStatusColor(o.status);
-                const isPending = o.status === "pending";
-                return (
-                  <tr key={o.id}>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        {isPending && <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--warning)" }} />}
-                        <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
-                          style={{ backgroundColor: "var(--surface)", color: "var(--muted)" }}>
-                          #{o.id.slice(0, 8).toUpperCase()}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="max-w-[200px]">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "var(--primary)" }} />
-                          <p className="text-sm truncate">{o.pickup_address}</p>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {["Mã đơn", "Địa điểm", "Khách hàng", "Giá", "Trạng thái", "Thời gian", "Hành động"].map(h => (
+                    <th key={h} className="px-5 py-3.5 text-left text-xs font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map(o => {
+                  const isPending = o.status === "pending";
+                  const price = o.final_price ?? o.estimated_price;
+                  return (
+                    <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
+
+                      {/* Mã đơn */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {isPending && (
+                            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: "#EAB308" }} />
+                          )}
+                          <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">
+                            #{o.id.slice(0, 8).toUpperCase()}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin size={8} className="shrink-0" style={{ color: "var(--success)" }} />
-                          <p className="text-sm truncate font-medium">{o.dropoff_address}</p>
+                      </td>
+
+                      {/* Địa điểm */}
+                      <td className="px-5 py-4">
+                        <div className="space-y-1 max-w-[220px]">
+                          <div className="flex items-start gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1" />
+                            <p className="text-sm text-gray-600 truncate">{o.pickup_address || "—"}</p>
+                          </div>
+                          <div className="flex items-start gap-1.5">
+                            <MapPin size={9} className="shrink-0 mt-0.5" style={{ color: GREEN }} />
+                            <p className="text-sm font-semibold text-gray-800 truncate">{o.dropoff_address || "—"}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      {o.customer ? (
-                        <div>
-                          <p className="text-sm">{o.customer.full_name}</p>
-                          <p className="text-xs" style={{ color: "var(--muted)" }}>{o.customer.phone}</p>
-                        </div>
-                      ) : <span style={{ color: "var(--muted)" }}>—</span>}
-                    </td>
-                    <td><span className="text-sm font-semibold" style={{ color: "var(--success)" }}>{(o.final_price ?? o.estimated_price) ? formatVND(o.final_price ?? o.estimated_price ?? 0) : "—"}</span></td>
-                    <td><Badge style={{ backgroundColor: sc + "22", color: sc, border: `1px solid ${sc}44` }}>{getOrderStatusLabel(o.status)}</Badge></td>
-                    <td><span className="text-xs" style={{ color: "var(--muted)" }}>{timeAgo(o.created_at)}</span></td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
-                        {isPending && (
-                          <>
-                            <button onClick={() => handle(o.id, "reject")}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
-                              style={{ color: "var(--error)", backgroundColor: "var(--error-tint)" }}>
-                              <XCircle size={12} /> Từ chối
-                            </button>
-                            <button onClick={() => handle(o.id, "accept")}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white flex items-center gap-1"
-                              style={{ backgroundColor: "var(--success)" }}>
-                              <CheckCircle size={12} /> Nhận
-                            </button>
-                          </>
+                      </td>
+
+                      {/* Khách hàng */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        {o.customer ? (
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">{o.customer.full_name}</p>
+                            <p className="text-xs text-gray-400">{o.customer.phone}</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
                         )}
-                        <Link href={`/orders/${o.id}`}>
-                          <button className="px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                            style={{ color: "var(--primary)", backgroundColor: "var(--primary-tint)" }}>
-                            Chi tiết
-                          </button>
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+
+                      {/* Giá */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        {price ? (
+                          <span className="text-sm font-bold" style={{ color: GREEN }}>
+                            {formatVND(price)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-300">—</span>
+                        )}
+                      </td>
+
+                      {/* Trạng thái */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <StatusBadge status={o.status} />
+                      </td>
+
+                      {/* Thời gian */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <span className="text-xs text-gray-400">{timeAgo(o.created_at)}</span>
+                      </td>
+
+                      {/* Hành động */}
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {isPending && (
+                            <>
+                              <button
+                                onClick={() => handle(o.id, "reject")}
+                                className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 transition-colors bg-red-50 text-red-600 hover:bg-red-100">
+                                <XCircle size={12} /> Từ chối
+                              </button>
+                              <button
+                                onClick={() => handle(o.id, "accept")}
+                                className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-1 transition-all hover:brightness-110"
+                                style={{ backgroundColor: GREEN }}>
+                                <CheckCircle size={12} /> Nhận
+                              </button>
+                            </>
+                          )}
+                          <Link href={`/orders/${o.id}`}>
+                            <button className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                              Chi tiết
+                            </button>
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
+
+        {/* Footer */}
         {filtered.length > 0 && (
-          <div className="px-5 py-3 text-xs" style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
-            Hiển thị {filtered.length} đơn hàng
+          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-xs text-gray-400">Hiển thị <strong className="text-gray-600">{filtered.length}</strong> đơn hàng</p>
+            {search && (
+              <button onClick={() => setSearch("")} className="text-xs text-blue-500 hover:underline">
+                Xoá bộ lọc
+              </button>
+            )}
           </div>
         )}
       </div>
