@@ -55,7 +55,7 @@ async function deletePaymentMethod(req, res, next) {
     if (!id) {
       return next(httpError(400, 'Thiếu payment method ID', 'missing_id'));
     }
-    const result = await paymentsService.deletePaymentMethod(req.user.id, id);
+    await paymentsService.deletePaymentMethod(req.user.id, id);
     res.json({ success: true, message: 'Đã xóa phương thức thanh toán' });
   } catch (error) {
     next(error);
@@ -75,7 +75,7 @@ async function getPayments(req, res, next) {
   }
 }
 
-/** BE-035 — GET /api/payments/:id — Chi tiết giao dịch */
+/** BE-035 — GET /api/payments/:id — Chi tiết giao dịch (auto-sync PayOS qua service) */
 async function getPayment(req, res, next) {
   try {
     const { id } = req.params;
@@ -94,7 +94,6 @@ async function createDeposit(req, res, next) {
   try {
     const { order_id, amount, payment_method = 'payos', customer_name, customer_email } = req.body;
 
-    // Validation
     if (!order_id || !amount) {
       return next(httpError(400, 'Thiếu order_id hoặc amount', 'validation_error'));
     }
@@ -107,7 +106,6 @@ async function createDeposit(req, res, next) {
       return next(httpError(400, 'Hiện chỉ hỗ trợ thanh toán PayOS', 'unsupported_payment_method'));
     }
 
-    // Get order details to verify it exists and belongs to user
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .select('id, customer_id, service_type')
@@ -122,11 +120,9 @@ async function createDeposit(req, res, next) {
       return next(httpError(403, 'Không có quyền truy cập đơn hàng này', 'access_denied'));
     }
 
-    // Generate payment code and order code
     const paymentCode = payosService.generatePaymentCode();
     const orderCode = payosService.generateOrderCode();
 
-    // Create payment record in DB (status: pending)
     const { data: paymentRecord, error: insertError } = await supabaseAdmin
       .from('payments')
       .insert({
@@ -149,16 +145,13 @@ async function createDeposit(req, res, next) {
       return next(httpError(500, 'Lỗi tạo payment record', 'db_error'));
     }
 
-    // Return/cancel qua API backend → tự sync PayOS (local + production), rồi redirect về app
     const payosReturnUrl = `${env.API_URL}/api/payments/payos/return?payment_code=${encodeURIComponent(paymentCode)}`;
     const payosCancelUrl = `${env.API_URL}/api/payments/payos/cancel?payment_code=${encodeURIComponent(paymentCode)}`;
 
-    // Call PayOS API to create payment link
     const payosPayload = {
       paymentCode,
       amount: Math.round(amount),
       orderCode: parseInt(orderCode, 10),
-      // PayOS: description ngắn, không dấu (giới hạn ký tự trên VietQR)
       description: paymentCode,
       returnUrl: payosReturnUrl,
       cancelUrl: payosCancelUrl,
@@ -168,7 +161,6 @@ async function createDeposit(req, res, next) {
 
     const payosResponse = await payosService.createPaymentLink(payosPayload);
 
-    // Update payment record with PayOS details
     const { error: updateError } = await supabaseAdmin
       .from('payments')
       .update({
@@ -185,7 +177,6 @@ async function createDeposit(req, res, next) {
       return next(httpError(500, 'Lỗi cập nhật payment details', 'db_error'));
     }
 
-    // Return payment link and QR code to client
     res.status(201).json({
       success: true,
       data: {
@@ -195,14 +186,11 @@ async function createDeposit(req, res, next) {
         amount,
         currency: 'VND',
         status: 'pending',
-        // Payment links
         checkout_url: payosResponse.checkoutUrl,
         qr_code: payosResponse.qrCode,
-        qr_code_data_url: payosResponse.qrCode, // For displaying QR
-        // Bank transfer details (for manual payment)
+        qr_code_data_url: payosResponse.qrCode,
         bank_account_number: payosResponse.accountNumber,
         bank_account_name: payosResponse.accountName,
-        // Timing
         expires_at: payosResponse.expiresAt,
         created_at: new Date().toISOString(),
       },

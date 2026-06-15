@@ -53,7 +53,7 @@ class _ProfilePageState extends State<ProfilePage> {
           gender: 'male',
           loyaltyPoints: MockCustomerData.loyaltyPoints,
           totalOrders: MockCustomerData.totalOrders,
-          totalSpent: MockCustomerData.walletBalance.toDouble(),
+          totalSpent: MockCustomerData.totalSpent.toDouble(),
         );
         _loading = false;
       });
@@ -338,7 +338,7 @@ class _ProfilePageState extends State<ProfilePage> {
         SizedBox(width: 12.w),
         _statCard(c, LucideIcons.package, 'Đơn hàng', '${p?.totalOrders ?? 0}'),
         SizedBox(width: 12.w),
-        _statCard(c, LucideIcons.wallet, 'Đã chi', _formatCurrency(p?.totalSpent ?? 0)),
+        _statCard(c, LucideIcons.receipt, 'Đã chi', _formatCurrency(p?.totalSpent ?? 0)),
       ],
     );
   }
@@ -503,7 +503,7 @@ class _ProfilePageState extends State<ProfilePage> {
       case 'payos':
         return 'PayOS';
       case 'wallet':
-        return 'Ví UniMove';
+        return 'Chuyển khoản';
       default:
         return m ?? '';
     }

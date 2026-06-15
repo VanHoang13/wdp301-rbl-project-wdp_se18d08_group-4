@@ -23,6 +23,12 @@ class OrderStatusChip extends StatelessWidget {
           const Color(0xFFFEE2E2),
           Icons.cancel_outlined,
         ),
+      OrderStatus.matched => (
+          'Chờ nhà xe',
+          const Color(0xFFF59E0B),
+          const Color(0xFFFEF3C7),
+          Icons.hourglass_top_rounded,
+        ),
       OrderStatus.pickingUp || OrderStatus.inProgress || OrderStatus.accepted => (
           'Đang đến',
           const Color(0xFF004AC6),

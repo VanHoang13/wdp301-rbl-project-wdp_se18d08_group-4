@@ -8,7 +8,7 @@ import '../../data/payments_repository.dart';
 import '../../domain/payment_method_models.dart';
 import 'add_payment_method_page.dart';
 
-/// Danh sách phương thức thanh toán — PayOS, MoMo, Ví UniMove.
+/// Danh sách phương thức thanh toán — PayOS, MoMo, thẻ.
 class PaymentMethodsPage extends StatefulWidget {
   const PaymentMethodsPage({super.key});
 
@@ -31,7 +31,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     final methods = await _repo.fetchSavedPaymentMethods();
     if (mounted) {
       setState(() {
-        _methods = methods;
+        _methods = methods.where((m) => m.kind != PaymentMethodKind.wallet).toList();
         _loading = false;
       });
     }

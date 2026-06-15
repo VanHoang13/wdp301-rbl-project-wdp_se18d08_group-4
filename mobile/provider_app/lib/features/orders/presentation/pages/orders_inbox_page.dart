@@ -5,26 +5,19 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../../../core/config/dev_config.dart';
 import '../../../../core/mock/mock_auth_session.dart';
-import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/uni_move_colors.dart';
-import '../../../../core/widgets/category_filter_bar.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../domain/provider_order.dart';
 import '../providers/orders_providers.dart';
+import '../widgets/provider_order_filter_bar.dart';
+import '../widgets/provider_order_list_card.dart';
 
-class OrdersInboxPage extends ConsumerStatefulWidget {
+class OrdersInboxPage extends ConsumerWidget {
   const OrdersInboxPage({super.key, this.embedded = false});
 
   final bool embedded;
-
-  @override
-  ConsumerState<OrdersInboxPage> createState() => _OrdersInboxPageState();
-}
-
-class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
-  OrderInboxFilter _filter = OrderInboxFilter.all;
 
   List<ProviderOrder> _sorted(List<ProviderOrder> orders) {
     final list = List<ProviderOrder>.from(orders);
@@ -33,8 +26,10 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ordersAsync = ref.watch(providerOrdersListProvider);
+    final myId = ref.watch(providerProfileProvider).asData?.value?.id;
+    final selectedFilter = ref.watch(providerOrdersFilterProvider);
     final c = UniMoveColors.of(context);
 
     return ShadScreenScope(
@@ -62,46 +57,76 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
               return _emptyAll(theme, c);
             }
 
-            final filterOptions = OrderInboxFilter.values
-                .map(
-                  (f) => CategoryFilterOption(
-                    id: f.id,
-                    label: f.label,
-                    count: orders.where(f.matches).length,
-                  ),
-                )
-                .toList();
-
-            final filtered = _sorted(orders.where(_filter.matches).toList());
+            final filtered = _sorted(orders.where((o) => selectedFilter.matches(o, myId)).toList());
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                CategoryFilterBar(
-                  options: filterOptions,
-                  selectedId: _filter.id,
-                  onSelected: (id) {
-                    setState(() {
-                      _filter = OrderInboxFilter.values.firstWhere((f) => f.id == id);
-                    });
+                const SizedBox(height: 8),
+                ProviderOrderFilterBar(
+                  selected: selectedFilter,
+                  orders: orders,
+                  myId: myId,
+                  onSelected: (f) {
+                    ref.read(providerOrdersFilterProvider.notifier).state = f;
                   },
                 ),
                 const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          selectedFilter.hint,
+                          style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+                        ),
+                      ),
+                      if (filtered.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: c.chipBg,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${filtered.length} đơn',
+                            style: theme.textTheme.small.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: c.onSurfaceMuted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Expanded(
                   child: filtered.isEmpty
-                      ? _emptyFilter(theme, c, _filter.label)
+                      ? _emptyFilter(theme, c, selectedFilter.label)
                       : RefreshIndicator(
                           onRefresh: () async => ref.invalidate(providerOrdersListProvider),
-                          child: ListView.builder(
+                          child: ListView.separated(
                             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                            padding: EdgeInsets.fromLTRB(20, 0, 20, 24),
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                             itemCount: filtered.length,
-                            itemBuilder: (_, i) => _OrderTile(
-                              order: filtered[i],
-                              onTrack: filtered[i].isActive
-                                  ? () => context.push('/orders/${filtered[i].id}/tracking')
-                                  : null,
-                            ),
+                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            itemBuilder: (_, i) {
+                              final order = filtered[i];
+                              return ProviderOrderListCard(
+                                order: order,
+                                myId: myId,
+                                filter: selectedFilter,
+                                onTap: () => context.push('/orders/${order.id}'),
+                                onPrimaryAction: selectedFilter == OrderInboxFilter.active
+                                    ? () => context.push('/orders/${order.id}/tracking')
+                                    : null,
+                                primaryActionLabel: selectedFilter == OrderInboxFilter.active
+                                    ? 'Theo dõi GPS'
+                                    : null,
+                              );
+                            },
                           ),
                         ),
                 ),
@@ -110,7 +135,7 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
           },
         );
 
-        if (widget.embedded) {
+        if (embedded) {
           return SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -130,13 +155,6 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
                         onPressed: () => ref.invalidate(providerOrdersListProvider),
                       ),
                     ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text(
-                    'Chọn loại đơn để lọc nhanh',
-                    style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
                   ),
                 ),
                 Expanded(child: body),
@@ -173,15 +191,23 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(LucideIcons.inbox, size: 48, color: c.onSurfaceMuted),
-            const SizedBox(height: 12),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: c.chipBg,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(LucideIcons.inbox, size: 32, color: c.onSurfaceMuted),
+            ),
+            const SizedBox(height: 16),
             Text(
               'Chưa có đơn nào',
               style: theme.textTheme.large.copyWith(fontWeight: FontWeight.w700, color: c.onSurface),
             ),
             const SizedBox(height: 8),
             Text(
-              'Đơn mới sẽ hiển thị khi khách đặt hoặc khi dùng dữ liệu demo.',
+              'Bật "Đang nhận đơn" để nhận yêu cầu báo giá từ khách.',
               textAlign: TextAlign.center,
               style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, height: 1.4),
             ),
@@ -198,7 +224,7 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(LucideIcons.filterX, size: 40, color: c.onSurfaceMuted),
+            Icon(LucideIcons.inbox, size: 40, color: c.onSurfaceMuted),
             const SizedBox(height: 12),
             Text(
               'Không có đơn «$label»',
@@ -206,174 +232,10 @@ class _OrdersInboxPageState extends ConsumerState<OrdersInboxPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Thử chọn «Tất cả» hoặc loại khác.',
+              'Chọn tab khác để xem đơn theo trạng thái.',
               style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OrderTile extends StatelessWidget {
-  const _OrderTile({required this.order, this.onTrack});
-
-  final ProviderOrder order;
-  final VoidCallback? onTrack;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = UniMoveColors.of(context);
-    final theme = ShadTheme.of(context);
-    final highlight = order.isPending;
-    final customer = MockProviderData.customerNameOf(order.customerId);
-
-    final statusColor = switch (true) {
-      _ when order.isPending => c.primaryLight,
-      _ when order.isActive => c.primary,
-      _ when order.isCompleted => c.success,
-      _ => c.onSurfaceMuted,
-    };
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => context.push('/orders/${order.id}'),
-          borderRadius: BorderRadius.circular(16),
-          child: GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            radius: 16,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: highlight ? c.chipBg : c.iconBgSecondary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    highlight ? LucideIcons.bell : LucideIcons.package,
-                    color: c.primary,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '#${order.orderNumber ?? order.id.substring(0, 8)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.small.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: c.onSurface,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            ProviderOrder.formatMoney(order.totalPrice),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.small.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: c.primaryLight,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          order.statusLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.small.copyWith(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: statusColor,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        customer,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.small.copyWith(
-                          color: c.onSurfaceMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        order.pickupAddress,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
-                      ),
-                      if (order.createdAt != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          ProviderOrder.formatDateTime(order.createdAt),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted, fontSize: 11),
-                        ),
-                      ],
-                      if (onTrack != null) ...[
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Material(
-                            color: c.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            child: InkWell(
-                              onTap: onTrack,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(LucideIcons.navigation, size: 14, color: c.primary),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Theo dõi GPS',
-                                      style: theme.textTheme.small.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: c.primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

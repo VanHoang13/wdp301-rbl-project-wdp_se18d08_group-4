@@ -421,7 +421,7 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
                 Text('Lấy tại: ${post.area}',
                     style: TextStyle(fontSize: 12, color: c.onSurfaceMuted, height: 1.35)),
                 const SizedBox(height: 2),
-                Text('Nhập địa chỉ nhận → chọn nhà xe → xác nhận.',
+                Text('Nhập địa chỉ nhận → xem km → chọn combo hoặc chuyến thường.',
                     style: TextStyle(fontSize: 11, color: c.onSurfaceMuted, height: 1.35)),
               ],
             ),
@@ -618,15 +618,19 @@ class _PassItemDetailPageState extends State<PassItemDetailPage> {
     );
   }
 
-  void _startDelivery(PassItemPost post) {
+  Future<void> _startDelivery(PassItemPost post) async {
     if (!post.dealConfirmed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chờ người bán chốt đơn trong chat')),
       );
       return;
     }
-    context.read<BookingFlowCubit>().startPassItemDelivery(pickup: post.area, passItemId: post.id);
-    context.push('/booking/location');
+    await context.read<BookingFlowCubit>().preparePassItemDelivery(
+          pickup: post.area,
+          passItemId: post.id,
+        );
+    if (!mounted) return;
+    context.push('/booking/pass-item/transport');
   }
 
   Future<void> _cancelDealConfirmation(PassItemPost post) async {

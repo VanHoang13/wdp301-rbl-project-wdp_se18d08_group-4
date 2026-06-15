@@ -59,11 +59,47 @@ async function respondToOrder(req, res, next) {
   }
 }
 
+async function acceptOrder(req, res, next) {
+  try {
+    const data = await ordersService.acceptOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function startOrder(req, res, next) {
+  try {
+    const data = await ordersService.startOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function declineOrder(req, res, next) {
+  try {
+    const data = await ordersService.declineOrder(req.params.id, req.user.id, req.body.reason);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function completeOrder(req, res, next) {
+  try {
+    const data = await ordersService.completeOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** BE-025 — PATCH /api/orders/:id/cancel */
 async function cancelOrder(req, res, next) {
   try {
     const { reason } = req.body || {};
-    const data = await ordersService.cancelOrder(req.user.id, req.params.id, reason);
+    const data = await ordersService.cancelOrder(req.params.id, req.user.id, reason);
     let msg = 'Hủy đơn hàng thành công';
     if (data.refund_request) {
       msg = 'Hủy đơn thành công. Yêu cầu hoàn tiền đã gửi, chờ admin duyệt.';
@@ -76,4 +112,25 @@ async function cancelOrder(req, res, next) {
   }
 }
 
-module.exports = { listOrders, createOrder, getOrder, respondToOrder, cancelOrder };
+async function uploadDeliveryPhoto(req, res, next) {
+  try {
+    const file = req.file;
+    const data = await ordersService.uploadDeliveryPhoto(req.params.id, req.user.id, file);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  listOrders,
+  createOrder,
+  getOrder,
+  respondToOrder,
+  acceptOrder,
+  startOrder,
+  declineOrder,
+  completeOrder,
+  cancelOrder,
+  uploadDeliveryPhoto,
+};

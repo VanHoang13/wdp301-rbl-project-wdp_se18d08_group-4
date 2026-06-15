@@ -1,5 +1,6 @@
 import '../../../core/auth/auth_token_storage.dart';
 import '../../../core/network/api_client.dart';
+import '../../orders/domain/checkout_models.dart';
 import '../domain/pass_extras.dart';
 import '../domain/pass_item.dart';
 import '../domain/pass_item_provinces.dart';
@@ -83,6 +84,7 @@ class PassItemRepository {
       buyerTransportBooked: j['transport_booked'] as bool? ?? false,
       isRated: j['is_rated'] as bool? ?? false,
       isInterested: j['is_interested'] as bool? ?? false,
+      feePaid: j['fee_paid'] as bool? ?? true,
     );
   }
 
@@ -160,7 +162,7 @@ class PassItemRepository {
 
   // ── API-062: Đăng tin mới ─────────────────────────────────────────────────
 
-  Future<PassItemPost> create({
+  Future<CreateListingResult> create({
     required String title,
     required String description,
     required String category,
@@ -183,9 +185,59 @@ class PassItemRepository {
       'images': images,
       if (usageDuration.isNotEmpty) 'usage_duration': usageDuration,
     }));
+    final feeJson = (envelope['listing_fee'] as Map?)?.cast<String, dynamic>() ?? {};
+    final listingFee = (feeJson['amount'] as num?)?.toInt() ?? 0;
+    final requiresPayment = feeJson['requires_payment'] as bool? ?? listingFee > 0;
     final post = _fromJson(Map<String, dynamic>.from(envelope['data'] as Map), myId: myId);
     _cache.insert(0, post);
-    return post;
+    return CreateListingResult(
+      post: post,
+      listingFee: listingFee,
+      requiresPayment: requiresPayment,
+    );
+  }
+
+  Future<ListingFeePayResult> payListingFee(
+    String listingId, {
+    String paymentMethod = 'payos',
+  }) async {
+    final myId = await _myId();
+    final envelope = await _api.guard(
+      () => _api.post('/marketplace/listings/$listingId/listing-fee/pay', body: {
+        'payment_method': paymentMethod,
+      }),
+    );
+    final data = Map<String, dynamic>.from((envelope['data'] as Map?)?.cast<String, dynamic>() ?? {});
+
+    PassItemPost? post;
+    final listingJson = data['listing'];
+    if (listingJson is Map) {
+      post = _fromJson(Map<String, dynamic>.from(listingJson), myId: myId);
+      _updateCache([post]);
+    }
+
+    DepositPaymentInfo? payos;
+    final paymentJson = data['payment'];
+    if (paymentJson is Map) {
+      final p = Map<String, dynamic>.from(paymentJson);
+      payos = DepositPaymentInfo(
+        paymentId: p['payment_id'] as String? ?? '',
+        paymentCode: p['payment_code'] as String? ?? '',
+        amount: (p['amount'] as num?)?.round() ?? 0,
+        qrCode: p['qr_code'] as String? ?? p['qr_code_data_url'] as String?,
+        checkoutUrl: p['checkout_url'] as String?,
+        bankAccountNumber: p['bank_account_number'] as String?,
+        bankAccountName: p['bank_account_name'] as String?,
+      );
+    }
+
+    return ListingFeePayResult(
+      listing: post,
+      feePaid: (data['fee_paid'] as num?)?.toInt() ?? (data['fee_amount'] as num?)?.toInt() ?? 0,
+      paymentMethod: data['payment_method'] as String? ?? paymentMethod,
+      alreadyPaid: data['already_paid'] as bool? ?? false,
+      payosPayment: payos,
+    );
   }
 
   // ── Rating ───────────────────────────────────────────────────────────────

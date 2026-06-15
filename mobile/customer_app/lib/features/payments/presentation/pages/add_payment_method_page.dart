@@ -32,7 +32,7 @@ class _AddPaymentMethodPageState extends State<AddPaymentMethodPage> {
     final options = await _repo.fetchAddPaymentOptions();
     if (mounted) {
       setState(() {
-        _options = options;
+        _options = options.where((o) => o.kind != PaymentMethodKind.wallet).toList();
         _loading = false;
       });
     }

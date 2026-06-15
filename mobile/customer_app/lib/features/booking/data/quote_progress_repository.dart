@@ -1,27 +1,41 @@
+import '../../../core/auth/api_session_mode.dart';
 import '../../../core/constants/app_images.dart';
+import '../../orders/data/customer_orders_repository.dart';
+import '../../orders/domain/order_models.dart';
 import '../domain/booking_models.dart';
 import '../domain/quote_models.dart';
 import '../presentation/cubit/booking_flow_state.dart';
 import 'booking_mock_repository.dart';
+import 'order_quotes_repository.dart';
 import 'quote_local_notifications.dart';
 import 'quote_runtime_store.dart';
 
-/// Lưu tiến trình báo giá — Phase 1 mock, sau nối API quote-requests.
+/// Lưu tiến trình báo giá — session thật đồng bộ từ API đơn hàng.
 class QuoteProgressRepository {
-  QuoteProgressRepository._({BookingMockRepository? partnersRepo})
-      : _partnersRepo = partnersRepo ?? BookingMockRepository();
+  QuoteProgressRepository._({
+    BookingMockRepository? partnersRepo,
+    CustomerOrdersRepository? ordersRepo,
+    OrderQuotesRepository? quotesRepo,
+  })  : _partnersRepo = partnersRepo ?? BookingMockRepository(),
+        _ordersRepo = ordersRepo ?? CustomerOrdersRepository(),
+        _quotesRepo = quotesRepo ?? OrderQuotesRepository();
 
   static final QuoteProgressRepository instance = QuoteProgressRepository._();
 
   factory QuoteProgressRepository() => instance;
 
   final BookingMockRepository _partnersRepo;
+  final CustomerOrdersRepository _ordersRepo;
+  final OrderQuotesRepository _quotesRepo;
   static final Map<String, QuoteRequestSnapshot> _store = {};
+
+  Future<bool> _useMockQuotes() => ApiSessionMode.useMockQuotes();
 
   Future<QuoteRequestSnapshot> createFromBooking({
     required String referenceId,
     required BookingFlowState state,
     List<String> imageUrls = const [],
+    String? orderId,
   }) async {
     final requestedAt = state.scheduledPickupAt;
     final snapshot = QuoteRequestSnapshot(
@@ -38,10 +52,13 @@ class QuoteProgressRepository {
       requestedPickupAt: requestedAt,
       requestedPickupLabel:
           requestedAt != null ? formatQuotePickupLabel(requestedAt) : null,
+      orderId: orderId,
     );
     _store[referenceId] = snapshot;
 
-    Future<void>.delayed(const Duration(seconds: 2), () => _populateQuotes(referenceId));
+    if (orderId == null) {
+      Future<void>.delayed(const Duration(seconds: 2), () => _populateQuotes(referenceId));
+    }
 
     return snapshot;
   }
@@ -63,7 +80,10 @@ class QuoteProgressRepository {
     await Future<void>.delayed(const Duration(milliseconds: 200));
     final snap = _store[referenceId];
     if (snap == null) return null;
-    if (snap.status == QuoteProgressStatus.waitingQuotes && snap.quotes.isEmpty) {
+
+    if (snap.orderId != null && !await _useMockQuotes()) {
+      await _syncFromApi(referenceId);
+    } else if (snap.status == QuoteProgressStatus.waitingQuotes && snap.quotes.isEmpty) {
       await _populateQuotes(referenceId);
     }
 
@@ -71,6 +91,102 @@ class QuoteProgressRepository {
     await _tryAdvanceMoveDay(referenceId);
 
     return _store[referenceId];
+  }
+
+  Future<void> _syncFromApi(String referenceId) async {
+    final snap = _store[referenceId];
+    final orderId = snap?.orderId;
+    if (snap == null || orderId == null) return;
+
+    final order = await _ordersRepo.fetchById(orderId);
+    if (order == null) return;
+
+    var quotes = snap.quotes;
+    try {
+      final apiQuotes = await _quotesRepo.fetchQuotes(orderId);
+      if (apiQuotes.isNotEmpty) quotes = apiQuotes;
+    } catch (_) {}
+
+    if (order.status == OrderStatus.pending) {
+      var status = snap.status;
+      if (quotes.isNotEmpty && status == QuoteProgressStatus.waitingQuotes) {
+        status = QuoteProgressStatus.quotesReady;
+      }
+      _store[referenceId] = snap.copyWith(status: status, quotes: quotes);
+      return;
+    }
+
+    if (order.status == OrderStatus.cancelled) {
+      _store[referenceId] = snap.copyWith(
+        status: QuoteProgressStatus.waitingQuotes,
+        quotes: quotes,
+        providerTripConfirmed: false,
+      );
+      return;
+    }
+
+    final providerId = order.providerId;
+    if (providerId == null) return;
+
+    ProviderQuoteResponse? confirmed;
+    for (final q in quotes) {
+      if (q.providerId == providerId) {
+        confirmed = q;
+        break;
+      }
+    }
+
+    confirmed ??= ProviderQuoteResponse(
+      id: snap.confirmedQuoteId ?? 'q-$providerId',
+      providerId: providerId,
+      providerName: order.providerName ?? 'Nhà xe đối tác',
+      rating: order.providerRating ?? 4.5,
+      reviewCount: 0,
+      completedTrips: 0,
+      vehicleLabel: order.vehicleLabel,
+      distanceKm: 3.0,
+      imageUrl: order.providerAvatarUrl ?? AppImages.partnerTruck1,
+      basePrice: order.totalPrice,
+      surcharges: const [],
+      note: 'Giá theo báo giá đã chốt.',
+      scheduleFit: QuoteScheduleFit.exactMatch,
+    );
+
+    final updatedQuotes = quotes.any((q) => q.id == confirmed!.id) ? quotes : [...quotes, confirmed];
+
+    final scheduledAt = snap.scheduledPickupAt ?? order.scheduledPickupAt;
+    final scheduledLabel = snap.scheduledSlotLabel ??
+        (scheduledAt != null ? formatQuotePickupLabel(scheduledAt) : snap.requestedPickupLabel);
+
+    final providerTripConfirmed = order.providerTripConfirmed;
+    final depositPaid = order.depositPaid || snap.depositPaidAt != null;
+
+    QuoteProgressStatus status;
+    if (order.status == OrderStatus.completed) {
+      status = QuoteProgressStatus.completed;
+    } else if (order.status == OrderStatus.inProgress || order.status == OrderStatus.pickingUp) {
+      status = QuoteProgressStatus.inProgress;
+    } else if (providerTripConfirmed) {
+      status = QuoteProgressStatus.depositPaid;
+    } else if (depositPaid) {
+      status = QuoteProgressStatus.depositPaid;
+    } else if (order.status == OrderStatus.matched || snap.confirmedQuoteId != null) {
+      status = QuoteProgressStatus.providerAccepted;
+    } else if (quotes.isNotEmpty) {
+      status = QuoteProgressStatus.quotesReady;
+    } else {
+      status = snap.status;
+    }
+
+    _store[referenceId] = snap.copyWith(
+      status: status,
+      quotes: updatedQuotes,
+      confirmedQuoteId: snap.confirmedQuoteId ?? confirmed.id,
+      scheduledPickupAt: scheduledAt,
+      scheduledSlotLabel: scheduledLabel,
+      providerTripConfirmed: providerTripConfirmed,
+      depositPaidAt: depositPaid ? (snap.depositPaidAt ?? DateTime.now()) : snap.depositPaidAt,
+    );
   }
 
   void _ensureRuntimeChat(String referenceId) {
@@ -170,6 +286,30 @@ class QuoteProgressRepository {
     }
 
     final label = formatQuotePickupLabel(scheduledAt);
+    if (snap.orderId != null && !await _useMockQuotes()) {
+      await _quotesRepo.selectQuote(orderId: snap.orderId!, quoteId: quoteId);
+      final updated = snap.copyWith(
+        status: QuoteProgressStatus.providerAccepted,
+        confirmedQuoteId: quoteId,
+        scheduledPickupAt: scheduledAt,
+        scheduledSlotLabel: label,
+        providerTripConfirmed: false,
+      );
+      _store[referenceId] = updated;
+      return updated;
+    }
+
+    if (snap.orderId != null) {
+      final updated = snap.copyWith(
+        status: QuoteProgressStatus.providerAccepted,
+        confirmedQuoteId: quoteId,
+        scheduledPickupAt: scheduledAt,
+        scheduledSlotLabel: label,
+      );
+      _store[referenceId] = updated;
+      return updated;
+    }
+
     final updated = snap.copyWith(
       status: QuoteProgressStatus.scheduled,
       confirmedQuoteId: quoteId,
@@ -237,6 +377,19 @@ class QuoteProgressRepository {
 
     Future<void>.delayed(const Duration(seconds: 4), () => _tryAdvanceProviderAccept(referenceId));
 
+    return updated;
+  }
+
+  /// Cập nhật trạng thái sau khi khách đặt cọc qua API.
+  Future<QuoteRequestSnapshot> markDepositPaid(String referenceId) async {
+    final snap = _store[referenceId];
+    if (snap == null) throw Exception('Không tìm thấy yêu cầu báo giá');
+
+    final updated = snap.copyWith(
+      status: QuoteProgressStatus.depositPaid,
+      depositPaidAt: DateTime.now(),
+    );
+    _store[referenceId] = updated;
     return updated;
   }
 

@@ -27,7 +27,14 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
   @override
   void initState() {
     super.initState();
-    context.read<BookingFlowCubit>().loadPlaces();
+    final cubit = context.read<BookingFlowCubit>();
+    if (cubit.state.passItemDelivery) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/booking/pass-item/transport');
+      });
+      return;
+    }
+    cubit.loadPlaces();
   }
 
   @override
@@ -40,7 +47,15 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
   Widget build(BuildContext context) {
     final c = UniMoveColors.of(context);
 
-    return BlocBuilder<BookingFlowCubit, BookingFlowState>(
+    return BlocListener<BookingFlowCubit, BookingFlowState>(
+      listenWhen: (prev, curr) => prev.destination != curr.destination,
+      listener: (context, state) {
+        if (_destinationCtrl.text != state.destination) {
+          _destinationCtrl.text = state.destination;
+          _destinationCtrl.selection = TextSelection.collapsed(offset: _destinationCtrl.text.length);
+        }
+      },
+      child: BlocBuilder<BookingFlowCubit, BookingFlowState>(
       builder: (context, state) {
         final isLabor = state.isLaborOnly;
 
@@ -65,15 +80,18 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
               _routeCard(context, state, c),
               SizedBox(height: 16.h),
               if (!isLabor && !state.passItemDelivery && !state.isComboBooking) ...[
-                _quoteFlowHint(c),
+                _quoteFlowHint(c, state.quoteFlowHint ?? BookingFlowState.defaultQuoteFlowHint),
                 SizedBox(height: 8.h),
               ],
               if (!isLabor && !state.passItemDelivery && state.isComboBooking) ...[
-                _comboFlowHint(c),
+                _comboFlowHint(c, state.comboFlowHint ?? BookingFlowState.defaultComboFlowHint),
                 SizedBox(height: 8.h),
               ],
               if (state.isComboBooking) ...[
-                CachedHeroImage(url: AppImages.mapPreview, height: 160.h),
+                CachedHeroImage(
+                  url: state.mapPreviewUrl ?? AppImages.mapPreview,
+                  height: 160.h,
+                ),
                 SizedBox(height: 20.h),
               ],
               SizedBox(height: 4.h),
@@ -110,10 +128,11 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           ),
         );
       },
+      ),
     );
   }
 
-  Widget _quoteFlowHint(UniMoveColors c) {
+  Widget _quoteFlowHint(UniMoveColors c, QuoteFlowHint hint) {
     return Container(
       padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
@@ -131,7 +150,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
               SizedBox(width: 8.w),
               Expanded(
                 child: Text(
-                  'Báo giá minh bạch — không cần bản đồ',
+                  hint.title,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14.sp,
@@ -144,7 +163,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           ),
           SizedBox(height: 8.h),
           Text(
-            'Bước tiếp: mô tả trọ → chọn giờ mong muốn → nhà xe báo giá theo khung đó.',
+            hint.subtitle,
             style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted, height: 1.35),
           ),
         ],
@@ -152,7 +171,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
     );
   }
 
-  Widget _comboFlowHint(UniMoveColors c) {
+  Widget _comboFlowHint(UniMoveColors c, String text) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
@@ -167,7 +186,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Combo — giá niêm yết, không chờ báo giá. Bước sau: mô tả trọ → chọn ngày giờ → chọn gói.',
+              text,
               style: TextStyle(fontSize: 12.sp, color: c.onSurface, height: 1.4),
             ),
           ),
@@ -210,7 +229,16 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
       ),
       child: Column(
         children: [
-          _routeRow(Icons.trip_origin, c.primary, c.onSurface, state.pickup, isPickup: true),
+          _routeRow(
+            Icons.trip_origin,
+            c.primary,
+            c.onSurface,
+            state.loadingPickup
+                ? 'Đang lấy vị trí...'
+                : (state.pickup.isEmpty ? 'Chưa có điểm đi' : state.pickup),
+            isPickup: true,
+            muted: state.loadingPickup || state.pickup.isEmpty,
+          ),
           Padding(
             padding: EdgeInsets.only(left: 11.w),
             child: Align(
@@ -220,7 +248,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
           ),
           TextField(
             controller: _destinationCtrl,
-            onChanged: (v) => context.read<BookingFlowCubit>().setDestination(v),
+            onChanged: (v) => context.read<BookingFlowCubit>().onDestinationChanged(v),
             decoration: InputDecoration(
               hintText: 'Điểm đến (Địa chỉ mới...)',
               prefixIcon: Icon(Icons.location_on, color: c.accentGreen, size: 22.sp),
@@ -232,12 +260,82 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
               ),
             ),
           ),
+          if (state.loadingPlaceSuggestions) ...[
+            SizedBox(height: 8.h),
+            LinearProgressIndicator(
+              minHeight: 2.h,
+              borderRadius: BorderRadius.circular(2.r),
+              color: c.primary,
+              backgroundColor: c.surfaceTint,
+            ),
+          ] else if (state.placeSuggestions.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            ...state.placeSuggestions.map(
+              (s) => _suggestionTile(context, s, c),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _routeRow(IconData icon, Color color, Color textColor, String text, {bool isPickup = false}) {
+  Widget _suggestionTile(BuildContext context, PlaceSuggestion suggestion, UniMoveColors c) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          final typed = _destinationCtrl.text.trim();
+          context.read<BookingFlowCubit>().selectPlaceSuggestion(
+                suggestion,
+                typedInput: typed,
+              );
+        },
+        borderRadius: BorderRadius.circular(10.r),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 4.w),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.place_outlined, size: 18.sp, color: c.onSurfaceMuted),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      suggestion.mainText,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: c.onSurface,
+                      ),
+                    ),
+                    if (suggestion.secondaryText.trim().isNotEmpty)
+                      Text(
+                        suggestion.secondaryText,
+                        style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _routeRow(
+    IconData icon,
+    Color color,
+    Color textColor,
+    String text, {
+    bool isPickup = false,
+    bool muted = false,
+  }) {
+    final c = UniMoveColors.of(context);
     return Row(
       children: [
         Container(
@@ -253,7 +351,7 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
             style: TextStyle(
               fontSize: 15.sp,
               fontWeight: isPickup ? FontWeight.w600 : FontWeight.w500,
-              color: textColor,
+              color: muted ? c.onSurfaceMuted : textColor,
             ),
           ),
         ),
@@ -262,15 +360,20 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
   }
 
   Widget _recentHeader(UniMoveColors c) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          'Địa điểm gần đây',
-          style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: c.onSurface),
-        ),
-        TextButton(onPressed: () {}, child: const Text('Xóa tất cả')),
-      ],
+    return Builder(
+      builder: (context) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Địa điểm gần đây',
+            style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: c.onSurface),
+          ),
+          TextButton(
+            onPressed: () => context.read<BookingFlowCubit>().clearRecentPlaces(),
+            child: const Text('Xóa tất cả'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -283,7 +386,8 @@ class _ChooseLocationPageState extends State<ChooseLocationPage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(16.r),
           onTap: () {
-            _destinationCtrl.text = place.title;
+            final address = place.subtitle.trim().isNotEmpty ? place.subtitle : place.title;
+            _destinationCtrl.text = address;
             context.read<BookingFlowCubit>().selectPlace(place);
           },
           child: Padding(

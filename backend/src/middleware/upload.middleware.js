@@ -64,4 +64,7 @@ const providerDocsUpload = multer({
 
 const handleProviderDocsUpload = wrapUpload(providerDocsUpload, 'Ảnh vượt quá 5MB.');
 
-module.exports = { handleAvatarUpload, handleMarketplaceImageUpload, handleProviderDocsUpload };
+const deliveryPhotoUpload = makeImageUpload('photo', MARKETPLACE_IMAGE_MAX_BYTES, 'Ảnh vượt quá 5MB.');
+const handleDeliveryPhotoUpload = wrapUpload(deliveryPhotoUpload, 'Ảnh vượt quá 5MB.');
+
+module.exports = { handleAvatarUpload, handleMarketplaceImageUpload, handleProviderDocsUpload, handleDeliveryPhotoUpload };

@@ -135,6 +135,11 @@ class ProviderOrder {
     this.completedAt,
     this.cancellationReason,
     this.cancelledAt,
+    this.quoteRequest = false,
+    this.providerId,
+    this.depositPaid = false,
+    this.depositAmount = 0,
+    this.remainingAmount = 0,
   });
 
   factory ProviderOrder.fromJson(Map<String, dynamic> json) {
@@ -200,6 +205,11 @@ class ProviderOrder {
       cancelledAt: json['cancelled_at'] != null
           ? DateTime.tryParse(json['cancelled_at'] as String)
           : null,
+      quoteRequest: json['quote_request'] as bool? ?? false,
+      providerId: json['provider_id'] as String?,
+      depositPaid: json['deposit_paid'] as bool? ?? false,
+      depositAmount: ((json['deposit_amount'] as num?) ?? 0).round(),
+      remainingAmount: ((json['remaining_amount'] as num?) ?? 0).round(),
     );
   }
 
@@ -235,6 +245,33 @@ class ProviderOrder {
   final DateTime? completedAt;
   final String? cancellationReason;
   final DateTime? cancelledAt;
+  final bool quoteRequest;
+  final String? providerId;
+  final bool depositPaid;
+  final int depositAmount;
+  final int remainingAmount;
+
+  bool isAssignedTo(String? providerUserId) =>
+      providerUserId != null && providerId != null && providerId == providerUserId;
+
+  /// Yêu cầu báo giá còn mở — chưa có nhà xe được chốt.
+  bool get isOpenQuoteRequest => quoteRequest && status == 'pending' && providerId == null;
+
+  bool isAwaitingDeposit(String? providerUserId) =>
+      isAssignedTo(providerUserId) && status == 'matched' && !depositPaid;
+
+  bool isDepositConfirmed(String? providerUserId) =>
+      isAssignedTo(providerUserId) && depositPaid && (status == 'matched' || status == 'accepted');
+
+  bool isReadyToAccept(String? providerUserId) =>
+      isDepositConfirmed(providerUserId) && status == 'matched';
+
+  String? get quoteReferenceCode {
+    final notes = pickupPoint.notes;
+    if (notes == null || notes.isEmpty) return null;
+    final match = RegExp(r'Mã báo giá:\s*(\S+)').firstMatch(notes);
+    return match?.group(1);
+  }
 
   OrderLocationPoint get pickupPoint =>
       pickup ??
@@ -300,10 +337,16 @@ class ProviderOrder {
       completedAt: completedAt,
       cancellationReason: cancellationReason,
       cancelledAt: cancelledAt,
+      quoteRequest: quoteRequest,
+      providerId: providerId,
+      depositPaid: depositPaid,
+      depositAmount: depositAmount,
+      remainingAmount: remainingAmount,
     );
   }
 
   bool get isPending => status == 'pending' || status == 'matched';
+  bool get isMatched => status == 'matched';
   bool get isActive =>
       status == 'accepted' || status == 'picking_up' || status == 'in_progress';
   bool get isCompleted => status == 'completed';
@@ -343,9 +386,17 @@ class ProviderOrder {
         _ => 'Xe tải',
       };
 
+  String statusLabelFor(String? providerUserId) {
+    if (isDepositConfirmed(providerUserId) && status == 'matched') return 'Đã đặt cọc';
+    if (isAwaitingDeposit(providerUserId)) return 'Chờ khách cọc';
+    if (isAssignedTo(providerUserId) && status == 'accepted') return 'Đã nhận';
+    if (isOpenQuoteRequest) return 'Yêu cầu báo giá';
+    return statusLabel;
+  }
+
   String get statusLabel => switch (status) {
         'pending' => 'Chờ nhận',
-        'matched' => 'Được gán',
+        'matched' => 'Khách đã chốt',
         'accepted' => 'Đã nhận',
         'declined' => 'Đã từ chối',
         'picking_up' => 'Đang lấy hàng',
@@ -383,26 +434,37 @@ class ProviderOrder {
   }
 }
 
-/// Lọc danh sách đơn trên tab Đơn hàng.
+/// Tab trạng thái đơn — tab Đơn hàng (provider).
 enum OrderInboxFilter {
-  all('Tất cả'),
-  pending('Chờ nhận'),
-  active('Đang làm'),
-  completed('Hoàn thành'),
-  cancelled('Huỷ / Từ chối');
+  ready('Sẵn sàng', 'Đã cọc — nhận đơn'),
+  quoteNew('Báo giá', 'Yêu cầu mới'),
+  awaitingDeposit('Chờ cọc', 'Khách đã chốt bạn'),
+  active('Đang chạy', 'Đang thực hiện'),
+  completed('Hoàn thành', 'Đã giao xong'),
+  cancelled('Đã hủy', 'Huỷ / từ chối');
 
-  const OrderInboxFilter(this.label);
+  const OrderInboxFilter(this.label, this.hint);
   final String label;
+  final String hint;
 
   String get id => name;
 
-  bool matches(ProviderOrder o) => switch (this) {
-        OrderInboxFilter.all => true,
-        OrderInboxFilter.pending => o.isPending,
+  bool matches(ProviderOrder o, String? myId) => switch (this) {
+        OrderInboxFilter.ready => o.isReadyToAccept(myId),
+        OrderInboxFilter.quoteNew => o.isOpenQuoteRequest,
+        OrderInboxFilter.awaitingDeposit => o.isAwaitingDeposit(myId),
         OrderInboxFilter.active => o.isActive,
         OrderInboxFilter.completed => o.isCompleted,
         OrderInboxFilter.cancelled => o.isCancelled,
       };
+
+  /// Tab ưu tiên khi mở màn Đơn hàng (đơn cần xử lý trước).
+  static OrderInboxFilter defaultFor(List<ProviderOrder> orders, String? myId) {
+    for (final f in [ready, quoteNew, awaitingDeposit, active]) {
+      if (orders.any((o) => f.matches(o, myId))) return f;
+    }
+    return quoteNew;
+  }
 }
 
 /// Lọc lịch sử chuyến trên màn thu nhập.

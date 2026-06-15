@@ -28,14 +28,16 @@ abstract final class OrderApiMapper {
           : null,
       cancellationNote: json['cancellation_reason'] as String?,
       estimatedDistanceKm: (json['estimated_distance'] as num?)?.toDouble(),
-      providerName: null,
-      providerAvatarUrl: null,
-      providerRating: null,
-      providerPlate: null,
+      providerName: json['provider_name'] as String?,
+      providerAvatarUrl: json['provider_avatar_url'] as String?,
+      providerRating: (json['provider_rating'] as num?)?.toDouble(),
+      providerPlate: json['provider_plate'] as String?,
       conversationId: null,
       scheduledPickupAt: json['scheduled_pickup_time'] != null
           ? DateTime.tryParse(json['scheduled_pickup_time'] as String)
           : null,
+      depositPaid: json['deposit_paid'] as bool? ?? false,
+      quoteRequest: json['quote_request'] as bool? ?? false,
     );
   }
 
@@ -58,9 +60,24 @@ abstract final class OrderApiMapper {
 
   static TrackingSnapshot trackingFromOrder(CustomerOrder order) {
     final awaiting = order.isAwaitingScheduledPickup;
-    final steps = _stepsForStatus(order.status, scheduled: order.scheduledPickupAt != null);
+    final steps = _stepsForStatus(
+      order.status,
+      scheduled: order.scheduledPickupAt != null,
+      depositPaid: order.depositPaid,
+    );
     final activeIndex = steps.indexWhere((s) => s.active);
     final eta = awaiting ? 0 : (order.etaMinutes ?? (order.showLiveTracking ? 25 : 0));
+
+    String statusLabel;
+    if (order.awaitingProviderAccept) {
+      statusLabel = 'Chờ nhà xe xác nhận';
+    } else if (awaiting) {
+      statusLabel = 'Chờ đến giờ lấy đồ';
+    } else if (order.providerTripConfirmed) {
+      statusLabel = 'Nhà xe đã nhận đơn';
+    } else {
+      statusLabel = steps[activeIndex >= 0 ? activeIndex : 0].label;
+    }
 
     return TrackingSnapshot(
       order: order,
@@ -69,14 +86,16 @@ abstract final class OrderApiMapper {
       distanceKm: awaiting ? 0 : (order.estimatedDistanceKm ?? 5.2),
       driverLat: 10.762622,
       driverLng: 106.660172,
-      statusLabel: awaiting
-          ? 'Chờ đến giờ lấy đồ'
-          : steps[activeIndex >= 0 ? activeIndex : 0].label,
+      statusLabel: statusLabel,
       isAwaitingScheduledPickup: awaiting,
     );
   }
 
-  static List<TrackingStep> _stepsForStatus(OrderStatus status, {bool scheduled = false}) {
+  static List<TrackingStep> _stepsForStatus(
+    OrderStatus status, {
+    bool scheduled = false,
+    bool depositPaid = false,
+  }) {
     final labels = scheduled
         ? [
             ('pending', 'Đã đặt lịch'),
@@ -93,15 +112,37 @@ abstract final class OrderApiMapper {
             ('completed', 'Hoàn thành'),
           ];
 
-    final order = ['pending', 'accepted', 'picking_up', 'in_progress', 'completed'];
-    final current = status.dbValue;
-    var passed = true;
+    // Sau khi nhà xe nhận đơn (accepted), bước «Nhà xe xác nhận» đã xong —
+    // active chuyển sang bước lấy hàng / chờ giờ hẹn.
+    final currentIndex = switch (status) {
+      OrderStatus.pending => 0,
+      OrderStatus.matched => depositPaid ? 1 : 0,
+      OrderStatus.accepted => 2,
+      OrderStatus.pickingUp => 2,
+      OrderStatus.inProgress => 3,
+      OrderStatus.completed => 4,
+      _ => 0,
+    };
 
-    return labels.map((e) {
-      final done = passed && order.indexOf(e.$1) <= order.indexOf(current);
-      final active = e.$1 == current && status.isActive;
-      if (e.$1 == current) passed = false;
-      return TrackingStep(key: e.$1, label: e.$2, done: done || status == OrderStatus.completed, active: active);
+    return labels.asMap().entries.map((entry) {
+      final i = entry.key;
+      final e = entry.value;
+      final done = status == OrderStatus.completed || i < currentIndex;
+      final active = status != OrderStatus.completed && i == currentIndex && status.isActive;
+
+      var label = e.$2;
+      var key = e.$1;
+      if (status == OrderStatus.matched && i == 1) {
+        if (depositPaid) {
+          label = 'Chờ nhà xe xác nhận';
+          key = 'awaiting_provider';
+        } else {
+          label = 'Chờ đặt cọc';
+          key = 'awaiting_deposit';
+        }
+      }
+
+      return TrackingStep(key: key, label: label, done: done, active: active);
     }).toList();
   }
 }

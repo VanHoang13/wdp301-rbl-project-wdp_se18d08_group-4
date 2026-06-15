@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -7,7 +9,6 @@ import '../../../../core/constants/app_images.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/smooth_cta_button.dart';
-import '../../../chat/domain/active_chat_context.dart';
 import '../../../orders/data/customer_orders_repository.dart';
 import '../../../orders/domain/order_models.dart';
 
@@ -24,6 +25,7 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
   final _repo = CustomerOrdersRepository();
   TrackingSnapshot? _tracking;
   bool _loading = true;
+  Timer? _poll;
 
   @override
   void initState() {
@@ -31,13 +33,31 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    final t = await _repo.fetchTracking(widget.orderId);
-    if (mounted) {
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
+    try {
+      final t = await _repo.fetchTracking(widget.orderId);
+      if (!mounted) return;
       setState(() {
         _tracking = t;
         _loading = false;
       });
+      _syncPoll(t.order);
+    } catch (_) {
+      if (mounted && !silent) setState(() => _loading = false);
+    }
+  }
+
+  void _syncPoll(CustomerOrder order) {
+    _poll?.cancel();
+    if (order.awaitingProviderAccept || order.status == OrderStatus.matched) {
+      _poll = Timer.periodic(const Duration(seconds: 3), (_) => _load(silent: true));
     }
   }
 
@@ -78,6 +98,12 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
           style: TextStyle(color: c.onSurface, fontWeight: FontWeight.w700, fontSize: 17.sp),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded, color: c.onSurfaceMuted, size: 22.sp),
+            onPressed: () => _load(),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -110,10 +136,11 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
                         showArrow: false,
                         outlined: true,
                         onPressed: () {
-                          if (ActiveChatContext.orderAllowsChat(order) &&
-                              order.conversationId != null) {
-                            context.push('/chat/${order.conversationId}');
-                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Chat đơn hàng sẽ có sau khi backend hỗ trợ'),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -171,6 +198,10 @@ class _StatusHeroCard extends StatelessWidget {
     final awaiting = snapshot.isAwaitingScheduledPickup;
 
     final (icon, subtitle) = switch (true) {
+      _ when order.awaitingProviderAccept =>
+        (Icons.hourglass_top_rounded, 'Nhà xe sẽ nhận đơn trên app — trang tự cập nhật'),
+      _ when order.providerTripConfirmed =>
+        (Icons.check_circle_rounded, 'Nhà xe đã nhận đơn · chuẩn bị đúng giờ hẹn'),
       _ when snapshot.showLiveTracking && order.status == OrderStatus.inProgress =>
         (Icons.local_shipping_rounded, 'Xe đang trên đường đến điểm giao'),
       _ when snapshot.showLiveTracking =>

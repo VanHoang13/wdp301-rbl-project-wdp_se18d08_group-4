@@ -5,12 +5,17 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch --watch-path=./src src/server.js",
+    "dev": "nodemon src/server.js",
+    "dev:be": "node --watch --watch-path=./src src/server.js",
     "test": "node test-connection.js",
     "test:connection": "node test-connection.js",
     "create-admin": "node create-admin.js",
     "seed:admin": "node seed-admin-data.js",
-    "seed:providers": "node seed-provider-accounts.js"
+    "seed:e2e": "node seed-e2e-test-accounts.js",
+    "migrate:quotes": "node scripts/apply-migration.js supabase/migrations/20240129000000_order_quotes_bidding.sql",
+    "migrate:deposit-trigger": "node scripts/apply-migration.js supabase/migrations/20240130000000_fix_deposit_payment_trigger.sql",
+    "fix:payment": "node scripts/fix-stuck-deposit-payment.js",
+    "migrate:listing-fee": "node scripts/apply-migration.js supabase/migrations/20240131000000_marketplace_listing_fee_payments.sql"
   },
   "keywords": [
     "express",
@@ -35,5 +40,9 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.10",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "pg": "^8.21.0"
   }
 }

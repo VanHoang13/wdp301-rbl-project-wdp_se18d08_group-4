@@ -10,6 +10,9 @@ const router = express.Router();
 
 router.get('/me', requireAuth, requireRole('customer'), customersController.getMe);
 router.get('/me/recent-places', requireAuth, requireRole('customer'), customersController.getRecentPlaces);
+router.post('/me/recent-places', requireAuth, requireRole('customer'), customersController.addRecentPlace);
+router.get('/me/booking-locations', requireAuth, requireRole('customer'), customersController.getBookingLocations);
+router.delete('/me/recent-places', requireAuth, requireRole('customer'), customersController.clearRecentPlaces);
 router.patch('/me', requireAuth, requireRole('customer'), customersController.patchMe);
 router.post(
   '/me/avatar',
