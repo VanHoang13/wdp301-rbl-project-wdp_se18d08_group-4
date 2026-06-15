@@ -36,7 +36,7 @@ class FinancialSettingsPage extends StatelessWidget {
             ),
             SizedBox(height: 12.h),
             Text(
-              'Mã PIN bảo vệ thanh toán ví và xác nhận giao dịch. Tính năng đặt PIN sẽ được bật khi tích hợp bảo mật đầy đủ.',
+              'Mã PIN bảo vệ xác nhận giao dịch. Tính năng đặt PIN sẽ được bật khi tích hợp bảo mật đầy đủ.',
               style: TextStyle(fontSize: 14.sp, height: 1.45, color: c.onSurfaceMuted),
             ),
             SizedBox(height: 20.h),
@@ -86,11 +86,11 @@ class FinancialSettingsPage extends StatelessWidget {
                   style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w800, color: c.onSurface),
                 ),
                 FinancialSettingsTile(
-                  icon: Icons.account_balance_wallet_outlined,
+                  icon: Icons.qr_code_2,
                   iconColor: c.primary,
                   iconBgColor: c.primaryContainer.withValues(alpha: 0.6),
                   title: 'Tất cả các phương thức thanh toán',
-                  subtitle: 'Quản lý phương thức thanh toán và nạp tiền ví',
+                  subtitle: 'PayOS · MoMo · Thẻ ngân hàng',
                   onTap: () => _openPaymentMethods(context),
                 ),
                 SizedBox(height: 28.h),

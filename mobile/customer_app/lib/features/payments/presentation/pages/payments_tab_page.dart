@@ -11,7 +11,7 @@ import 'financial_settings_page.dart';
 import 'payment_detail_page.dart';
 import 'payment_methods_page.dart';
 
-/// Tab Thanh toán — ví + giao dịch gần đây (Grab-style, khớp `payments`).
+/// Tab Thanh toán — giao dịch gần đây (PayOS, MoMo, QR).
 class PaymentsTabPage extends StatefulWidget {
   const PaymentsTabPage({super.key});
 
@@ -21,7 +21,6 @@ class PaymentsTabPage extends StatefulWidget {
 
 class _PaymentsTabPageState extends State<PaymentsTabPage> {
   final _repo = PaymentsRepository();
-  int _wallet = 0;
   List<CustomerPayment> _payments = [];
   bool _loading = true;
 
@@ -32,25 +31,13 @@ class _PaymentsTabPageState extends State<PaymentsTabPage> {
   }
 
   Future<void> _load() async {
-    final wallet = await _repo.fetchWalletBalance();
     final payments = await _repo.fetchRecentPayments();
     if (mounted) {
       setState(() {
-        _wallet = wallet;
         _payments = payments;
         _loading = false;
       });
     }
-  }
-
-  String _formatWallet(int v) {
-    final s = v.toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
-      buf.write(s[i]);
-    }
-    return '${buf}đ';
   }
 
   @override
@@ -67,7 +54,6 @@ class _PaymentsTabPageState extends State<PaymentsTabPage> {
       slivers: [
         SliverToBoxAdapter(
           child: _PaymentHero(
-            wallet: _formatWallet(_wallet),
             onSettings: () {
               Navigator.of(context, rootNavigator: true).push<void>(
                 MaterialPageRoute(builder: (_) => const FinancialSettingsPage()),
@@ -95,7 +81,7 @@ class _PaymentsTabPageState extends State<PaymentsTabPage> {
                         color: c.primaryContainer,
                         borderRadius: BorderRadius.circular(12.r),
                       ),
-                      child: Icon(Icons.account_balance_wallet_outlined, color: c.primary),
+                      child: Icon(Icons.qr_code_2, color: c.primary),
                     ),
                     SizedBox(width: 14.w),
                     Expanded(
@@ -182,9 +168,8 @@ class _PaymentsTabPageState extends State<PaymentsTabPage> {
 }
 
 class _PaymentHero extends StatelessWidget {
-  const _PaymentHero({required this.wallet, required this.onSettings});
+  const _PaymentHero({required this.onSettings});
 
-  final String wallet;
   final VoidCallback onSettings;
 
   @override
@@ -221,24 +206,10 @@ class _PaymentHero extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 4.h),
+          SizedBox(height: 8.h),
           Text(
-            'Escrow minh bạch · Hoàn tiền linh hoạt',
-            style: TextStyle(fontSize: 13.sp, color: AppColors.onPrimary.withValues(alpha: 0.85)),
-          ),
-          SizedBox(height: 20.h),
-          Text(
-            'Số dư ví',
-            style: TextStyle(fontSize: 13.sp, color: AppColors.onPrimary.withValues(alpha: 0.8)),
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            wallet,
-            style: TextStyle(
-              fontSize: 32.sp,
-              fontWeight: FontWeight.w800,
-              color: AppColors.onPrimary,
-            ),
+            'Escrow minh bạch · PayOS · MoMo · QR',
+            style: TextStyle(fontSize: 14.sp, color: AppColors.onPrimary.withValues(alpha: 0.9), height: 1.4),
           ),
         ],
       ),

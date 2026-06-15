@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../../core/auth/auth_token_storage.dart';
 import '../../../../core/mock/mock_auth_session.dart';
 import '../../../../core/services/onboarding_prefs.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -47,7 +46,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
     try {
       if (!await isOnboardingDone()) return '/onboarding';
       if (await MockAuthSession.isSignedIn()) return '/home';
-      if (Supabase.instance.client.auth.currentSession != null) return '/home';
+      if (await AuthTokenStorage.instance.hasSession()) return '/home';
       return '/login';
     } catch (_) {
       if (!await isOnboardingDone()) return '/onboarding';

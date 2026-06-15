@@ -273,14 +273,9 @@ class _PaymentDetailPageState extends State<PaymentDetailPage> {
 
   Widget _methodBadge(String method) {
     final lower = method.toLowerCase();
-    final isWallet = lower.contains('ví') || lower.contains('unimove');
     final isMomo = lower.contains('momo');
-    final icon = isWallet
-        ? Icons.savings_outlined
-        : isMomo
-            ? Icons.account_balance_wallet_outlined
-            : Icons.qr_code_2;
-    final iconColor = isWallet ? const Color(0xFFFFB800) : AppColors.primary;
+    final icon = isMomo ? Icons.account_balance_wallet_outlined : Icons.qr_code_2;
+    final iconColor = AppColors.primary;
 
     return Row(
       mainAxisSize: MainAxisSize.min,

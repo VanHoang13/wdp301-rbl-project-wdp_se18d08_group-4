@@ -10,6 +10,7 @@ import '../../../../core/widgets/cached_hero_image.dart';
 import '../../domain/booking_models.dart';
 import '../cubit/booking_flow_cubit.dart';
 import '../cubit/booking_flow_state.dart';
+import '../widgets/provider_reviews_panel.dart';
 
 class ChoosePartnerPage extends StatefulWidget {
   const ChoosePartnerPage({super.key});
@@ -24,7 +25,12 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
   @override
   void initState() {
     super.initState();
-    context.read<BookingFlowCubit>().loadPartners();
+    final cubit = context.read<BookingFlowCubit>();
+    if (cubit.state.isComboBooking) {
+      cubit.refreshComboPartners();
+    } else {
+      cubit.loadPartners();
+    }
   }
 
   @override
@@ -33,8 +39,11 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
 
     return BlocBuilder<BookingFlowCubit, BookingFlowState>(
       builder: (context, state) {
+        final partners = _applySort(state.partners);
         return BookingScaffold(
-          title: 'Chọn nhà xe',
+          title: state.isComboBooking
+              ? 'Nhà xe combo niêm yết'
+              : (state.passItemDelivery ? 'Chọn nhà xe · pass đồ' : 'Chọn nhà xe'),
           trailing: IconButton(icon: const Icon(Icons.tune), onPressed: () {}),
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -44,28 +53,32 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
               SizedBox(height: 12.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20.w),
-                child: Container(
-                  padding: EdgeInsets.all(14.w),
-                  decoration: BoxDecoration(
-                    color: c.chipBg,
-                    borderRadius: BorderRadius.circular(14.r),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.verified, color: c.primary, size: 22.sp),
-                      SizedBox(width: 10.w),
-                      Expanded(
-                        child: Text(
-                          'Marketplace · Nhiều nhà xe đã xác minh · Giá do đối tác báo',
-                          style: TextStyle(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: c.onSurface,
-                          ),
-                        ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(14.w),
+                      decoration: BoxDecoration(
+                        color: c.chipBg,
+                        borderRadius: BorderRadius.circular(14.r),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified, color: c.primary, size: 22.sp),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Text(
+                              'Danh sách nhà xe đã xác minh · Giá tham khảo từ đối tác',
+                              style: TextStyle(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w600,
+                                color: c.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               SizedBox(height: 12.h),
@@ -78,9 +91,9 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                       )
                     : ListView.builder(
                         padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 24.h),
-                        itemCount: state.partners.length,
+                        itemCount: partners.length,
                         itemBuilder: (context, index) {
-                          final p = state.partners[index];
+                          final p = partners[index];
                           return _partnerCard(context, state, p, c);
                         },
                       ),
@@ -181,20 +194,58 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
                           'Cách bạn ${p.distanceKm} km · ${p.vehicleLabel}',
                           style: TextStyle(fontSize: 12.sp, color: c.onSurfaceMuted),
                         ),
+                        SizedBox(height: 4.h),
+                        Row(
+                          children: [
+                            Icon(Icons.star_rounded, size: 15.sp, color: Colors.amber.shade700),
+                            SizedBox(width: 4.w),
+                            Text(
+                              '${p.rating.toStringAsFixed(1)} (${p.reviewCount} đánh giá)',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: c.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('GIÁ KHỞI ĐIỂM', style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted)),
                       Text(
-                        _formatPrice(p.price),
+                        state.isComboBooking ? 'GIÁ NIÊM YẾT' : 'GIÁ KHỞI ĐIỂM',
+                        style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted),
+                      ),
+                      Text(
+                        _formatPrice(
+                          state.isComboBooking ? state.comboTotalForPartner(p) : p.price,
+                        ),
                         style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w800, color: c.primary),
                       ),
+                      if (state.isComboBooking && p.comboLaborUnitPrice != null)
+                        Text(
+                          'Khuân vác ${_formatPrice(p.comboLaborUnitPrice!)}/người',
+                          style: TextStyle(fontSize: 10.sp, color: c.onSurfaceMuted),
+                        ),
                     ],
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 8.h),
+              child: OutlinedButton.icon(
+                onPressed: () => _showReviewsSheet(context, p, c),
+                icon: const Icon(Icons.reviews_outlined),
+                label: const Text('Xem đánh giá nhà xe'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.primary,
+                  side: BorderSide(color: c.primary.withValues(alpha: 0.38)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                ),
               ),
             ),
             Padding(
@@ -244,6 +295,40 @@ class _ChoosePartnerPageState extends State<ChoosePartnerPage> {
       if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
       buf.write(s[i]);
     }
-    return '${buf}đ';
+    return '$buf' 'đ';
+  }
+
+  List<PartnerOffer> _applySort(List<PartnerOffer> partners) {
+    final list = [...partners];
+    final state = context.read<BookingFlowCubit>().state;
+    switch (_filterIndex) {
+      case 0:
+        if (state.isComboBooking) {
+          list.sort((a, b) => state.comboTotalForPartner(a).compareTo(state.comboTotalForPartner(b)));
+        } else {
+          list.sort((a, b) => a.price.compareTo(b.price));
+        }
+        break;
+      case 1:
+        list.sort((a, b) => b.rating.compareTo(a.rating));
+        break;
+      case 2:
+        list.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+        break;
+    }
+    return list;
+  }
+
+  Future<void> _showReviewsSheet(BuildContext context, PartnerOffer p, UniMoveColors c) {
+    return showProviderReviewsSheet(
+      context,
+      providerName: p.name,
+      subtitle: '${p.vehicleLabel} · ${p.completedTrips} chuyến · Cách bạn ${p.distanceKm} km',
+      stats: ProviderReviewStats.from(
+        averageRating: p.rating,
+        totalCount: p.reviewCount,
+        reviews: p.recentReviews,
+      ),
+    );
   }
 }

@@ -11,8 +11,8 @@ async function listOrders(req, res, next) {
 
     const orders = await ordersService.listOrdersForUser(
       req.user.id,
-      profile?.role || 'customer',
-      req.accessToken,
+      profile?.role || req.user.role || 'customer',
+      req.query,
     );
 
     res.json({ success: true, data: orders });
@@ -23,7 +23,7 @@ async function listOrders(req, res, next) {
 
 async function createOrder(req, res, next) {
   try {
-    const order = await ordersService.createOrder(req.user.id, req.accessToken, req.body);
+    const order = await ordersService.createOrder(req.user.id, req.body);
     res.status(201).json({ success: true, data: order });
   } catch (error) {
     next(error);
@@ -32,7 +32,7 @@ async function createOrder(req, res, next) {
 
 async function getOrder(req, res, next) {
   try {
-    const order = await ordersService.getOrderById(req.params.id, req.accessToken);
+    const order = await ordersService.getOrderById(req.params.id);
     res.json({ success: true, data: order });
   } catch (error) {
     next(error);
@@ -49,7 +49,6 @@ async function respondToOrder(req, res, next) {
     const result = await ordersService.providerRespond(
       req.params.id,
       req.user.id,
-      req.accessToken,
       response,
       decline_reason,
     );
@@ -60,4 +59,78 @@ async function respondToOrder(req, res, next) {
   }
 }
 
-module.exports = { listOrders, createOrder, getOrder, respondToOrder };
+async function acceptOrder(req, res, next) {
+  try {
+    const data = await ordersService.acceptOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function startOrder(req, res, next) {
+  try {
+    const data = await ordersService.startOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function declineOrder(req, res, next) {
+  try {
+    const data = await ordersService.declineOrder(req.params.id, req.user.id, req.body.reason);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function completeOrder(req, res, next) {
+  try {
+    const data = await ordersService.completeOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** BE-025 — PATCH /api/orders/:id/cancel */
+async function cancelOrder(req, res, next) {
+  try {
+    const { reason } = req.body || {};
+    const data = await ordersService.cancelOrder(req.params.id, req.user.id, reason);
+    let msg = 'Hủy đơn hàng thành công';
+    if (data.refund_request) {
+      msg = 'Hủy đơn thành công. Yêu cầu hoàn tiền đã gửi, chờ admin duyệt.';
+    } else if (data.refund_skip_reason === 'no_refundable_payment') {
+      msg = 'Hủy đơn thành công. Không có khoản thanh toán đã hoàn tất — không tạo yêu cầu hoàn tiền.';
+    }
+    res.json({ success: true, message: msg, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function uploadDeliveryPhoto(req, res, next) {
+  try {
+    const file = req.file;
+    const data = await ordersService.uploadDeliveryPhoto(req.params.id, req.user.id, file);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  listOrders,
+  createOrder,
+  getOrder,
+  respondToOrder,
+  acceptOrder,
+  startOrder,
+  declineOrder,
+  completeOrder,
+  cancelOrder,
+  uploadDeliveryPhoto,
+};

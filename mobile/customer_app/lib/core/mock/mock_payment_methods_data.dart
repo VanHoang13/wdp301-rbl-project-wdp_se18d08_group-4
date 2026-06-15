@@ -28,17 +28,11 @@ abstract final class MockPaymentMethodsData {
 
   static const List<SavedPaymentMethod> methods = [
     SavedPaymentMethod(
-      id: 'wallet',
-      name: 'Ví UniMove',
-      subtitle: 'Dùng điểm thưởng & số dư ví',
-      kind: PaymentMethodKind.wallet,
-      isDefault: true,
-    ),
-    SavedPaymentMethod(
       id: 'payos',
       name: 'PayOS',
       subtitle: 'QR ngân hàng · Thẻ nội địa',
       kind: PaymentMethodKind.payos,
+      isDefault: true,
     ),
     SavedPaymentMethod(
       id: 'momo',

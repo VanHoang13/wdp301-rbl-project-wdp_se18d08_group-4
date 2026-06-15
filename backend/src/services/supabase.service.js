@@ -2,41 +2,12 @@ const { createClient } = require('@supabase/supabase-js');
 const ws = require('ws');
 const env = require('../config/env');
 
-const realtimeOpts = { realtime: { transport: ws } };
-
-/** Admin client — bypass RLS (webhooks, admin tasks). */
-const supabaseAdmin = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-  ...realtimeOpts,
+/** Postgres qua service role — không dùng Supabase Auth JWT. */
+const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { transport: ws },
 });
-
-/** Verify JWT và lấy user từ access token. */
-async function getUserFromToken(accessToken) {
-  const client = createClient(env.supabaseUrl, env.supabaseAnonKey, {
-    ...realtimeOpts,
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data, error } = await client.auth.getUser(accessToken);
-  if (error || !data.user) {
-    const err = new Error('Unauthorized');
-    err.status = 401;
-    throw err;
-  }
-  return data.user;
-}
-
-/** Client scoped theo JWT user — tôn trọng RLS. */
-function createUserClient(accessToken) {
-  return createClient(env.supabaseUrl, env.supabaseAnonKey, {
-    ...realtimeOpts,
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
 
 module.exports = {
   supabaseAdmin,
-  getUserFromToken,
-  createUserClient,
 };
