@@ -559,6 +559,13 @@ async function googleAuth(body) {
   return buildAuthResponse(profile);
 }
 
+/** API-005 — POST /api/auth/logout */
+async function logout(accessToken) {
+  const { error } = await supabaseAdmin.auth.admin.signOut(accessToken);
+  if (error) throw httpError(500, error.message, 'logout_error');
+  return { message: 'Đăng xuất thành công' };
+}
+
 module.exports = {
   register,
   login,
@@ -568,4 +575,5 @@ module.exports = {
   forgotPassword,
   resetPassword,
   googleAuth,
+  logout,
 };
