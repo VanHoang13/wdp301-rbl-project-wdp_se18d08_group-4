@@ -147,7 +147,9 @@ export const authApi = {
   getMe: () => get("/auth/me"),
   updateMe: (body: Record<string, unknown>) => patch("/auth/me", body),
   changePassword: (currentPassword: string, newPassword: string) =>
-    post("/auth/change-password", { currentPassword, newPassword }),
+    post("/auth/change-password", { current_password: currentPassword, new_password: newPassword }),
+  logout: () => post("/auth/logout", {}),
+  googleAuth: (idToken: string) => post("/auth/google", { id_token: idToken }),
 };
 
 /* ── Customer ── */
@@ -169,6 +171,10 @@ export const customerApi = {
     return res;
   },
   uploadAvatar: (file: File) => { const fd = new FormData(); fd.append("avatar", file); return upload("/customers/me/avatar", fd); },
+  addRecentPlace: (body: { address: string; title?: string; lat?: number; lng?: number }) =>
+    post("/customers/me/recent-places", body),
+  clearRecentPlaces: () => del("/customers/me/recent-places"),
+  getBookingLocations: () => get("/customers/me/booking-locations"),
 };
 
 /* ── Orders ── */
@@ -197,12 +203,53 @@ export const ordersApi = {
       response: action === "accept" ? "accepted" : "declined",
       decline_reason: notes || undefined,
     }),
+  cancel: (id: string, reason?: string) => patch(`/orders/${id}/cancel`, { reason }),
+  accept: (id: string) => patch(`/orders/${id}/accept`),
+  start: (id: string) => patch(`/orders/${id}/start`),
+  complete: (id: string) => patch(`/orders/${id}/complete`),
+  decline: (id: string, reason?: string) => patch(`/orders/${id}/decline`, { reason }),
+  uploadDeliveryPhoto: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append("photo", file);
+    return upload(`/orders/${id}/delivery-photo`, fd);
+  },
+};
+
+/* ── Order quotes ── */
+export const quotesApi = {
+  list: (orderId: string) => get(`/orders/${orderId}/quotes`),
+  submit: (orderId: string, body: Record<string, unknown>) => post(`/orders/${orderId}/quotes`, body),
+  select: (orderId: string, quoteId: string) => post(`/orders/${orderId}/quotes/${quoteId}/select`, {}),
 };
 
 /* ── Providers ── */
 export const providersApi = {
   browse: (params?: Record<string, unknown>) => get("/providers/browse", params),
-  getById: (id: string) => get(`/providers/${id}`),
+  getById: (id: string, params?: Record<string, unknown>) => get(`/providers/${id}`, params),
+};
+
+export const providerApi = {
+  getEarnings: (period: "week" | "month" | "year" = "month") =>
+    get("/providers/me/earnings", { period }),
+  getSchedule: () => get("/providers/me/schedule"),
+  updateSchedule: (slots: Record<string, unknown>[]) => patch("/providers/me/schedule", { slots }),
+  uploadDocuments: (files: Record<string, File>) => {
+    const fd = new FormData();
+    Object.entries(files).forEach(([k, v]) => fd.append(k, v));
+    return upload("/providers/me/documents", fd);
+  },
+  uploadAvatar: (file: File) => {
+    const fd = new FormData(); fd.append("avatar", file);
+    return upload("/customers/me/avatar", fd);
+  },
+};
+
+/* ── Conversations (order chat) ── */
+export const conversationsApi = {
+  list: () => get("/conversations"),
+  getMessages: (orderId: string) => get(`/conversations/${orderId}/messages`),
+  sendMessage: (orderId: string, content: string) =>
+    post(`/conversations/${orderId}/messages`, { content }),
 };
 
 /* ── Notifications ── */
@@ -255,7 +302,7 @@ export const marketplaceApi = {
     return res;
   },
   updateStatus: (id: string, status: string) => patch(`/marketplace/listings/${id}/status`, { status }),
-  addInterest: (id: string) => post(`/marketplace/listings/${id}/interest`, {}),
+  addInterest: (id: string, note?: string) => post(`/marketplace/listings/${id}/interest`, note ? { note } : {}),
   removeInterest: (id: string) => del(`/marketplace/listings/${id}/interest`),
   myInterests: async () => normalizeListingsResponse(await get("/marketplace/my-interests")),
   getMessages: async (listingId: string, buyerId: string) => {
@@ -272,24 +319,44 @@ export const marketplaceApi = {
   sellerStats: (sellerId: string) => get(`/marketplace/seller/${sellerId}/stats`),
   rate: (id: string, rating: number, comment?: string) => post(`/marketplace/listings/${id}/rating`, { rating, comment }),
   bump: (id: string) => post(`/marketplace/listings/${id}/bump`, {}),
-  delete: (id: string) => del(`/marketplace/listings/${id}`),
+  payListingFee: (id: string, body: Record<string, unknown>) =>
+    post(`/marketplace/listings/${id}/listing-fee/pay`, body),
+  getInterests: (id: string) => get(`/marketplace/listings/${id}/interests`),
+  confirmDeal: (listingId: string, buyerId: string, agreedPrice?: number) =>
+    post(`/marketplace/listings/${listingId}/conversations/${buyerId}/deal`, { agreed_price: agreedPrice }),
+  cancelDeal: (listingId: string) => del(`/marketplace/listings/${listingId}/deal`),
+  markTransportBooked: (listingId: string) =>
+    post(`/marketplace/listings/${listingId}/transport-booked`, {}),
+  confirmReceived: (id: string) => post(`/marketplace/listings/${id}/confirm-received`, {}),
 };
 
 /* ── Payments ── */
 export const paymentsApi = {
-  createDeposit: (orderId: string, amount: number, method: string) =>
-    post("/payments/deposit", { order_id: orderId, amount, payment_method: method }),
+  getWallet: () => get("/payments/me/wallet"),
+  list: () => get("/payments/me"),
+  get: (id: string) => get(`/payments/${id}`),
+  sync: (id: string) => post(`/payments/${id}/sync`, {}),
+  createDeposit: (orderId: string, amount: number, method = "payos", extra?: Record<string, unknown>) =>
+    post("/payments/deposit", { order_id: orderId, amount, payment_method: method, ...extra }),
+  listMethods: () => get("/payments/me/payment-methods"),
+  addMethod: (body: Record<string, unknown>) => post("/payments/me/payment-methods", body),
+  updateMethod: (id: string, body: Record<string, unknown>) => patch(`/payments/me/payment-methods/${id}`, body),
+  deleteMethod: (id: string) => del(`/payments/me/payment-methods/${id}`),
+  createRefund: (body: Record<string, unknown>) => post("/payments/refund", body),
 };
 
-/* ── Provider profile (upload docs) ── */
-export const providerApi = {
-  uploadDocuments: (files: Record<string, File>) => {
-    const fd = new FormData();
-    Object.entries(files).forEach(([k, v]) => fd.append(k, v));
-    return upload("/providers/me/documents", fd);
-  },
-  uploadAvatar: (file: File) => {
-    const fd = new FormData(); fd.append("avatar", file);
-    return upload("/customers/me/avatar", fd);
-  },
+/* ── Maps ── */
+export const mapsApi = {
+  autocomplete: (input: string, sessionToken?: string, extra?: Record<string, unknown>) =>
+    get("/maps/places/autocomplete", { input, session_token: sessionToken, ...extra }),
+  placeDetails: (placeId: string, sessionToken?: string, address?: string) =>
+    get("/maps/places/details", { place_id: placeId, session_token: sessionToken, address }),
+  resolveAddress: (input: string, extra?: Record<string, unknown>) =>
+    get("/maps/places/resolve", { input, ...extra }),
+};
+
+/* ── Reviews (provider) ── */
+export const reviewsApi = {
+  mine: () => get("/reviews/mine"),
+  respond: (id: string, response: string) => patch(`/reviews/${id}/respond`, { response }),
 };

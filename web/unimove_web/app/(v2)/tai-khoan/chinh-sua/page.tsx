@@ -13,6 +13,24 @@ export default function ChinhSuaHoSoPage() {
   const { showSuccess, showError } = useUIStore();
   const [form, setForm] = useState({ full_name: "", phone: "", student_id: "" });
   const [loading, setLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+
+  const onAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarLoading(true);
+    try {
+      const r = await customerApi.uploadAvatar(file);
+      const url = (r.data as { avatar_url?: string })?.avatar_url;
+      const u = getStoredUser();
+      if (u && url) localStorage.setItem("unimove_user", JSON.stringify({ ...u, avatar_url: url }));
+      showSuccess("Cập nhật ảnh đại diện thành công!");
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Upload thất bại");
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
 
   useEffect(() => {
     const u = getStoredUser();
@@ -42,6 +60,13 @@ export default function ChinhSuaHoSoPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="text-sm font-medium text-gray-700">Ảnh đại diện</label>
+          <label className="mt-2 block w-full py-3 text-center rounded-xl border border-dashed border-gray-300 text-sm text-[#2563EB] cursor-pointer">
+            {avatarLoading ? "Đang tải..." : "Chọn ảnh"}
+            <input type="file" accept="image/*" className="hidden" onChange={onAvatar} />
+          </label>
+        </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "var(--text)" }}>Họ và tên</label>
           <Input required value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} startAdornment={<User size={15} />} />

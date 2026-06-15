@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Phone, Mail, MapPin, Edit3, ChevronRight, Package, CreditCard, HelpCircle, Shield, Bell, LogOut, Star } from "lucide-react";
 import { getStoredUser, clearAuth, type AuthUser } from "@/lib/auth";
+import { authApi } from "@/lib/api";
+import Link from "next/link";
 
 const MENU_ITEMS = [
   {
@@ -29,7 +31,8 @@ export default function TaiKhoanPage() {
 
   useEffect(() => { setUser(getStoredUser()); }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await authApi.logout(); } catch { /* ignore */ }
     clearAuth();
     router.replace("/");
   };
@@ -58,9 +61,9 @@ export default function TaiKhoanPage() {
                 ? <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover rounded-xl" />
                 : initials}
             </div>
-            <button className="flex items-center gap-1.5 px-4 py-1.5 rounded-full border-2 border-[#2563EB] text-[#2563EB] text-sm font-semibold hover:bg-blue-50 transition-colors">
+            <Link href="/tai-khoan/chinh-sua" className="flex items-center gap-1.5 px-4 py-1.5 rounded-full border-2 border-[#2563EB] text-[#2563EB] text-sm font-semibold hover:bg-blue-50 transition-colors">
               <Edit3 size={13} /> Chỉnh sửa
-            </button>
+            </Link>
           </div>
 
           <h2 className="text-xl font-bold text-gray-900">{user?.full_name ?? "Người dùng"}</h2>

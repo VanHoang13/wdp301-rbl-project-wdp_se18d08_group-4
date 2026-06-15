@@ -6,6 +6,8 @@ import { Mail, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { storeAuth, storeAdminSession, getRoleHome, type AuthUser } from "@/lib/auth";
 import { useToast } from "@/components/ui/toast";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { handleGoogleAuthResponse } from "@/lib/handle-google-auth";
 
 function UniMoveLogo() {
   return (
@@ -46,6 +48,22 @@ export default function LoginPage() {
       window.location.href = getRoleHome(user.role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể kết nối đến server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async (idToken: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const redirect = await handleGoogleAuthResponse(idToken, setError);
+      if (redirect) {
+        toast("Đăng nhập Google thành công!", "success");
+        window.location.href = redirect;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Đăng nhập Google thất bại");
     } finally {
       setLoading(false);
     }
@@ -138,6 +156,14 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-xs text-gray-400 whitespace-nowrap">hoặc</span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
+        <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gray-100" />

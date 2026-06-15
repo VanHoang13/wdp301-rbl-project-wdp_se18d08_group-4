@@ -47,7 +47,7 @@ export default function ProviderMessagesPage() {
   const unread = notifs.filter(n => !n.is_read).length;
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="w-full space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -119,7 +119,7 @@ export default function ProviderMessagesPage() {
                       </p>
                       <span className="text-xs text-gray-400 shrink-0">{timeAgo(n.created_at)}</span>
                     </div>
-                    <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>
+                    <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{n.body}</p>
                   </div>
 
                   {/* Unread dot */}

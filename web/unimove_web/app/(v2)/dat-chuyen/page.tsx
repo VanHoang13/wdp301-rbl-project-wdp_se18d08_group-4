@@ -1,21 +1,16 @@
 ﻿"use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { MapPin, Navigation, Package, ChevronRight, Info, Clock, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ordersApi } from "@/lib/api";
+import { ordersApi, customerApi } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
+import { AddressAutocomplete } from "@/components/maps/address-autocomplete";
 
 const VEHICLE_OPTIONS = [
   { id: "motorbike", label: "Xe máy", desc: "< 30 kg", icon: "🛵", base: 25000 },
   { id: "van",       label: "Xe tải nhỏ", desc: "< 500 kg", icon: "🚐", base: 80000 },
   { id: "truck",     label: "Xe tải lớn", desc: "> 500 kg", icon: "🚚", base: 150000 },
-];
-
-const RECENT_PLACES = [
-  { label: "Ký túc xá FPTU HCM", detail: "Đường D1, Khu CNC, Q.9, TP.HCM" },
-  { label: "Vinhomes Grand Park", detail: "Nguyễn Xiển, Long Bình, Q.9, TP.HCM" },
-  { label: "Bình Dương Tower", detail: "3C Phú Lợi, TP. Thủ Dầu Một, Bình Dương" },
 ];
 
 export default function DatChuyenPage() {
@@ -26,6 +21,20 @@ export default function DatChuyenPage() {
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recentPlaces, setRecentPlaces] = useState<{ label: string; detail: string }[]>([]);
+  const [pickupMeta, setPickupMeta] = useState<{ lat?: number | null; lng?: number | null }>({});
+  const [dropoffMeta, setDropoffMeta] = useState<{ lat?: number | null; lng?: number | null }>({});
+
+  useEffect(() => {
+    customerApi.getRecentPlaces().then((r) => {
+      if (r.success && Array.isArray(r.data)) {
+        setRecentPlaces(r.data.map((p) => ({
+          label: ("label" in p ? p.label : p.title) ?? "Địa chỉ",
+          detail: p.address,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   const selected = VEHICLE_OPTIONS.find(v => v.id === vehicle)!;
   const canSubmit = pickup.trim() && dropoff.trim();
@@ -43,8 +52,14 @@ export default function DatChuyenPage() {
         dropoff_address: dropoff,
         vehicle_type: vehicle,
         note,
+        pickup_latitude: pickupMeta.lat ?? undefined,
+        pickup_longitude: pickupMeta.lng ?? undefined,
+        delivery_latitude: dropoffMeta.lat ?? undefined,
+        delivery_longitude: dropoffMeta.lng ?? undefined,
       });
       if (r.success && r.data) {
+        if (pickup.trim()) customerApi.addRecentPlace({ address: pickup.trim(), title: pickup.split(",")[0]?.trim() }).catch(() => {});
+        if (dropoff.trim()) customerApi.addRecentPlace({ address: dropoff.trim(), title: dropoff.split(",")[0]?.trim() }).catch(() => {});
         const id = (r.data as { id?: string })?.id ?? (r.data as { order?: { id: string } })?.order?.id;
         if (id) { router.push(`/don-hang/${id}`); return; }
         router.push("/don-hang");
@@ -77,11 +92,10 @@ export default function DatChuyenPage() {
               <div className="w-2 h-2 rounded-full bg-[#2563EB]" />
               Điểm đón
             </label>
-            <input
+            <AddressAutocomplete
               value={pickup}
-              onChange={e => setPickup(e.target.value)}
+              onChange={(addr, meta) => { setPickup(addr); setPickupMeta(meta ?? {}); }}
               placeholder="Nhập địa chỉ đón hàng..."
-              className="w-full h-11 px-4 rounded-xl border border-gray-200 text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] focus:bg-white transition-all"
             />
           </div>
 
@@ -100,11 +114,11 @@ export default function DatChuyenPage() {
               <MapPin size={10} className="text-green-500" />
               Điểm đến
             </label>
-            <input
+            <AddressAutocomplete
               value={dropoff}
-              onChange={e => setDropoff(e.target.value)}
+              onChange={(addr, meta) => { setDropoff(addr); setDropoffMeta(meta ?? {}); }}
+              pickupAddress={pickup}
               placeholder="Nhập địa chỉ giao hàng..."
-              className="w-full h-11 px-4 rounded-xl border border-gray-200 text-sm bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] focus:bg-white transition-all"
             />
           </div>
         </div>
@@ -180,7 +194,7 @@ export default function DatChuyenPage() {
         <div className="space-y-2">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1">Địa điểm gần đây</p>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
-            {RECENT_PLACES.map(place => (
+            {recentPlaces.map(place => (
               <button
                 key={place.label}
                 type="button"

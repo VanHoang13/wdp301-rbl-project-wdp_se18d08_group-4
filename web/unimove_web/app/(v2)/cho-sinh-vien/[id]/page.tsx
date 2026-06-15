@@ -135,12 +135,31 @@ export default function ListingDetailPage() {
       </div>
 
       {!isOwner && !sold && (
-        <div className="px-4 py-4" style={{ backgroundColor:"var(--card)", borderTop:"1px solid var(--border)" }}>
+        <div className="px-4 py-4 space-y-2" style={{ backgroundColor:"var(--card)", borderTop:"1px solid var(--border)" }}>
           <Link href={`/cho-sinh-vien/${id}/chat`}>
             <Button variant="gradient-c" size="xl" className="w-full gap-2">
               <MessageCircle size={20} /> Nhắn tin hỏi mua
             </Button>
           </Link>
+          {listing.is_interested && listing.status === "reserved" && (
+            <Button className="w-full" onClick={async () => {
+              try { await marketplaceApi.confirmReceived(listing.id); toast("Đã xác nhận nhận hàng", "success"); }
+              catch { toast("Thử lại", "error"); }
+            }}>Xác nhận đã nhận hàng</Button>
+          )}
+          {sold && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Đánh giá giao dịch</p>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button key={n} type="button" onClick={async () => {
+                    try { await marketplaceApi.rate(listing.id, n); toast("Cảm ơn đánh giá!", "success"); }
+                    catch { toast("Thử lại", "error"); }
+                  }}><Star size={24} className="text-amber-400 hover:fill-amber-400" /></button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

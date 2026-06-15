@@ -26,7 +26,7 @@ const PAYOS_API_URL = process.env.PAYOS_API_URL || 'https://api-merchant.payos.v
 
 // Application URLs
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 5000}`;
 
 // Goong Maps (ưu tiên cho địa chỉ VN) — https://docs.goong.io/rest/
 const GOONG_API_KEY = process.env.GOONG_API_KEY || '';
@@ -40,7 +40,7 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
 // Node API
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Email configuration (Gmail for password reset OTP)
