@@ -4,6 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../../core/mock/mock_provider_data.dart';
 import '../../../../core/theme/uni_move_colors.dart';
 import '../../../../core/widgets/shad_screen_scope.dart';
 import '../../../auth/data/auth_repository.dart';
@@ -114,9 +120,37 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       ref.invalidate(providerOrderDetailProvider(widget.orderId));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã nhận đơn — đơn đang thực hiện')),
+        const SnackBar(content: Text('Đã nhận đơn — bấm "Bắt đầu lấy hàng" khi sẵn sàng')),
       );
-      context.pop();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _start() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bắt đầu lấy hàng?'),
+        content: const Text('Xác nhận bạn đang trên đường đến lấy hàng. Khách sẽ được thông báo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Chưa')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Bắt đầu')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await ref.read(providerOrdersRepositoryProvider).start(widget.orderId);
+      ref.invalidate(providerOrdersListProvider);
+      ref.invalidate(providerOrderDetailProvider(widget.orderId));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã bắt đầu — đang trên đường lấy hàng')),
+      );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
@@ -146,26 +180,71 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   }
 
   Future<void> _complete() async {
-    final confirmed = await showDialog<bool>(
+    // Chọn nguồn ảnh
+    final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hoàn thành đơn?'),
-        content: const Text('Xác nhận đơn hàng đã được giao hoàn tất cho khách.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xác nhận')),
-        ],
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Chụp ảnh xác nhận giao hàng',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 4),
+              const Text('Ảnh là bằng chứng khi có tranh chấp.',
+                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Chụp ảnh'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Chọn từ thư viện'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (source == null || !mounted) return;
+
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 80,
+      maxWidth: 1280,
+    );
+    if (picked == null || !mounted) return;
+
     setState(() => _submitting = true);
     try {
-      await ref.read(providerOrdersRepositoryProvider).complete(widget.orderId);
+      // Upload ảnh
+      final api = ref.read(providerOrdersRepositoryProvider);
+      final file = File(picked.path);
+      final formData = FormData.fromMap({
+        'photo': await MultipartFile.fromFile(
+          file.path,
+          filename: 'delivery.jpg',
+          contentType: DioMediaType('image', 'jpeg'),
+        ),
+      });
+      await ref.read(providerOrdersRepositoryProvider).uploadDeliveryPhoto(
+            widget.orderId,
+            formData,
+          );
+
+      // Hoàn thành đơn
+      await api.complete(widget.orderId);
       ref.invalidate(providerOrdersListProvider);
       ref.invalidate(providerOrderDetailProvider(widget.orderId));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đơn hoàn thành!')),
+        const SnackBar(content: Text('Đơn hoàn thành! Ảnh đã được lưu.')),
       );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -351,7 +430,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           const SizedBox(height: 10),
                           _timingCard(c, theme, order),
                         ],
-                        if (order.isActive) ...[
+                        if (order.status == 'in_progress') ...[
                           const SizedBox(height: 20),
                           ShadButton(
                             width: double.infinity,
@@ -424,7 +503,24 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                             ),
                           ),
                         ],
-                        if (order.isActive) ...[
+                        if (order.status == 'accepted') ...[
+                          const SizedBox(height: 12),
+                          ShadButton(
+                            width: double.infinity,
+                            backgroundColor: Colors.orange.shade600,
+                            onPressed: _submitting ? null : _start,
+                            leading: const Icon(LucideIcons.truck, size: 18),
+                            child: const Text('Bắt đầu lấy hàng'),
+                          ),
+                          const SizedBox(height: 8),
+                          ShadButton.outline(
+                            width: double.infinity,
+                            onPressed: _submitting ? null : _cancel,
+                            leading: const Icon(LucideIcons.x, size: 18, color: Color(0xFFEF4444)),
+                            child: const Text('Hủy đơn', style: TextStyle(color: Color(0xFFEF4444))),
+                          ),
+                        ],
+                        if (order.status == 'in_progress') ...[
                           const SizedBox(height: 12),
                           ShadButton(
                             width: double.infinity,
@@ -1035,6 +1131,45 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               ),
             ],
           ),
+          if (order.depositAmount > 0) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Divider(height: 1),
+            ),
+            Row(
+              children: [
+                Icon(LucideIcons.shieldCheck, size: 15, color: c.success),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Đặt cọc đã thanh toán',
+                    style: theme.textTheme.small.copyWith(color: c.success, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  ProviderOrder.formatMoney(order.depositAmount),
+                  style: theme.textTheme.small.copyWith(color: c.success, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(LucideIcons.wallet, size: 15, color: c.primaryLight),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Thu khi giao xong',
+                    style: theme.textTheme.small.copyWith(color: c.onSurfaceMuted),
+                  ),
+                ),
+                Text(
+                  ProviderOrder.formatMoney(order.remainingAmount > 0 ? order.remainingAmount : (order.totalPrice - order.depositAmount)),
+                  style: theme.textTheme.p.copyWith(color: c.primaryLight, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ],
           if (order.hasInsurance && order.insuranceValue != null) ...[
             const SizedBox(height: 10),
             Text(

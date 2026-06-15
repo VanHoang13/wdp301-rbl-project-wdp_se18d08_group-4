@@ -9,6 +9,7 @@ import '../../features/payments/presentation/pages/provider_payout_settings_page
 import '../../features/notifications/presentation/pages/provider_notification_detail_page.dart';
 import '../../features/notifications/presentation/pages/provider_notifications_page.dart';
 import '../../features/profile/presentation/pages/provider_reviews_page.dart';
+import '../../features/profile/presentation/pages/public_profile_page.dart';
 import '../../features/schedule/presentation/pages/schedule_page.dart';
 import '../../features/tracking/presentation/pages/provider_order_tracking_page.dart';
 import '../../features/onboarding/presentation/pages/provider_onboarding_page.dart';
@@ -65,6 +66,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         redirect: (_, __) => '/home',
       ),
       GoRoute(path: '/profile/reviews', builder: (_, __) => const ProviderReviewsPage()),
+      GoRoute(
+        path: '/profile/public/:id',
+        builder: (_, state) => PublicProfilePage(providerId: state.pathParameters['id']!),
+      ),
       GoRoute(path: '/notifications', builder: (_, __) => const ProviderNotificationsPage()),
       GoRoute(
         path: '/notifications/:id',

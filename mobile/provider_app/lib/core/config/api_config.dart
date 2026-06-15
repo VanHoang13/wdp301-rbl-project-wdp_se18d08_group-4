@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 abstract final class ApiConfig {
   static const useLanHost = true;
-  static const lanHost = '192.168.1.29';
+  static const lanHost = '192.168.1.38';
   static const useAdbReverse = false;
 
   static String get baseUrl {

@@ -10,6 +10,7 @@ const marketplaceRoutes = require('./marketplace.routes');
 const notificationRoutes = require('./notification.routes');
 const conversationsRoutes = require('./conversations.routes');
 const mapsRoutes = require('./maps.routes');
+const reviewsRoutes = require('./reviews.routes');
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use('/marketplace', marketplaceRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/maps', mapsRoutes);
+router.use('/reviews', reviewsRoutes);
 
 module.exports = router;

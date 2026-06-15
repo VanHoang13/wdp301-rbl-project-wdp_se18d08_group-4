@@ -19,6 +19,6 @@ router.post(
   providersController.uploadDocuments,
 );
 
-router.get('/:id', requireAuth, requireRole('customer'), providersController.getById);
+router.get('/:id', requireAuth, providersController.getById);
 
 module.exports = router;
