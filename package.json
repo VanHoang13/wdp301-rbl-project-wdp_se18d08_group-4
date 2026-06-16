@@ -8,6 +8,8 @@
     "dev:provider": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-provider.ps1",
     "dev:customer:all": "concurrently --handle-input --default-input-target CUSTOMER -n BE,CUSTOMER -c blue,green \"npm run dev --prefix backend\" \"npm run start --prefix mobile/customer_app\"",
     "dev:be": "npm run dev --prefix backend",
+    "dev:web": "npm run dev --prefix web/unimove_web",
+    "dev:be+web": "concurrently -n BACKEND,WEB -c blue,cyan \"npm run dev --prefix backend\" \"npm run dev --prefix web/unimove_web\"",
     "dev:customer:app": "npm run start --prefix mobile/customer_app --",
     "dev:provider:app": "npm run start --prefix mobile/provider_app --"
   },
