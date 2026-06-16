@@ -166,12 +166,10 @@ BEGIN
     'exact_match', 'Nhận đúng giờ khách chọn · 2 người bốc xếp', 'submitted',
     now_ts - INTERVAL '10 minutes', now_ts);
 
-  -- Cập nhật thu nhập provider demo
+  -- Cập nhật thu nhập provider demo (rating sẽ được trigger/seed reviews tính lại)
   UPDATE provider_profiles SET
     total_orders = 52,
-    total_earnings = 24850000,
-    rating = 4.85,
-    total_reviews = 38
+    total_earnings = 24850000
   WHERE id = prov1;
 
 END $$;

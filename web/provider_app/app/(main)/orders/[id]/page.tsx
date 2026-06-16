@@ -3,24 +3,29 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, MapPin, Phone, CheckCircle, XCircle, Clock, DollarSign, User } from "lucide-react";
+import { ArrowLeft, MapPin, Phone, CheckCircle, XCircle, Clock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { providerOrdersApi } from "@/lib/api";
+import { QuoteRequestSection } from "@/components/provider/QuoteRequestSection";
 import { getOrderStatusLabel, getOrderStatusColor, formatVND, formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface OrderDetail {
   id: string;
   status: string;
+  quote_request?: boolean;
   service_type: string;
   pickup_address: string;
   dropoff_address: string;
+  delivery_address?: string;
   description?: string;
   floor_number?: number;
-  num_helpers?: number;
+  pickup_notes?: string;
+  scheduled_pickup_time?: string;
+  number_of_helpers?: number;
   special_notes?: string;
   estimated_price?: number;
   final_price?: number;
@@ -35,31 +40,36 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [responding, setResponding] = useState(false);
-  const [estimatedPrice, setEstimatedPrice] = useState("");
+
+  const loadOrder = async () => {
+    const res = await providerOrdersApi.getOrder(id);
+    if (res.success && res.data) setOrder(res.data as OrderDetail);
+  };
 
   useEffect(() => {
-    providerOrdersApi.getOrder(id)
-      .then((res) => { if (res.success && res.data) setOrder(res.data as OrderDetail); })
-      .finally(() => setLoading(false));
+    loadOrder().finally(() => setLoading(false));
   }, [id]);
 
-  const respond = async (action: "accept" | "reject") => {
+  const respond = async (response: "accepted" | "declined") => {
     setResponding(true);
     try {
-      const body: { action: "accept" | "reject"; estimated_price?: number } = { action };
-      if (action === "accept" && estimatedPrice) {
-        body.estimated_price = parseInt(estimatedPrice);
-      }
-      await providerOrdersApi.respondToOrder(id, body);
-      toast(action === "accept" ? "Đã chấp nhận đơn!" : "Đã từ chối đơn", action === "accept" ? "success" : "info");
-      const res = await providerOrdersApi.getOrder(id);
-      if (res.success && res.data) setOrder(res.data as OrderDetail);
-    } catch { toast("Thử lại sau", "error"); }
-    finally { setResponding(false); }
+      await providerOrdersApi.respondToOrder(id, {
+        response,
+        decline_reason: response === "declined" ? "Nhà xe từ chối" : undefined,
+      });
+      toast(response === "accepted" ? "Đã chấp nhận đơn!" : "Đã từ chối đơn", response === "accepted" ? "success" : "info");
+      await loadOrder();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Thử lại sau", "error");
+    } finally {
+      setResponding(false);
+    }
   };
 
   const statusColor = order ? getOrderStatusColor(order.status) : "var(--muted)";
   const isPending = order?.status === "pending";
+  const isQuoteRequest = isPending && !!order?.quote_request;
+  const dropoff = order?.dropoff_address ?? order?.delivery_address ?? "";
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--bg)" }}>
@@ -86,17 +96,16 @@ export default function OrderDetailPage() {
         </div>
       ) : (
         <div className="px-4 py-4 space-y-4">
-          {/* Status */}
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <Badge style={{ backgroundColor: statusColor + "22", color: statusColor, border: `1px solid ${statusColor}44`, fontSize: "13px", padding: "4px 12px" }}>
                 {getOrderStatusLabel(order.status)}
+                {isQuoteRequest && " · Báo giá"}
               </Badge>
               <span className="text-xs" style={{ color: "var(--muted)" }}>{formatDate(order.created_at)}</span>
             </div>
           </Card>
 
-          {/* Customer */}
           {order.customer && (
             <Card className="p-5">
               <h3 className="font-bold mb-3" style={{ color: "var(--text)" }}>Khách hàng</h3>
@@ -118,7 +127,6 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Route */}
           <Card className="p-5">
             <h3 className="font-bold mb-4" style={{ color: "var(--text)" }}>Lộ trình</h3>
             <div className="space-y-3">
@@ -138,13 +146,12 @@ export default function OrderDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold mb-0.5" style={{ color: "var(--muted)" }}>ĐIỂM ĐẾN</p>
-                  <p className="text-sm font-medium" style={{ color: "var(--text)" }}>{order.dropoff_address}</p>
+                  <p className="text-sm font-medium" style={{ color: "var(--text)" }}>{dropoff}</p>
                 </div>
               </div>
             </div>
           </Card>
 
-          {/* Order details */}
           <Card className="p-5">
             <h3 className="font-bold mb-4" style={{ color: "var(--text)" }}>Thông tin đồ đạc</h3>
             <div className="space-y-3">
@@ -156,54 +163,41 @@ export default function OrderDetailPage() {
             </div>
           </Card>
 
-          {/* Price */}
-          {(order.estimated_price || order.final_price) && (
+          {isQuoteRequest && (
+            <QuoteRequestSection
+              orderId={id}
+              scheduledPickupTime={order.scheduled_pickup_time}
+              onSubmitted={loadOrder}
+            />
+          )}
+
+          {isPending && !isQuoteRequest && (
+            <Card className="p-5">
+              <h3 className="font-bold mb-3" style={{ color: "var(--text)" }}>Phản hồi đơn</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant="destructive" size="lg" className="w-full gap-2" loading={responding}
+                  onClick={() => respond("declined")}>
+                  <XCircle size={18} /> Từ chối
+                </Button>
+                <Button size="lg" className="w-full gap-2" loading={responding}
+                  onClick={() => respond("accepted")}
+                  style={{ backgroundColor: "var(--success)" }}>
+                  <CheckCircle size={18} /> Chấp nhận
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {!isPending && (order.estimated_price || order.final_price) && (
             <Card className="p-5">
               <h3 className="font-bold mb-3" style={{ color: "var(--text)" }}>Giá dịch vụ</h3>
               {order.estimated_price && <InfoRow label="Giá báo" value={formatVND(order.estimated_price)} />}
-              {order.deposit_amount && <InfoRow label="Đã đặt cọc" value={formatVND(order.deposit_amount)} />}
               {order.final_price && (
                 <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
                   <span className="font-bold" style={{ color: "var(--text)" }}>Tổng cộng</span>
                   <span className="text-lg font-bold" style={{ color: "var(--success)" }}>{formatVND(order.final_price)}</span>
                 </div>
               )}
-            </Card>
-          )}
-
-          {/* Accept/Reject for pending */}
-          {isPending && (
-            <Card className="p-5">
-              <h3 className="font-bold mb-3" style={{ color: "var(--text)" }}>Báo giá & Phản hồi</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium block mb-1.5" style={{ color: "var(--text)" }}>
-                    Giá báo của bạn (VNĐ)
-                  </label>
-                  <div className="relative flex items-center">
-                    <DollarSign size={16} className="absolute left-3" style={{ color: "var(--muted)" }} />
-                    <input
-                      type="number"
-                      placeholder="VD: 1500000"
-                      value={estimatedPrice}
-                      onChange={(e) => setEstimatedPrice(e.target.value)}
-                      className="w-full h-11 rounded-xl border pl-9 pr-3 text-sm"
-                      style={{ backgroundColor: "var(--surface)", borderColor: "var(--border)", color: "var(--text)" }}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Button variant="destructive" size="lg" className="w-full gap-2" loading={responding}
-                    onClick={() => respond("reject")}>
-                    <XCircle size={18} /> Từ chối
-                  </Button>
-                  <Button size="lg" className="w-full gap-2" loading={responding}
-                    onClick={() => respond("accept")}
-                    style={{ backgroundColor: "var(--success)" }}>
-                    <CheckCircle size={18} /> Chấp nhận
-                  </Button>
-                </div>
-              </div>
             </Card>
           )}
         </div>

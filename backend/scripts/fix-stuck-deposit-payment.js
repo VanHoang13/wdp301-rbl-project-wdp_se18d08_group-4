@@ -8,6 +8,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 
 const { supabaseAdmin } = require('../src/services/supabase.service');
 const payosService = require('../src/services/payos.service');
+const { applyOrderAfterDepositPaid } = require('../src/services/payments.service');
 
 async function main() {
   const paymentCode = process.argv[2];
@@ -30,7 +31,9 @@ async function main() {
   console.log('Current status:', payment.status, '| amount:', payment.amount);
 
   if (payment.status === 'completed') {
-    console.log('✅ Already completed');
+    console.log('✅ Payment already completed — repairing order if needed');
+    const repair = await applyOrderAfterDepositPaid(payment.id);
+    console.log(repair.applied ? '✅ Order deposit_paid updated' : 'ℹ️ Order already up to date');
     return;
   }
 
@@ -61,10 +64,10 @@ async function main() {
   }
 
   if (updated.order_id) {
-    await supabaseAdmin
-      .from('orders')
-      .update({ deposit_paid: true, deposit_paid_at: new Date().toISOString() })
-      .eq('id', updated.order_id);
+    const repair = await applyOrderAfterDepositPaid(updated.id);
+    if (!repair.applied && !repair.already) {
+      console.warn('⚠️ Order not updated:', repair.error || 'unknown');
+    }
   }
 
   console.log('✅ Payment completed:', updated.payment_code);

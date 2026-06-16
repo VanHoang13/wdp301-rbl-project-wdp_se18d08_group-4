@@ -56,11 +56,18 @@ function requireRole(...roles) {
         });
       }
 
-      const ALLOWED_STATUSES = ['active', 'pending_verification'];
-      if (profile.status && !ALLOWED_STATUSES.includes(profile.status)) {
+      // Only block truly disabled accounts. Providers may be in pending_verification
+      // but still need to access some flows (e.g., upload documents).
+      if (profile.status === 'inactive') {
         return res.status(403).json({
           success: false,
           message: 'Tài khoản đã bị vô hiệu hóa',
+        });
+      }
+      if (profile.status === 'suspended') {
+        return res.status(403).json({
+          success: false,
+          message: 'Tài khoản đã bị tạm khóa',
         });
       }
 

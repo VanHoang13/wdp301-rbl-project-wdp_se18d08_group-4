@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin/queries/reviews";
 import type { Review } from "@/lib/admin/types";
 import { formatDateTime } from "@/lib/admin/formatters";
+import { getAdminUserId } from "@/lib/admin/client-auth";
 import { cn } from "@/lib/admin/utils";
 
 import { PageHeader } from "@/components/admin-dashboard/page-header";
@@ -172,7 +173,7 @@ function ReviewsTable({ reviews, page, pageSize, onRefresh }: ReviewsTableProps)
 
   const handleHide = (reason: string) => {
     if (!hideTarget) return;
-    const adminId = "admin"; // placeholder
+    const adminId = getAdminUserId();
     startHide(async () => {
       await hideReview(hideTarget, reason, adminId);
       setHideTarget(null);
@@ -190,7 +191,7 @@ function ReviewsTable({ reviews, page, pageSize, onRefresh }: ReviewsTableProps)
   };
 
   const handleUnhide = (id: string) => {
-    const adminId = "admin"; // placeholder
+    const adminId = getAdminUserId();
     setUnhideTarget(id);
     startUnhide(async () => {
       await unhideReview(id, adminId);

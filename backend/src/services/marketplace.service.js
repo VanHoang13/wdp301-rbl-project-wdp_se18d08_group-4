@@ -1,7 +1,7 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
-const { ensurePublicImageBucket } = require('./storage.helpers');
+const { ensurePublicImageBucket, getImageExtFromMime, COMMON_IMAGE_MIME_TYPES } = require('./storage.helpers');
 const payosService = require('./payos.service');
 const env = require('../config/env');
 
@@ -10,7 +10,6 @@ const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
 
 const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 function computeListingFee(price) {
   const p = Number(price);
@@ -1047,17 +1046,15 @@ async function uploadListingImage(userId, file) {
     throw httpError(400, 'Thiếu file ảnh (field: image)', 'validation_error');
   }
 
-  const ext = EXT_BY_MIME[file.mimetype];
-  if (!ext) {
-    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
-  }
+  const ext = getImageExtFromMime(file.mimetype);
+  if (!ext) throw httpError(400, 'Chỉ chấp nhận file ảnh', 'invalid_file_type');
 
   const objectPath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
 
   try {
     await ensurePublicImageBucket(MARKETPLACE_IMAGES_BUCKET, {
       fileSizeLimit: 5242880,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      allowedMimeTypes: COMMON_IMAGE_MIME_TYPES,
     });
   } catch (bucketError) {
     throw httpError(

@@ -196,7 +196,7 @@ export const adminApi = {
     apiClient.patch(`/admin/users/${id}/status`, { status }),
 
   // Provider Management
-  getPendingProviders: () => apiClient.get('/admin/providers/pending'),
+  getPendingProviders: (params?: { status?: string }) => apiClient.get('/admin/providers/pending', params),
   getProviderDocuments: (id: string) => apiClient.get(`/admin/providers/${id}/documents`),
   verifyProvider: (id: string, data: { action: 'approve' | 'reject'; notes?: string }) =>
     apiClient.put(`/admin/providers/${id}/verify`, data),

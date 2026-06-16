@@ -24,9 +24,10 @@ const PAYOS_API_KEY = process.env.PAYOS_API_KEY || '';
 const PAYOS_CHECKSUM_KEY = process.env.PAYOS_CHECKSUM_KEY || '';
 const PAYOS_API_URL = process.env.PAYOS_API_URL || 'https://api-merchant.payos.vn/v2';
 
-// Application URLs
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 5000}`;
+// Application URLs — APP_URL = frontend web; API_URL = backend (PayOS return callback)
+const WEB_DEV_URL = process.env.WEB_DEV_URL || 'http://localhost:3001';
+const APP_URL = process.env.APP_URL || WEB_DEV_URL;
+const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
 
 // Goong Maps (ưu tiên cho địa chỉ VN) — https://docs.goong.io/rest/
 const GOONG_API_KEY = process.env.GOONG_API_KEY || '';

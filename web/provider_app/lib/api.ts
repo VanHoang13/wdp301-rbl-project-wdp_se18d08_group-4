@@ -106,8 +106,24 @@ export const providerOrdersApi = {
   getOrders: (params?: { status?: string; page?: number }) =>
     apiClient.get("/orders", params as Record<string, unknown>),
   getOrder: (id: string) => apiClient.get(`/orders/${id}`),
-  respondToOrder: (id: string, body: { action: "accept" | "reject"; estimated_price?: number; notes?: string }) =>
+  respondToOrder: (id: string, body: { response: "accepted" | "declined"; decline_reason?: string }) =>
     apiClient.post(`/orders/${id}/respond`, body),
+  declineOrder: (id: string, reason?: string) =>
+    apiClient.post(`/orders/${id}/respond`, { response: "declined", decline_reason: reason }),
+};
+
+export const providerQuotesApi = {
+  submit: (
+    orderId: string,
+    body: {
+      base_price: number;
+      surcharges?: { label: string; amount: number }[];
+      schedule_fit?: string;
+      proposed_pickup_at?: string;
+      note?: string;
+    }
+  ) => apiClient.post(`/orders/${orderId}/quotes`, body),
+  list: (orderId: string) => apiClient.get(`/orders/${orderId}/quotes`),
 };
 
 export const providerProfileApi = {

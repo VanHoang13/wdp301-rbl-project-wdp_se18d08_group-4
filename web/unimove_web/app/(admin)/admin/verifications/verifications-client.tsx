@@ -107,11 +107,13 @@ function VerifyDialog({
   adminId,
   open,
   onOpenChange,
+  onVerified,
 }: {
   provider: Provider;
   adminId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onVerified?: () => void;
 }) {
   const router = useRouter();
   const [docs, setDocs] = useState<ProviderDocument[] | null>(null);
@@ -162,6 +164,7 @@ function VerifyDialog({
         setSubmitError(error.message);
       } else {
         onOpenChange(false);
+        onVerified?.();
         router.refresh();
       }
     });
@@ -423,11 +426,17 @@ export function VerificationsClient({
   meta,
   activeTab,
   adminId,
+  isRefreshing,
+  lastUpdatedAt,
+  onRefresh,
 }: {
   providers: Provider[];
   meta: PaginationMeta;
   activeTab: VerificationStatus;
   adminId: string;
+  isRefreshing?: boolean;
+  lastUpdatedAt?: Date | null;
+  onRefresh?: () => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -449,29 +458,62 @@ export function VerificationsClient({
   return (
     <>
       {/* Tabs */}
-      <div
-        className="flex gap-1 p-1 rounded-xl mb-6 w-fit"
-        style={{ backgroundColor: "var(--primary-tint)" }}
-      >
-        {TABS.map((tab) => (
+      <div className="flex items-center gap-3 mb-6">
+        <div
+          className="flex gap-1 p-1 rounded-xl w-fit"
+          style={{ backgroundColor: "var(--primary-tint)" }}
+        >
+          {TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setTab(tab.value)}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer select-none",
+                activeTab === tab.value
+                  ? "text-white shadow-sm"
+                  : "text-[var(--muted)] hover:text-[var(--text)]"
+              )}
+              style={
+                activeTab === tab.value
+                  ? { backgroundColor: "var(--primary)" }
+                  : undefined
+              }
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {lastUpdatedAt && (
+            <span className="text-xs hidden sm:inline" style={{ color: "var(--muted)" }}>
+              Cập nhật{" "}
+              {lastUpdatedAt.toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </span>
+          )}
           <button
-            key={tab.value}
-            onClick={() => setTab(tab.value)}
+            type="button"
+            onClick={onRefresh}
+            disabled={!onRefresh || isRefreshing}
             className={cn(
-              "px-4 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer select-none",
-              activeTab === tab.value
-                ? "text-white shadow-sm"
-                : "text-[var(--muted)] hover:text-[var(--text)]"
+              "px-3 py-2 rounded-xl text-xs font-medium transition-opacity disabled:opacity-50",
+              "inline-flex items-center gap-1.5"
             )}
-            style={
-              activeTab === tab.value
-                ? { backgroundColor: "var(--primary)" }
-                : undefined
-            }
+            style={{
+              backgroundColor: "var(--card)",
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
+            }}
+            title="Làm mới danh sách"
           >
-            {tab.label}
+            <Loader2 className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+            {isRefreshing ? "Đang cập nhật..." : "Làm mới"}
           </button>
-        ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -603,6 +645,7 @@ export function VerificationsClient({
           onOpenChange={(open) => {
             if (!open) setSelectedProvider(null);
           }}
+          onVerified={onRefresh}
         />
       )}
     </>

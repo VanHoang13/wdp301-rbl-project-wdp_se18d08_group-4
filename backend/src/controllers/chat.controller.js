@@ -1,8 +1,19 @@
+const { supabaseAdmin } = require('../services/supabase.service');
 const chatService = require('../services/chat.service');
+
+async function resolveUserRole(userId, fallbackRole) {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
+  return profile?.role || fallbackRole || 'customer';
+}
 
 async function listConversations(req, res, next) {
   try {
-    const data = await chatService.listConversations(req.user.id, req.user.role);
+    const role = await resolveUserRole(req.user.id, req.user.role);
+    const data = await chatService.listConversations(req.user.id, role);
     res.json({ success: true, data });
   } catch (error) {
     next(error);

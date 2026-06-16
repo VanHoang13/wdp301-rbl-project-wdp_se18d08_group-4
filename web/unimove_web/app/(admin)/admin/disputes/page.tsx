@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin/queries/disputes";
 import type { Dispute, Refund, DisputeStatus, DisputeType } from "@/lib/admin/types";
 import { formatVND, formatDateTime } from "@/lib/admin/formatters";
+import { getAdminUserId } from "@/lib/admin/client-auth";
 import { cn } from "@/lib/admin/utils";
 
 import { PageHeader } from "@/components/admin-dashboard/page-header";
@@ -121,7 +122,7 @@ function DisputeDetailDialog({ disputeId, open, onClose, onResolved }: DisputeDe
   const handleResolve = () => {
     if (!disputeId || !resolution.trim()) return;
     startSubmit(async () => {
-      const adminId = "admin"; // placeholder — replace with session user id
+      const adminId = getAdminUserId();
       const refund = needsRefund && refundAmount ? parseFloat(refundAmount) : null;
       const { error } = await resolveDispute(disputeId, adminId, resolution, resolutionType, refund);
       if (!error) {
@@ -491,7 +492,7 @@ function ApproveRefundDialog({ refundId, open, onClose, onApproved }: ApproveRef
   const handleApprove = () => {
     if (!refundId) return;
     startTransition(async () => {
-      const adminId = "admin"; // placeholder — replace with session user id
+      const adminId = getAdminUserId();
       const { error } = await approveRefund(refundId, adminId);
       if (!error) {
         onApproved();

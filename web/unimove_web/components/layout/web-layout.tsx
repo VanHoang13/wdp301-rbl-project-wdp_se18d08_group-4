@@ -28,10 +28,12 @@ const customerNav: NavItem[] = [
 ];
 
 const providerNav: NavItem[] = [
-  { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
-  { href: "/orders",    label: "Đơn hàng",  icon: ClipboardList },
-  { href: "/earnings",  label: "Thu nhập",  icon: DollarSign },
-  { href: "/messages",  label: "Tin nhắn",  icon: MessageSquare },
+  { href: "/dashboard",   label: "Tổng quan",  icon: LayoutDashboard },
+  { href: "/orders",      label: "Đơn hàng",   icon: ClipboardList },
+  { href: "/orders/chat", label: "Tin nhắn",   icon: MessageSquare },
+  { href: "/earnings",    label: "Thu nhập",   icon: DollarSign },
+  { href: "/messages",    label: "Thông báo",  icon: Bell },
+  { href: "/documents",   label: "Giấy tờ",    icon: FileText },
 ];
 
 const BRAND = "#1A56DB";  // provider primary (royal blue)
@@ -105,7 +107,9 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active =
+            pathname === href ||
+            (href !== "/orders" && pathname.startsWith(href + "/"));
           return (
             <Link key={href} href={href} onClick={() => setSidebar(false)}>
               <div

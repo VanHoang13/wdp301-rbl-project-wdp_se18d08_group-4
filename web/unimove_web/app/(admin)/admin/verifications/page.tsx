@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiClient, adminApi } from "@/lib/admin/api";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
 import type { VerificationStatus } from "@/lib/admin/types";
 import { VerificationsClient, normalizeProvider } from "./verifications-client";
+import { usePolling } from "@/lib/admin/use-polling";
 
 export default function VerificationsPage() {
   const searchParams = useSearchParams();
@@ -16,50 +17,58 @@ export default function VerificationsPage() {
   const [meta, setMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [adminId, setAdminId] = useState("");
 
-  useEffect(() => {
-    // Set up API token from localStorage
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      apiClient.setToken(token);
-    }
+  const loadProviders = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) setLoading(true);
+      else setIsRefreshing(true);
 
-    const userStr = localStorage.getItem('admin_user');
+      setError(null);
+      try {
+        const response = await adminApi.getPendingProviders({ status: tab });
+        if (response.success) {
+          const list = Array.isArray(response.data)
+            ? response.data.map((item) => normalizeProvider(item as Record<string, unknown>))
+            : [];
+          setData(list);
+          setMeta({
+            page: 1,
+            pageSize: list.length,
+            total: list.length,
+            totalPages: 1,
+          });
+          setLastUpdatedAt(new Date());
+        } else {
+          throw new Error(response.message || "Failed to load providers");
+        }
+      } catch (err) {
+        if (!silent) setError(err instanceof Error ? err : new Error("Unknown error"));
+      } finally {
+        if (!silent) setLoading(false);
+        else setIsRefreshing(false);
+      }
+    },
+    [tab]
+  );
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin_token");
+    if (token) apiClient.setToken(token);
+
+    const userStr = localStorage.getItem("admin_user");
     if (userStr) {
       const user = JSON.parse(userStr);
       setAdminId(user.id);
     }
 
-    // Fetch data
     loadProviders();
-  }, [tab, page]);
+  }, [loadProviders, tab, page]);
 
-  async function loadProviders() {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await adminApi.getPendingProviders();
-      if (response.success) {
-        const list = Array.isArray(response.data)
-          ? response.data.map((item) => normalizeProvider(item as Record<string, unknown>))
-          : [];
-        setData(list);
-        setMeta({
-          page: 1,
-          pageSize: list.length,
-          total: list.length,
-          totalPages: 1,
-        });
-      } else {
-        throw new Error(response.message || 'Failed to load providers');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  }
+  usePolling(() => loadProviders({ silent: true }), 8_000, !loading && !error);
 
   if (error) {
     return (
@@ -114,6 +123,9 @@ export default function VerificationsPage() {
         meta={meta}
         activeTab={tab}
         adminId={adminId}
+        isRefreshing={isRefreshing}
+        lastUpdatedAt={lastUpdatedAt}
+        onRefresh={() => loadProviders({ silent: true })}
       />
     </div>
   );

@@ -2,59 +2,117 @@ const { supabaseAdmin } = require('./supabase.service');
 const { createNotification } = require('./notification.service');
 const { httpError } = require('./auth.helpers');
 
+const CHAT_ELIGIBLE_STATUSES = ['matched', 'accepted', 'picking_up', 'in_progress', 'completed'];
+
+async function loadProfilesMap(ids) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return {};
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, avatar_url, phone')
+    .in('id', unique);
+  if (error) throw httpError(500, error.message, 'db_error');
+  return Object.fromEntries((data || []).map((p) => [p.id, p]));
+}
+
 // ── GET /api/conversations ────────────────────────────────────────────────────
 async function listConversations(userId, role) {
   const isCustomer = role === 'customer';
-  const filterCol = isCustomer ? 'customer_id' : 'provider_id';
 
-  // Fetch conversations + order info (no profiles join — FK may not be cached)
   const { data, error } = await supabaseAdmin
     .from('conversations')
     .select(`
       id,
       order_id,
+      customer_id,
+      provider_id,
       is_active,
       last_message_preview,
       last_message_at,
       customer_unread_count,
       provider_unread_count,
-      customer_id,
-      provider_id,
-      created_at,
-      order:orders!order_id(id, status, service_type, created_at)
+      created_at
     `)
-    .eq(filterCol, userId)
+    .or(`customer_id.eq.${userId},provider_id.eq.${userId}`)
     .order('last_message_at', { ascending: false, nullsFirst: false });
 
   if (error) throw httpError(500, error.message, 'db_error');
-  if (!data || data.length === 0) return [];
 
-  // Collect counterpart IDs and fetch profiles separately
-  const counterpartIds = data.map(c => isCustomer ? c.provider_id : c.customer_id).filter(Boolean);
-  const uniqueIds = [...new Set(counterpartIds)];
+  const convRows = data || [];
+  const orderIds = [...new Set(convRows.map((c) => c.order_id))];
+  const profileIds = convRows.flatMap((c) => [c.customer_id, c.provider_id]);
 
-  let profileMap = {};
-  if (uniqueIds.length > 0) {
-    const { data: profiles } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name, avatar_url, phone')
-      .in('id', uniqueIds);
-    (profiles || []).forEach(p => { profileMap[p.id] = p; });
-  }
+  const [ordersRes, profilesMap] = await Promise.all([
+    orderIds.length
+      ? supabaseAdmin
+          .from('orders')
+          .select('id, status, service_type, created_at')
+          .in('id', orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    loadProfilesMap(profileIds),
+  ]);
 
-  return data.map((conv) => {
-    const counterpartId = isCustomer ? conv.provider_id : conv.customer_id;
+  if (ordersRes.error) throw httpError(500, ordersRes.error.message, 'db_error');
+  const orderMap = Object.fromEntries((ordersRes.data || []).map((o) => [o.id, o]));
+
+  const fromConversations = convRows.map((conv) => {
+    const asCustomer = conv.customer_id === userId;
+    const counterpartId = asCustomer ? conv.provider_id : conv.customer_id;
     return {
       id: conv.id,
       order_id: conv.order_id,
       is_active: conv.is_active,
       last_message_preview: conv.last_message_preview,
       last_message_at: conv.last_message_at,
-      unread_count: isCustomer ? conv.customer_unread_count : conv.provider_unread_count,
+      unread_count: asCustomer ? conv.customer_unread_count : conv.provider_unread_count,
       created_at: conv.created_at,
-      order: conv.order,
-      counterpart: profileMap[counterpartId] ?? null,
+      order: orderMap[conv.order_id] ?? null,
+      counterpart: profilesMap[counterpartId] ?? null,
     };
+  });
+
+  const existingOrderIds = new Set(fromConversations.map((c) => c.order_id));
+
+  const { data: orders, error: ordersErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, service_type, created_at, customer_id, provider_id')
+    .or(`customer_id.eq.${userId},provider_id.eq.${userId}`)
+    .not('provider_id', 'is', null)
+    .in('status', CHAT_ELIGIBLE_STATUSES)
+    .order('created_at', { ascending: false });
+
+  if (ordersErr) throw httpError(500, ordersErr.error.message, 'db_error');
+
+  const pendingOrders = (orders || []).filter((order) => !existingOrderIds.has(order.id));
+  const pendingProfiles = await loadProfilesMap(
+    pendingOrders.flatMap((o) => [o.customer_id, o.provider_id]),
+  );
+
+  const fromOrders = pendingOrders.map((order) => {
+    const asCustomer = order.customer_id === userId;
+    const counterpartId = asCustomer ? order.provider_id : order.customer_id;
+    return {
+      id: `pending-${order.id}`,
+      order_id: order.id,
+      is_active: true,
+      last_message_preview: 'Bắt đầu trò chuyện với đối tác',
+      last_message_at: null,
+      unread_count: 0,
+      created_at: order.created_at,
+      order: {
+        id: order.id,
+        status: order.status,
+        service_type: order.service_type,
+        created_at: order.created_at,
+      },
+      counterpart: pendingProfiles[counterpartId] ?? null,
+    };
+  });
+
+  return [...fromConversations, ...fromOrders].sort((a, b) => {
+    const aTime = a.last_message_at || a.created_at;
+    const bTime = b.last_message_at || b.created_at;
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
   });
 }
 
@@ -68,7 +126,24 @@ async function getMessages(orderId, userId) {
 
   if (convErr) throw httpError(500, convErr.message, 'db_error');
 
-  if (!conv) return { conversation_id: null, messages: [] };
+  if (!conv) {
+    const { data: order, error: orderErr } = await supabaseAdmin
+      .from('orders')
+      .select('id, customer_id, provider_id, status')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (orderErr) throw httpError(500, orderErr.message, 'db_error');
+    if (!order) throw httpError(404, 'Không tìm thấy đơn hàng', 'not_found');
+    if (order.customer_id !== userId && order.provider_id !== userId) {
+      throw httpError(403, 'Không có quyền truy cập cuộc trò chuyện này', 'forbidden');
+    }
+    if (!order.provider_id) {
+      throw httpError(400, 'Đơn hàng chưa có nhà xe để nhắn tin', 'no_provider');
+    }
+
+    return { conversation_id: null, messages: [] };
+  }
 
   if (conv.customer_id !== userId && conv.provider_id !== userId) {
     throw httpError(403, 'Không có quyền truy cập cuộc trò chuyện này', 'forbidden');
@@ -103,26 +178,15 @@ async function getMessages(orderId, userId) {
       location_name,
       is_read,
       read_at,
-      sender_id,
-      reply_to_id,
-      created_at
+      created_at,
+      sender:profiles!sender_id(id, full_name, avatar_url),
+      reply_to:messages!reply_to_id(id, content, sender_id)
     `)
     .eq('conversation_id', conv.id)
     .eq('is_deleted', false)
     .order('created_at', { ascending: true });
 
   if (msgsErr) throw httpError(500, msgsErr.message, 'db_error');
-
-  // Fetch sender profiles separately
-  const senderIds = [...new Set((msgs || []).map(m => m.sender_id).filter(Boolean))];
-  let senderMap = {};
-  if (senderIds.length > 0) {
-    const { data: senders } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', senderIds);
-    (senders || []).forEach(s => { senderMap[s.id] = s; });
-  }
 
   return {
     conversation_id: conv.id,
@@ -137,9 +201,9 @@ async function getMessages(orderId, userId) {
       location_name: m.location_name ?? null,
       is_read: m.is_read,
       read_at: m.read_at ?? null,
-      is_mine: m.sender_id === userId,
-      sender: senderMap[m.sender_id] ?? null,
-      reply_to: null,
+      is_mine: m.sender?.id === userId,
+      sender: m.sender,
+      reply_to: m.reply_to ?? null,
       created_at: m.created_at,
     })),
   };
@@ -165,6 +229,9 @@ async function sendMessage(orderId, userId, body) {
 
   if (order.customer_id !== userId && order.provider_id !== userId) {
     throw httpError(403, 'Không có quyền gửi tin nhắn trong cuộc trò chuyện này', 'forbidden');
+  }
+  if (!order.provider_id) {
+    throw httpError(400, 'Đơn hàng chưa có nhà xe để nhắn tin', 'no_provider');
   }
 
   const isCustomer = order.customer_id === userId;
