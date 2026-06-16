@@ -5,8 +5,10 @@ type FlowState = ReturnType<typeof useBookingFlowStore.getState>;
 
 function splitAddress(full: string) {
   const parts = full.split(",").map((s) => s.trim()).filter(Boolean);
-  const district = parts.length >= 2 ? parts[parts.length - 2] : "";
-  const city = parts.length >= 1 ? parts[parts.length - 1] : "";
+  // Google Maps addresses end with "Việt Nam" — skip it to get the actual city/province
+  const meaningful = parts.filter((p) => p.toLowerCase() !== "việt nam" && p.toLowerCase() !== "viet nam");
+  const city = meaningful.length >= 1 ? meaningful[meaningful.length - 1] : parts[parts.length - 1] ?? "";
+  const district = meaningful.length >= 2 ? meaningful[meaningful.length - 2] : "";
   return { address: full, district, city };
 }
 

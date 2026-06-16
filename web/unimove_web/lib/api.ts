@@ -218,7 +218,9 @@ export const ordersApi = {
       response: action === "accept" ? "accepted" : "declined",
       decline_reason: notes || undefined,
     }),
+  skip: (id: string) => patch(`/orders/${id}/skip`, {}),
   cancel: (id: string, reason?: string) => patch(`/orders/${id}/cancel`, { reason }),
+  getCancelEstimate: (id: string) => get(`/orders/${id}/cancel-estimate`),
   accept: (id: string) => patch(`/orders/${id}/accept`),
   start: (id: string) => patch(`/orders/${id}/start`),
   complete: (id: string) => patch(`/orders/${id}/complete`),
@@ -365,26 +367,10 @@ export const paymentsApi = {
   createRefund: (body: Record<string, unknown>) => post("/payments/refund", body),
 };
 
-/* ── Conversations (Chat với khách hàng) ── */
-export const conversationsApi = {
-  list: () => get("/conversations"),
-  getMessages: (orderId: string) => get(`/conversations/${orderId}/messages`),
-  sendMessage: (orderId: string, content: string) =>
-    post(`/conversations/${orderId}/messages`, { content }),
-};
-
-/* ── Provider profile (upload docs) ── */
-export const providerApi = {
-  uploadDocuments: (files: Record<string, File>) => {
-    const fd = new FormData();
-    Object.entries(files).forEach(([k, v]) => fd.append(k, v));
-    return upload("/providers/me/documents", fd);
-  },
-  uploadAvatar: (file: File) => {
-    const fd = new FormData(); fd.append("avatar", file);
-    return upload("/customers/me/avatar", fd);
-  },
-  getEarnings: (period: string) => get(`/providers/me/earnings?period=${period}`),
+/* ── Dev helpers (chỉ dùng khi test local) ── */
+export const devApi = {
+  simulatePayment: (orderId: string) =>
+    post("/dev/payments/simulate", { order_id: orderId }),
 };
 
 /* ── Maps ── */

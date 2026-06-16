@@ -1,12 +1,11 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Truck, DollarSign, Package, Clock, MapPin,
-  AlertTriangle, ChevronRight, TrendingUp, Users,
-  CheckCircle, XCircle, RefreshCw,
+  AlertTriangle, ChevronRight, TrendingUp, Users, RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,9 +20,9 @@ interface Order {
   customer?: { full_name: string; phone: string };
 }
 
-const BRAND   = "#1A56DB";  // provider primary
-const SUCCESS = "#16A34A";  // semantic: hoàn thành, +tiền
-const BLUE  = "#2563EB";
+const BRAND   = "#1A56DB";
+const SUCCESS = "#16A34A";
+const BLUE    = "#2563EB";
 
 export default function ProviderDashboardPage() {
   const { toast }  = useToast();
@@ -66,11 +65,12 @@ export default function ProviderDashboardPage() {
 
   const totalEarnings = completed.reduce((s, o) => s + (o.estimated_price ?? 0), 0);
 
-  const respond = async (id: string, action: "accept" | "reject") => {
+  const skip = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
     try {
-      await ordersApi.respond(id, action);
-      toast(action === "accept" ? "Đã chấp nhận đơn!" : "Đã từ chối đơn", action === "accept" ? "success" : "info");
-      load();
+      await ordersApi.skip(id);
+      setPending(prev => prev.filter(o => o.id !== id));
+      toast("Đã bỏ qua đơn này", "info");
     } catch { toast("Thử lại sau", "error"); }
   };
 
@@ -89,7 +89,7 @@ export default function ProviderDashboardPage() {
         </Link>
       )}
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Đơn chờ xác nhận" value={pending.length.toString()}
           icon={<Clock size={20} />} color="#D97706" bg="#FFFBEB" />
@@ -102,7 +102,7 @@ export default function ProviderDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Pending orders table */}
+        {/* Pending orders */}
         <div className="xl:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
@@ -113,7 +113,8 @@ export default function ProviderDashboardPage() {
                 </span>
               )}
             </div>
-            <button onClick={load} className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+            <button onClick={load}
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
               <RefreshCw size={13} /> Làm mới
             </button>
           </div>
@@ -136,11 +137,11 @@ export default function ProviderDashboardPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-50">
-                      <th className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide">Điểm đến</th>
-                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide">Khách hàng</th>
-                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide">Giá ước tính</th>
-                      <th className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide">Thời gian</th>
-                      <th className="text-right px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide">Hành động</th>
+                      {["Điểm đến", "Khách hàng", "Giá ước tính", "Thời gian", "Hành động"].map(h => (
+                        <th key={h} className="text-left px-5 py-3 text-xs font-bold text-gray-400 uppercase tracking-wide last:text-right">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -151,12 +152,12 @@ export default function ProviderDashboardPage() {
                           <p className="text-xs text-gray-400 truncate max-w-[180px] mt-0.5">{o.pickup_address}</p>
                         </td>
                         <td className="px-4 py-3.5">
-                          {o.customer ? (
-                            <div>
-                              <p className="font-medium text-gray-900">{o.customer.full_name}</p>
-                              <p className="text-xs text-gray-400">{o.customer.phone}</p>
-                            </div>
-                          ) : <span className="text-gray-300">—</span>}
+                          {o.customer
+                            ? <div>
+                                <p className="font-medium text-gray-900">{o.customer.full_name}</p>
+                                <p className="text-xs text-gray-400">{o.customer.phone}</p>
+                              </div>
+                            : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3.5">
                           <span className="font-bold" style={{ color: BRAND }}>
@@ -167,21 +168,17 @@ export default function ProviderDashboardPage() {
                         <td className="px-5 py-3.5">
                           <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={() => respond(o.id, "reject")}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                              onClick={e => skip(o.id, e)}
+                              className="px-3 py-1.5 rounded-full text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
                             >
-                              Từ chối
-                            </button>
-                            <button
-                              onClick={() => respond(o.id, "accept")}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
-                              style={{ backgroundColor: BRAND }}
-                            >
-                              Chấp nhận
+                              Bỏ qua
                             </button>
                             <Link href={`/orders/${o.id}`}>
-                              <button className="px-3 py-1.5 rounded-full text-xs font-semibold text-[#2563EB] bg-blue-50 hover:bg-blue-100 transition-colors">
-                                Chi tiết
+                              <button
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
+                                style={{ backgroundColor: BRAND }}
+                              >
+                                Xem chi tiết
                               </button>
                             </Link>
                           </div>
@@ -197,7 +194,6 @@ export default function ProviderDashboardPage() {
 
         {/* Right col */}
         <div className="space-y-5">
-          {/* Active orders */}
           <div>
             <h2 className="text-base font-bold text-gray-900 mb-3">Đang thực hiện</h2>
             {active.length === 0 ? (
@@ -230,17 +226,16 @@ export default function ProviderDashboardPage() {
             )}
           </div>
 
-          {/* Quick links */}
           <div>
             <h2 className="text-base font-bold text-gray-900 mb-3">Truy cập nhanh</h2>
             <div className="space-y-2">
               {[
-                { href: "/earnings",  label: "Thu nhập của tôi",         icon: DollarSign, color: BRAND, bg: "#EFF4FE" },
+                { href: "/earnings",  label: "Thu nhập của tôi",   icon: DollarSign, color: BRAND,  bg: "#EFF4FE" },
                 { href: "/documents", label: hydrated && user?.is_verified ? "Đã xác minh ✓" : "Upload giấy tờ",
                   icon: Users,
                   color: hydrated && user?.is_verified ? SUCCESS : "#D97706",
-                  bg:    hydrated && user?.is_verified ? "#F0FDF4"  : "#FFFBEB" },
-                { href: "/orders",    label: "Tất cả đơn hàng",           icon: Package, color: BLUE, bg: "#EFF6FF" },
+                  bg:    hydrated && user?.is_verified ? "#F0FDF4" : "#FFFBEB" },
+                { href: "/orders",    label: "Tất cả đơn hàng",    icon: Package,    color: BLUE,   bg: "#EFF6FF" },
               ].map(item => (
                 <Link key={item.href} href={item.href}>
                   <div className="flex items-center gap-3 p-3.5 rounded-xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer">

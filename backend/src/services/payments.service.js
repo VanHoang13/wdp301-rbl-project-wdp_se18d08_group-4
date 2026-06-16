@@ -534,8 +534,9 @@ function resolveRefundRate({ percent, statusBeforeCancel, hadProvider, minutesSi
     return pct / 100;
   }
 
-  // pending chưa có provider → hoàn 100%
+  // pending chưa có provider, hoặc matched (chọn báo giá nhưng chưa bắt đầu) → hoàn 100%
   if (statusBeforeCancel === 'pending' && !hadProvider) return 1.0;
+  if (statusBeforeCancel === 'matched') return 1.0;
 
   // accepted → time-based
   if (statusBeforeCancel === 'accepted' && minutesSinceAccepted !== undefined) {
@@ -879,10 +880,20 @@ async function applyPayOSPaymentUpdate(payment, options) {
     .from('payments')
     .update(updatePayload)
     .eq('id', payment.id)
-    .select('id, payment_code, order_id, amount, status, escrow_status, paid_at')
+    .select('id, payment_code, order_id, amount, status, escrow_status, paid_at, payment_purpose')
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');
+
+  // Khi thanh toán cọc thành công → đánh dấu deposit_paid trên orders
+  if (dbStatus === 'completed' && updated?.order_id &&
+      (updated.payment_purpose === 'deposit' || updated.payment_purpose == null)) {
+    await supabaseAdmin
+      .from('orders')
+      .update({ deposit_paid: true, deposit_paid_at: updatePayload.paid_at })
+      .eq('id', updated.order_id)
+      .in('status', ['matched', 'pending']); // chỉ update nếu chưa completed/cancelled
+  }
 
   return {
     payment: updated,

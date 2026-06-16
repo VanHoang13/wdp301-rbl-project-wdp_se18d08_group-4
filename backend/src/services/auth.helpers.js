@@ -44,7 +44,12 @@ function publicProfile(row, providerProfile) {
     base.business_name = providerProfile.business_name;
     base.is_verified = providerProfile.is_verified;
     base.rating = providerProfile.rating;
+    base.total_reviews = providerProfile.total_reviews ?? 0;
+    base.total_orders = providerProfile.total_orders ?? 0;
+    base.vehicle_type = providerProfile.vehicle_type ?? null;
+    base.compliance_score = providerProfile.compliance_score ?? 20;
   }
+  if (row.ward) base.ward = row.ward;
   return base;
 }
 

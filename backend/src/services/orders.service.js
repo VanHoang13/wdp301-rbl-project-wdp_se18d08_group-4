@@ -4,7 +4,7 @@ const { createNotification } = require('./notification.service');
 const paymentsService = require('./payments.service');
 const { isDaNangCity, isDaNangOrder } = require('../utils/da_nang');
 
-const CANCELLABLE_STATUSES = ['pending', 'accepted'];
+const CANCELLABLE_STATUSES = ['pending', 'matched', 'accepted'];
 const PROVIDER_CANCELLABLE_STATUSES = ['accepted', 'picking_up', 'in_progress'];
 const POINTS_PER_VIOLATION = 2;
 
@@ -140,14 +140,14 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
   if (role === 'customer') {
     query = query.eq('customer_id', userId);
   } else if (role === 'provider') {
-    // Lấy danh sách đơn provider đã từ chối để loại ra khỏi kết quả
-    const { data: declined } = await supabaseAdmin
+    // Lấy danh sách đơn provider đã từ chối hoặc bỏ qua để loại ra khỏi kết quả
+    const { data: dismissed } = await supabaseAdmin
       .from('order_provider_responses')
       .select('order_id')
       .eq('provider_id', userId)
-      .eq('response', 'declined');
+      .in('response', ['declined', 'skipped']);
 
-    const declinedIds = (declined || []).map((r) => r.order_id);
+    const declinedIds = (dismissed || []).map((r) => r.order_id);
 
     query = query.or(`provider_id.eq.${userId},status.eq.pending,status.eq.matched`);
 
@@ -156,7 +156,11 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
     }
   }
 
-  const { status } = queryParams;
+  const { status, ward } = queryParams;
+  if (ward && role === 'provider') {
+    // Filter orders where delivery ward matches provider's ward
+    query = query.ilike('delivery_district', `%${ward}%`);
+  }
   if (status) {
     const statuses = String(status)
       .split(',')
@@ -379,18 +383,40 @@ async function startOrder(orderId, providerId) {
   if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
   if (order.provider_id !== providerId)
     throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
-  if (order.status !== 'accepted')
+  if (!['accepted', 'picking_up'].includes(order.status))
     throw Object.assign(new Error('Chỉ có thể bắt đầu đơn đã được nhận'), { status: 409 });
+
+  const nextStatus = order.status === 'accepted' ? 'picking_up' : 'in_progress';
+  const extra = nextStatus === 'in_progress' ? { actual_pickup_time: new Date().toISOString() } : {};
 
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .update({ status: 'in_progress', actual_pickup_time: new Date().toISOString() })
+    .update({ status: nextStatus, ...extra })
     .eq('id', orderId)
     .select('*')
     .single();
 
   if (error) throw Object.assign(new Error(error.message), { status: 500 });
   return data;
+}
+
+// ── PATCH /api/orders/:id/skip ────────────────────────────────────────────────
+async function skipOrder(orderId, providerId) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+
+  await supabaseAdmin.from('order_provider_responses').upsert(
+    { order_id: orderId, provider_id: providerId, response: 'skipped' },
+    { onConflict: 'order_id,provider_id', ignoreDuplicates: false },
+  );
+
+  return { order_id: orderId };
 }
 
 // ── PATCH /api/orders/:id/decline ─────────────────────────────────────────────
@@ -488,11 +514,12 @@ async function cancelOrder(orderId, userId, reason) {
       throw httpError(400, 'Lý do hủy không được để trống', 'validation_error');
     }
     if (!CANCELLABLE_STATUSES.includes(order.status)) {
-      throw httpError(
-        400,
-        `Không thể hủy đơn ở trạng thái "${order.status}"`,
-        'cannot_cancel',
-      );
+      throw httpError(400, `Không thể hủy đơn ở trạng thái "${order.status}"`, 'cannot_cancel');
+    }
+  } else {
+    // Provider: kiểm tra TRƯỚC khi update DB
+    if (!PROVIDER_CANCELLABLE_STATUSES.includes(order.status)) {
+      throw httpError(400, `Không thể hủy đơn ở trạng thái "${order.status}"`, 'cannot_cancel');
     }
   }
 
@@ -516,11 +543,6 @@ async function cancelOrder(orderId, userId, reason) {
   }
 
   if (!isCustomer) {
-    // Provider chỉ được hủy sau khi đã nhận đơn
-    if (!PROVIDER_CANCELLABLE_STATUSES.includes(previousStatus)) {
-      throw httpError(400, `Không thể hủy đơn ở trạng thái "${previousStatus}"`, 'cannot_cancel');
-    }
-
     await supabaseAdmin.from('order_status_history').insert({
       order_id: orderId,
       from_status: previousStatus,
@@ -780,6 +802,7 @@ module.exports = {
   getOrderById,
   acceptOrder,
   startOrder,
+  skipOrder,
   declineOrder,
   completeOrder,
   cancelOrder,

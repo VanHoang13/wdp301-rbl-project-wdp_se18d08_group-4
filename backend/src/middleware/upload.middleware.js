@@ -2,7 +2,7 @@ const multer = require('multer');
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png']);
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function makeImageUpload(field, maxBytes, sizeMessage) {
   return multer({
@@ -10,7 +10,7 @@ function makeImageUpload(field, maxBytes, sizeMessage) {
     limits: { fileSize: maxBytes, files: 1 },
     fileFilter: (_req, file, cb) => {
       if (!ALLOWED_MIME.has(file.mimetype)) {
-        const err = new Error('Chỉ chấp nhận ảnh JPG hoặc PNG.');
+        const err = new Error(`Chỉ chấp nhận ảnh JPG, PNG hoặc WebP. Nhận được: ${file.mimetype}`);
         err.status = 400;
         err.code = 'invalid_file_type';
         return cb(err);
@@ -26,13 +26,19 @@ const marketplaceImageUpload = makeImageUpload('image', MARKETPLACE_IMAGE_MAX_BY
 function wrapUpload(upload, sizeMessage) {
   return (req, res, next) => {
     upload(req, res, (err) => {
-      if (!err) return next();
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        err.status = 400;
-        err.message = sizeMessage;
-        err.code = 'file_too_large';
+      if (err) {
+        console.error('[upload] multer error:', err.code, err.message);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          err.status = 400;
+          err.message = sizeMessage;
+          err.code = 'file_too_large';
+        }
+        return next(err);
       }
-      next(err);
+      if (!req.file && !req.files) {
+        console.warn('[upload] multer OK but no file. content-type:', req.headers['content-type']);
+      }
+      next();
     });
   };
 }

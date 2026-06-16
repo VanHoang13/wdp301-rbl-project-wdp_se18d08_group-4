@@ -10,7 +10,7 @@ const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
 
 const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 function computeListingFee(price) {
   const p = Number(price);
@@ -1057,7 +1057,7 @@ async function uploadListingImage(userId, file) {
   try {
     await ensurePublicImageBucket(MARKETPLACE_IMAGES_BUCKET, {
       fileSizeLimit: 5242880,
-      allowedMimeTypes: ['image/jpeg', 'image/png'],
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
     });
   } catch (bucketError) {
     throw httpError(

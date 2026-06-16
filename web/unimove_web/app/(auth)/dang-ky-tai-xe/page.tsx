@@ -108,7 +108,7 @@ export default function DangKyTaiXePage() {
     if (!street.trim()) { setError("Vui lòng nhập số nhà và tên đường"); return; }
     setLoading(true);
     try {
-      const res = await authApi.updateMe({ phone: phone.trim(), address: buildAddress(street, ward) });
+      const res = await authApi.updateMe({ phone: phone.trim(), address: buildAddress(street, ward), ward });
       if (res.success && res.data) {
         const token = localStorage.getItem("unimove_token") ?? "";
         storeAuth({ ...user!, ...(res.data as AuthUser) }, token);

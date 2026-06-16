@@ -13,7 +13,10 @@ async function ensurePublicImageBucket(
   }
 
   const exists = (buckets ?? []).some((b) => b.id === bucketId || b.name === bucketId);
-  if (exists) return;
+  if (exists) {
+    await supabaseAdmin.storage.updateBucket(bucketId, { fileSizeLimit, allowedMimeTypes });
+    return;
+  }
 
   const { error } = await supabaseAdmin.storage.createBucket(bucketId, {
     public: true,

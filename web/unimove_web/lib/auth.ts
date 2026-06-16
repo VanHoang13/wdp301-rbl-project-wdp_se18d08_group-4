@@ -19,6 +19,10 @@ export interface AuthUser {
   vehicle_type?: string;
   rating?: number;
   is_verified?: boolean;
+  total_orders?: number;
+  total_reviews?: number;
+  compliance_score?: number;
+  ward?: string;
 }
 
 const TOKEN_KEY = "unimove_token";

@@ -14,7 +14,14 @@ function isDaNangCity(value) {
 }
 
 function isDaNangOrder(order) {
-  return isDaNangCity(order?.pickup_city) || isDaNangCity(order?.delivery_city);
+  return (
+    isDaNangCity(order?.pickup_city) ||
+    isDaNangCity(order?.delivery_city) ||
+    isDaNangCity(order?.pickup_address) ||
+    isDaNangCity(order?.delivery_address) ||
+    isDaNangCity(order?.pickup_district) ||
+    isDaNangCity(order?.delivery_district)
+  );
 }
 
 module.exports = { normalizeCity, isDaNangCity, isDaNangOrder };

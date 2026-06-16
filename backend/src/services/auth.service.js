@@ -4,6 +4,17 @@
  * DB: docs/supabase/20240113000000_node_auth.sql
  */
 const crypto = require('crypto');
+
+/** Parse ward từ address "Street, Phường X, Đà Nẵng" → "Phường X" */
+function parseWardFromAddress(address) {
+  if (!address) return '';
+  const parts = String(address).split(',').map((s) => s.trim()).filter(Boolean);
+  const dnIdx = parts.findIndex((p) => /đà nẵng|da nang/i.test(p));
+  if (dnIdx >= 1) return parts[dnIdx - 1] ?? '';
+  // Fallback: tìm phần chứa "Phường" hoặc "phường"
+  return parts.find((p) => /ph[uư][oờ]ng/i.test(p)) ?? '';
+}
+
 const {
   httpError,
   normalizeEmail,
@@ -249,7 +260,7 @@ async function getMe(userId) {
   if (row.role === 'provider') {
     const { data: pp } = await supabaseAdmin
       .from('provider_profiles')
-      .select('business_name, is_verified, rating')
+      .select('business_name, is_verified, rating, total_reviews, total_orders, vehicle_type, compliance_score')
       .eq('id', userId)
       .maybeSingle();
     return publicProfile(row, pp || undefined);
@@ -274,11 +285,24 @@ async function updateProfile(userId, body) {
   if (!profiles?.length) throw httpError(404, 'User not found', 'user_not_found');
 
   const role = profiles[0].role;
-  const { full_name, phone, business_name, vehicle_type, student_id, university, address } = body || {};
+  const { full_name, phone, business_name, vehicle_type, student_id, university, address, ward } = body || {};
 
   const profileUpdates = {};
   if (full_name !== undefined) profileUpdates.full_name = String(full_name).trim();
   if (phone !== undefined) profileUpdates.phone = normalizePhone(phone);
+
+  // Providers lưu address + ward vào profiles (cột dùng chung)
+  if (role === 'provider' && address !== undefined) {
+    profileUpdates.address = String(address).trim();
+    // Parse ward từ address "Street, Ward, Đà Nẵng" hoặc dùng ward field trực tiếp
+    const resolvedWard = ward
+      ? String(ward).trim()
+      : parseWardFromAddress(address);
+    if (resolvedWard) {
+      profileUpdates.ward = resolvedWard;
+      profileUpdates.city = 'Đà Nẵng';
+    }
+  }
 
   if (Object.keys(profileUpdates).length > 0) {
     const { error } = await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);

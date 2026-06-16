@@ -86,6 +86,15 @@ async function declineOrder(req, res, next) {
   }
 }
 
+async function skipOrder(req, res, next) {
+  try {
+    const data = await ordersService.skipOrder(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function completeOrder(req, res, next) {
   try {
     const data = await ordersService.completeOrder(req.params.id, req.user.id);
@@ -138,6 +147,7 @@ module.exports = {
   respondToOrder,
   acceptOrder,
   startOrder,
+  skipOrder,
   declineOrder,
   completeOrder,
   cancelOrder,

@@ -8,9 +8,10 @@ import {
 import { ordersApi } from "@/lib/api";
 import { timeAgo, formatVND } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { getStoredUser } from "@/lib/auth";
 
 interface Order {
-  id: string; status: string;
+  id: string; status: string; deposit_paid?: boolean;
   pickup_address: string; dropoff_address: string;
   estimated_price?: number; final_price?: number;
   created_at: string;
@@ -29,18 +30,25 @@ const TABS = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  pending:     { label: "Chờ xác nhận",    bg: "#FEF9C3", text: "#A16207", dot: "#EAB308" },
-  accepted:    { label: "Đã chấp nhận",    bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
-  picking_up:  { label: "Đang đến",        bg: "#EDE9FE", text: "#6D28D9", dot: "#8B5CF6" },
-  in_progress: { label: "Đang vận chuyển", bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
-  completed:   { label: "Hoàn thành",      bg: "#DCFCE7", text: "#15803D", dot: "#16A34A" },
-  cancelled:   { label: "Đã hủy",          bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
-  disputed:    { label: "Khiếu nại",       bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
-  matched:     { label: "Đã ghép đơn",     bg: "#F0FDF4", text: "#15803D", dot: "#16A34A" },
+  pending:              { label: "Chờ xác nhận",        bg: "#FEF9C3", text: "#A16207", dot: "#EAB308" },
+  matched_no_deposit:   { label: "Chờ khách đặt cọc",   bg: "#FFF7ED", text: "#C2410C", dot: "#F97316" },
+  matched_with_deposit: { label: "Chờ bạn xác nhận",    bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
+  accepted:             { label: "Đã xác nhận",         bg: "#DBEAFE", text: "#1D4ED8", dot: "#3B82F6" },
+  picking_up:           { label: "Đang đến lấy hàng",   bg: "#EDE9FE", text: "#6D28D9", dot: "#8B5CF6" },
+  in_progress:          { label: "Đang vận chuyển",     bg: "#EDE9FE", text: "#6D28D9", dot: "#8B5CF6" },
+  completed:            { label: "Hoàn thành",          bg: "#DCFCE7", text: "#15803D", dot: "#16A34A" },
+  cancelled:            { label: "Đã hủy",              bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
+  disputed:             { label: "Khiếu nại",           bg: "#FEE2E2", text: "#DC2626", dot: "#EF4444" },
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" };
+function resolveStatusKey(status: string, depositPaid?: boolean): string {
+  if (status === "matched") return depositPaid ? "matched_with_deposit" : "matched_no_deposit";
+  return status;
+}
+
+function StatusBadge({ status, depositPaid }: { status: string; depositPaid?: boolean }) {
+  const key = resolveStatusKey(status, depositPaid);
+  const cfg = STATUS_CONFIG[key] ?? { label: status, bg: "#F3F4F6", text: "#6B7280", dot: "#9CA3AF" };
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
       style={{ backgroundColor: cfg.bg, color: cfg.text }}>
@@ -52,15 +60,20 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ProviderOrdersPage() {
   const { toast } = useToast();
-  const [tab,     setTab]     = useState(0);
-  const [orders,  setOrders]  = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
+  const [tab,          setTab]          = useState(0);
+  const [orders,       setOrders]       = useState<Order[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [nearbyOnly,   setNearbyOnly]   = useState(false);
+  const providerWard = getStoredUser()?.ward ?? "";
 
-  const load = useCallback(async (status: string) => {
+  const load = useCallback(async (status: string, ward?: string) => {
     setLoading(true);
     try {
-      const r = await ordersApi.list(status ? { status } : {});
+      const params: Record<string, string> = {};
+      if (status) params.status = status;
+      if (ward)   params.ward   = ward;
+      const r = await ordersApi.list(Object.keys(params).length ? params : undefined);
       if (r.success && r.data) {
         const d = r.data as { orders?: Order[] } | Order[];
         setOrders(Array.isArray(d) ? d : (d?.orders ?? []));
@@ -68,7 +81,9 @@ export default function ProviderOrdersPage() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(TABS[tab].key); }, [tab, load]);
+  useEffect(() => {
+    load(TABS[tab].key, nearbyOnly && providerWard ? providerWard : undefined);
+  }, [tab, nearbyOnly, load, providerWard]);
 
   const filtered = orders.filter(o =>
     !search ||
@@ -108,6 +123,18 @@ export default function ProviderOrdersPage() {
             </button>
           ))}
         </div>
+
+        {providerWard && (
+          <button
+            onClick={() => setNearbyOnly(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border transition-all"
+            style={nearbyOnly
+              ? { backgroundColor: "#EFF6FF", borderColor: BRAND, color: BRAND }
+              : { backgroundColor: "#F9FAFB", borderColor: "#E5E7EB", color: "#6B7280" }}>
+            <MapPin size={13} />
+            Gần bạn · {providerWard}
+          </button>
+        )}
 
         <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-sm ml-auto">
           <div className="relative flex-1">
@@ -162,7 +189,7 @@ export default function ProviderOrdersPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map(o => {
-                  const isPending = o.status === "pending";
+                  const needsProviderAction = o.status === "pending" || (o.status === "matched" && o.deposit_paid);
                   const price = o.final_price ?? o.estimated_price;
                   return (
                     <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
@@ -170,8 +197,8 @@ export default function ProviderOrdersPage() {
                       {/* Mã đơn */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          {isPending && (
-                            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: "#EAB308" }} />
+                          {needsProviderAction && (
+                            <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: o.status === "matched" ? "#3B82F6" : "#EAB308" }} />
                           )}
                           <span className="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">
                             #{o.id.slice(0, 8).toUpperCase()}
@@ -218,7 +245,7 @@ export default function ProviderOrdersPage() {
 
                       {/* Trạng thái */}
                       <td className="px-5 py-4 whitespace-nowrap">
-                        <StatusBadge status={o.status} />
+                        <StatusBadge status={o.status} depositPaid={o.deposit_paid} />
                       </td>
 
                       {/* Thời gian */}
