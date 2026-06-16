@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+// Monorepo: lockfile ở repo root + file:../.. — Vercel cần trace từ root repo
+const monorepoRoot = path.resolve(__dirname, "../..");
+
 const nextConfig: NextConfig = {
   turbopack: {
-    root: path.resolve(__dirname),
+    root: monorepoRoot,
   },
-  outputFileTracingRoot: path.resolve(__dirname),
+  outputFileTracingRoot: monorepoRoot,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "res.cloudinary.com" },
