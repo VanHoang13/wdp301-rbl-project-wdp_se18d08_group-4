@@ -1,82 +1,87 @@
-﻿'use client'
+﻿"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Home, ShoppingBag, Package, MessageCircle, User } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useNotificationStore } from '@/lib/stores'
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
+import { Home, CreditCard, ClipboardList, MessageCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useNotificationStore } from "@/lib/stores";
 
+/** Khớp mobile customer app: 4 tab — Trang chủ · Thanh toán · Hoạt động · Tin nhắn */
 const NAV_ITEMS = [
-  { href: '/trang-chu',     label: 'Trang chủ',  Icon: Home,          exact: false },
-  { href: '/cho-sinh-vien', label: 'Chợ SV',     Icon: ShoppingBag,   exact: false },
-  { href: '/don-hang',      label: 'Đơn hàng',   Icon: Package,       exact: false },
-  { href: '/tin-nhan',      label: 'Tin nhắn',   Icon: MessageCircle, exact: false },
-  { href: '/tai-khoan',     label: 'Tài khoản',  Icon: User,          exact: false },
-] as const
+  { href: "/trang-chu", label: "Trang chủ", Icon: Home },
+  { href: "/tai-khoan/thanh-toan", label: "Thanh toán", Icon: CreditCard },
+  { href: "/hoat-dong", label: "Hoạt động", Icon: ClipboardList },
+  { href: "/tin-nhan", label: "Tin nhắn", Icon: MessageCircle },
+] as const;
+
+const HIDE_ON_PREFIXES = ["/dat-chuyen", "/cho-sinh-vien", "/don-hang/", "/tai-khoan/chinh-sua", "/tai-khoan/doi-mat-khau"];
 
 export function MobileBottomNav() {
-  const pathname     = usePathname()
-  const unreadCount  = useNotificationStore((s) => s.unreadCount)
+  const pathname = usePathname();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+
+  if (HIDE_ON_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) {
+    return null;
+  }
 
   return (
     <nav
       aria-label="Điều hướng chính"
-      className="fixed bottom-0 left-0 right-0 z-bottomnav lg:hidden bg-white border-t border-gray-100 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
-      style={{
-        backdropFilter:       'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        paddingBottom:        'env(safe-area-inset-bottom)',
-      }}
+      className="fixed bottom-0 left-0 right-0 z-bottomnav lg:hidden px-3"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <ul className="flex h-16 items-stretch">
-        {NAV_ITEMS.map(({ href, label, Icon, exact }) => {
-          const isActive   = exact ? pathname === href : pathname.startsWith(href)
-          const showBadge  = href === '/tin-nhan' && unreadCount > 0
+      <div
+        className="mb-3 flex h-[68px] items-stretch rounded-2xl border backdrop-blur-xl"
+        style={{
+          backgroundColor: "var(--glass-bg)",
+          borderColor: "var(--glass-border)",
+          boxShadow: "var(--shadow-sticky)",
+        }}
+      >
+        {NAV_ITEMS.map(({ href, label, Icon }) => {
+          const isActive =
+            pathname === href ||
+            (href === "/tai-khoan/thanh-toan" && pathname.startsWith("/tai-khoan/thanh-toan")) ||
+            (href === "/hoat-dong" && (pathname.startsWith("/hoat-dong") || pathname === "/don-hang")) ||
+            (href === "/tin-nhan" && pathname.startsWith("/tin-nhan"));
+          const showBadge = href === "/tin-nhan" && unreadCount > 0;
 
           return (
-            <li key={href} className="flex-1">
-              <Link
-                href={href}
-                aria-label={label}
-                aria-current={isActive ? 'page' : undefined}
-                className={cn(
-                  'relative flex h-full flex-col items-center justify-center gap-0.5 transition-colors',
-                  isActive ? 'text-[#2563EB]' : 'text-gray-400 hover:text-gray-600'
-                )}
-              >
-                {/* Icon + unread badge */}
+            <Link
+              key={href}
+              href={href}
+              aria-label={label}
+              aria-current={isActive ? "page" : undefined}
+              className="relative flex flex-1 flex-col items-center justify-center gap-0.5"
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="customer-nav-pill"
+                  className="absolute inset-x-2 inset-y-2 rounded-xl bg-[#EFF6FF] dark:bg-blue-950/40"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10 flex flex-col items-center gap-0.5">
                 <span className="relative">
                   <Icon
-                    className={cn('h-[22px] w-[22px] transition-all duration-150', isActive && 'scale-110')}
+                    className={cn("h-[22px] w-[22px] transition-all", isActive ? "text-[#2563EB] scale-110" : "text-gray-400")}
                     strokeWidth={isActive ? 2.5 : 1.75}
                   />
                   {showBadge && (
-                    <span
-                      aria-label={`${unreadCount} tin nhắn chưa đọc`}
-                      className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white"
-                    >
-                      {unreadCount > 99 ? '99+' : unreadCount}
+                    <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
                 </span>
-
-                {/* Label */}
-                <span className={cn('text-[10px] transition-all', isActive ? 'font-semibold' : 'font-normal')}>
+                <span className={cn("text-[10px]", isActive ? "font-semibold text-[#2563EB]" : "font-normal text-gray-400")}>
                   {label}
                 </span>
-
-                {/* Active indicator */}
-                {isActive && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute bottom-0 h-0.5 w-10 rounded-t-full bg-[#2563EB]"
-                  />
-                )}
-              </Link>
-            </li>
-          )
+              </span>
+            </Link>
+          );
         })}
-      </ul>
+      </div>
     </nav>
-  )
+  );
 }

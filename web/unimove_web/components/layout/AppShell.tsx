@@ -1,38 +1,29 @@
-﻿import { MobileBottomNav } from './MobileBottomNav'
-import { DesktopTopNav } from './DesktopTopNav'
-import { ToastRenderer } from '@/components/shared/ToastRenderer'
+﻿import { MobileBottomNav } from "./MobileBottomNav";
+import { DesktopTopNav } from "./DesktopTopNav";
+import { CustomerFooter } from "./CustomerFooter";
+import { MeshBackground } from "./mesh-background";
+import { ToastRenderer } from "@/components/shared/ToastRenderer";
 
 interface AppShellProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-[#F8FAFC]">
-      {/* Desktop navigation — hidden on mobile */}
+    <div className="relative flex min-h-screen flex-col bg-[#F8FAFC] dark:bg-[var(--bg)]">
+      <MeshBackground />
       <DesktopTopNav />
-
-      {/* Main content */}
-      <main id="main-content" className="flex-1">
+      <main id="main-content" className="relative flex-1">
         {children}
       </main>
-
-      {/*
-        Spacer so the last page section isn't hidden
-        behind the fixed MobileBottomNav (64px + safe area).
-        Only rendered on mobile via lg:hidden.
-      */}
+      <CustomerFooter />
       <div
         className="shrink-0 lg:hidden"
-        style={{ height: 'calc(var(--height-bottomnav) + env(safe-area-inset-bottom))' }}
+        style={{ height: "calc(76px + env(safe-area-inset-bottom))" }}
         aria-hidden="true"
       />
-
-      {/* Mobile navigation — hidden on desktop */}
       <MobileBottomNav />
-
-      {/* Global toast queue */}
       <ToastRenderer />
     </div>
-  )
+  );
 }

@@ -18,7 +18,8 @@ interface Order {
   customer?: { full_name: string; phone: string };
 }
 
-const GREEN = "#16A34A";
+const BRAND   = "#1A56DB";
+const SUCCESS = "#16A34A";
 
 const TABS = [
   { key: "",                            label: "Tất cả" },
@@ -89,9 +90,7 @@ export default function ProviderOrdersPage() {
   const pendingCount = orders.filter(o => o.status === "pending").length;
 
   return (
-    <div className="space-y-6">
-
-      {/* Header */}
+    <div className="w-full space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Quản lý đơn hàng</h1>
@@ -113,7 +112,7 @@ export default function ProviderOrdersPage() {
             <button key={i} onClick={() => setTab(i)}
               className="px-3.5 py-1.5 rounded-xl text-sm font-semibold transition-all"
               style={tab === i
-                ? { backgroundColor: GREEN, color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.3)" }
+                ? { backgroundColor: BRAND, color: "#fff", boxShadow: "0 2px 8px rgba(26,86,219,0.3)" }
                 : { backgroundColor: "transparent", color: "#6B7280" }}>
               {t.label}
             </button>
@@ -126,7 +125,7 @@ export default function ProviderOrdersPage() {
             <input
               placeholder="Tìm theo địa chỉ, khách hàng..."
               value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#16A34A] focus:border-[#16A34A]"
+              className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A56DB] focus:border-[#1A56DB]"
             />
           </div>
           <button onClick={() => load(TABS[tab].key)}
@@ -194,11 +193,11 @@ export default function ProviderOrdersPage() {
                       <td className="px-5 py-4">
                         <div className="space-y-1 max-w-[220px]">
                           <div className="flex items-start gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1" />
+                            <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 mt-1" />
                             <p className="text-sm text-gray-600 truncate">{o.pickup_address || "—"}</p>
                           </div>
                           <div className="flex items-start gap-1.5">
-                            <MapPin size={9} className="shrink-0 mt-0.5" style={{ color: GREEN }} />
+                            <MapPin size={9} className="shrink-0 mt-0.5 text-blue-400" />
                             <p className="text-sm font-semibold text-gray-800 truncate">{o.dropoff_address || "—"}</p>
                           </div>
                         </div>
@@ -219,7 +218,7 @@ export default function ProviderOrdersPage() {
                       {/* Giá */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         {price ? (
-                          <span className="text-sm font-bold" style={{ color: GREEN }}>
+                          <span className="text-sm font-bold" style={{ color: SUCCESS }}>
                             {formatVND(price)}
                           </span>
                         ) : (
@@ -250,7 +249,7 @@ export default function ProviderOrdersPage() {
                               <button
                                 onClick={() => handle(o.id, "accept")}
                                 className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-1 transition-all hover:brightness-110"
-                                style={{ backgroundColor: GREEN }}>
+                                style={{ backgroundColor: BRAND }}>
                                 <CheckCircle size={12} /> Nhận
                               </button>
                             </>

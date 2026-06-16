@@ -3,16 +3,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, User, LogOut, Settings } from 'lucide-react'
+import { Bell, User, LogOut, Settings, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
 import { useNotificationStore } from '@/lib/stores'
 
 const NAV_LINKS = [
-  { href: '/trang-chu',     label: 'Trang chủ',    exact: false },
-  { href: '/cho-sinh-vien', label: 'Chợ sinh viên', exact: false },
-  { href: '/dat-chuyen',    label: 'Đặt chuyến',    exact: false },
-  { href: '/don-hang',      label: 'Đơn hàng',      exact: false },
+  { href: '/trang-chu', label: 'Trang chủ' },
+  { href: '/dat-chuyen', label: 'Dịch vụ' },
+  { href: '/reference-prices', label: 'Bảng giá' },
+  { href: '/cho-sinh-vien', label: 'Chợ SV' },
+  { href: '/hoat-dong', label: 'Hoạt động' },
 ] as const
 
 export function DesktopTopNav() {
@@ -23,6 +24,7 @@ export function DesktopTopNav() {
   const [user, setUser]           = useState<AuthUser | null>(null)
   const [open, setOpen]           = useState(false)
   const [pos, setPos]             = useState({ top: 0, right: 0 })
+  const [searchQ, setSearchQ]     = useState('')
   const avatarRef                 = useRef<HTMLButtonElement>(null)
   const dropdownRef               = useRef<HTMLDivElement>(null)
 
@@ -30,7 +32,6 @@ export function DesktopTopNav() {
     setUser(getStoredUser())
   }, [pathname])
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     function handler(e: MouseEvent) {
@@ -45,7 +46,6 @@ export function DesktopTopNav() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Close on route change
   useEffect(() => { setOpen(false) }, [pathname])
 
   const toggleDropdown = useCallback(() => {
@@ -66,55 +66,77 @@ export function DesktopTopNav() {
     router.replace('/')
   }
 
-  const initials = user?.full_name?.[0]?.toUpperCase() ?? ''
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    router.push(searchQ.trim() ? `/dat-chuyen/dia-diem?q=${encodeURIComponent(searchQ.trim())}` : '/dat-chuyen/dia-diem')
+  }
+
+  const initials = user?.full_name?.[0]?.toUpperCase() ?? 'P'
+  const isActive = (href: string) =>
+    href === '/trang-chu' ? pathname === href : pathname.startsWith(href)
 
   return (
     <>
-      <header className="sticky top-0 z-topnav hidden border-b border-gray-100 bg-white shadow-sm lg:block">
-        <div className="mx-auto flex h-[var(--height-topnav)] max-w-[var(--width-container)] items-center gap-8 px-8">
+      <header className="sticky top-0 z-50 hidden w-full shrink-0 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-md lg:block">
+        <div className="mx-auto flex h-[68px] max-w-[var(--width-container)] items-center gap-6 px-8">
 
-          {/* Logo */}
-          <Link href={user ? '/trang-chu' : '/'} className="flex shrink-0 items-center gap-0.5 no-underline" aria-label="UniMove">
-            <span className="bg-[#FFCC00] text-white rounded-lg px-2 py-0.5 text-base font-extrabold leading-none">Uni</span>
-            <span className="text-base font-extrabold" style={{ color: '#2563EB' }}>Move</span>
+          <Link href={user ? '/trang-chu' : '/'} className="flex shrink-0 items-center no-underline" aria-label="UniMove">
+            <span className="text-xl font-extrabold tracking-tight">
+              <span className="text-[#FFC107]">Uni</span>
+              <span className="text-[#0047FF]">Move</span>
+            </span>
           </Link>
 
-          {/* Nav links */}
           {user && (
             <nav aria-label="Điều hướng chính" className="flex items-center gap-1">
-              {NAV_LINKS.map(({ href, label, exact }) => {
-                const isActive = exact ? pathname === href : pathname.startsWith(href)
+              {NAV_LINKS.map(({ href, label }) => {
+                const active = isActive(href)
                 return (
                   <Link
                     key={href}
                     href={href}
-                    aria-current={isActive ? 'page' : undefined}
+                    aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-blue-50 text-[#2563EB] font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      'relative px-3 py-2 text-sm font-medium transition-colors no-underline',
+                      active ? 'text-[#0047FF] font-semibold' : 'text-gray-600 hover:text-gray-900'
                     )}
                   >
                     {label}
+                    {active && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#0047FF]" />
+                    )}
                   </Link>
                 )
               })}
             </nav>
           )}
 
-          {/* Right actions */}
-          <div className="ml-auto flex items-center gap-2">
+          {user && (
+            <form onSubmit={handleSearch} className="mx-auto hidden max-w-md flex-1 xl:flex">
+              <div className="relative w-full">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="search"
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Bạn muốn chuyển đến đâu?"
+                  className="h-10 w-full rounded-full border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#0047FF] focus:bg-white focus:ring-2 focus:ring-[#0047FF]/15"
+                />
+              </div>
+            </form>
+          )}
+
+          <div className="ml-auto flex items-center gap-2.5">
             {user ? (
               <>
                 <Link
-                  href="/thong-bao"
+                  href="/tin-nhan?tab=thong-bao"
                   aria-label={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Thông báo'}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
                 >
                   <Bell className="h-5 w-5 text-gray-600" strokeWidth={1.75} />
                   {unreadCount > 0 && (
-                    <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+                    <span aria-hidden="true" className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
                   )}
                 </Link>
 
@@ -122,29 +144,37 @@ export function DesktopTopNav() {
                   ref={avatarRef}
                   onClick={toggleDropdown}
                   className={cn(
-                    'flex h-9 w-9 overflow-hidden rounded-full border-2 transition-colors focus:outline-none',
-                    open ? 'border-[#2563EB]' : 'border-gray-200 hover:border-[#2563EB]'
+                    'flex h-10 items-center gap-2 rounded-full border px-2 pr-3 transition-colors focus:outline-none',
+                    open ? 'border-[#0047FF] bg-blue-50/50' : 'border-gray-200 hover:border-[#0047FF]/40'
                   )}
                   aria-label="Menu tài khoản"
                   aria-expanded={open}
                 >
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-blue-50 text-sm font-bold text-[#2563EB]">
-                      {initials || <User className="h-4 w-4" />}
-                    </div>
-                  )}
+                  <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#0047FF] text-xs font-bold text-white">
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      initials
+                    )}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">Tài khoản</span>
                 </button>
+
+                <Link
+                  href="/dat-chuyen"
+                  className="rounded-full bg-[#FFC107] px-5 py-2.5 text-sm font-bold text-gray-900 shadow-sm transition hover:bg-[#e6ad00] no-underline"
+                >
+                  Đặt ngay
+                </Link>
               </>
             ) : (
               <div className="flex items-center gap-3">
-                <Link href="/login" className="text-sm font-semibold text-[#2563EB] hover:underline">
+                <Link href="/login" className="text-sm font-semibold text-[#0047FF] hover:underline no-underline">
                   Đăng nhập
                 </Link>
                 <Link
                   href="/register"
-                  className="rounded-full bg-[#2563EB] px-4 py-1.5 text-sm font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.30)] transition-all hover:brightness-110 hover:scale-[1.02]"
+                  className="rounded-full bg-[#0047FF] px-4 py-2 text-sm font-bold text-white shadow-[0_4px_12px_rgba(0,71,255,0.25)] transition-all hover:brightness-110 no-underline"
                 >
                   Đăng ký
                 </Link>
@@ -154,7 +184,6 @@ export function DesktopTopNav() {
         </div>
       </header>
 
-      {/* Dropdown — rendered at body level via fixed positioning, escapes all stacking contexts */}
       {open && (
         <div
           ref={dropdownRef}
@@ -165,17 +194,17 @@ export function DesktopTopNav() {
             width: 224,
             zIndex: 99999,
           }}
-          className="rounded-2xl bg-white border border-gray-100 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
+          className="rounded-2xl border border-gray-100 bg-white py-2 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
         >
-          <div className="px-4 py-2.5 border-b border-gray-50">
-            <p className="text-sm font-bold text-gray-900 truncate">{user?.full_name}</p>
-            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+          <div className="border-b border-gray-50 px-4 py-2.5">
+            <p className="truncate text-sm font-bold text-gray-900">{user?.full_name}</p>
+            <p className="truncate text-xs text-gray-500">{user?.email}</p>
           </div>
 
           <Link
             href="/tai-khoan"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 no-underline"
           >
             <Settings size={15} className="text-gray-400" />
             Tài khoản
@@ -183,7 +212,7 @@ export function DesktopTopNav() {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
           >
             <LogOut size={15} className="text-red-400" />
             Đăng xuất

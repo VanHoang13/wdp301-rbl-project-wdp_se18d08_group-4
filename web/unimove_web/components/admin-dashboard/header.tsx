@@ -416,25 +416,26 @@ export default function Header() {
     }
   }, []);
 
-  // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/admin/notifications`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
+      const response = await fetch(`${API_URL}/admin/announcements`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("admin_token")}` },
       });
-      
       if (!response.ok) return;
-      
       const data = await response.json();
       if (data.success && Array.isArray(data.data)) {
-        const rows = data.data as NotificationRow[];
+        const rows = (data.data as { id: string; title: string; body?: string; content?: string; created_at: string }[]).map((a) => ({
+          id: a.id,
+          title: a.title,
+          body: a.body ?? a.content ?? null,
+          is_read: false,
+          created_at: a.created_at,
+        }));
         setNotifications(rows);
-        setUnreadCount(rows.filter((n) => !n.is_read).length);
+        setUnreadCount(rows.length);
       }
     } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+      console.error("Failed to fetch announcements:", err);
     }
   }, [API_URL]);
 
@@ -461,22 +462,9 @@ export default function Header() {
   }, [fetchProfile, fetchNotifications]);
 
   const handleMarkRead = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/admin/notifications/mark-read`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      });
-      
-      if (response.ok) {
-        setUnreadCount(0);
-        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      }
-    } catch (err) {
-      console.error('Failed to mark notifications as read:', err);
-    }
-  }, [API_URL]);
+    setUnreadCount(0);
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  }, []);
 
   const handleLogout = useCallback(async () => {
     logoutToHome(router);

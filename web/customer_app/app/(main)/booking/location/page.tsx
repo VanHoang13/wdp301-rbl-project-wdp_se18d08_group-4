@@ -42,7 +42,7 @@ export default function BookingLocationPage() {
       pickup: pickup || "Địa điểm hiện tại",
       dropoff,
     });
-    router.push(`/booking/dorm-details?${params.toString()}`);
+    router.push(`/booking/schedule?${params.toString()}`);
   };
 
   const selectPlace = (address: string) => {

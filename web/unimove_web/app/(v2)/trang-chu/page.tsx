@@ -1,224 +1,393 @@
 ﻿"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Truck, Package, ShoppingBag, Shield,
-  ChevronRight, MapPin, Clock, Star, TrendingUp, Zap, Plus
+  Truck, Package, Search, ChevronRight, MapPin, Route, Users, Store, Receipt,
+  Sparkles, User, Bell, ArrowRight, ExternalLink, X, CheckCircle2, Lightbulb,
 } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FadeSlideIn, StaggerContainer, StaggerItem } from "@/components/motion/fade-slide-in";
+import { PressableScale } from "@/components/motion/pressable-scale";
 import { Badge } from "@/components/ui/badge";
-import { customerApi, ordersApi } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { customerApi, ordersApi, notificationsApi } from "@/lib/api";
 import { getStoredUser, type AuthUser } from "@/lib/auth";
-import { formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/lib/utils";
+import { cn, formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/lib/utils";
+
+const BLUE = "#0047FF";
+const YELLOW = "#FFC107";
 
 interface Order {
-  id: string; status: string;
-  pickup_address: string; dropoff_address: string;
-  estimated_price?: number; final_price?: number; created_at: string;
-  provider?: { full_name: string; rating: number };
+  id: string;
+  status: string;
+  service_type?: string;
+  pickup_address: string;
+  dropoff_address: string;
+  estimated_price?: number;
+  final_price?: number;
+  created_at: string;
 }
 
-function StatCard({ label, value, icon, iconColor, iconBg }: {
-  label: string; value: string;
-  icon: React.ReactNode; iconColor: string; iconBg: string;
-}) {
+const SERVICES = [
+  { href: "/dat-chuyen", icon: Route, title: "Đặt chuyến", sub: "Chọn điểm đón & đến", tint: "#EFF6FF", color: BLUE },
+  { href: "/dat-chuyen?loai=khuan-vac", icon: Users, title: "Khuân vác", sub: "Thêm vào đơn đã đặt", tint: "#FEF9C3", color: "#CA8A04" },
+  { href: "/cho-sinh-vien", icon: Store, title: "Chợ sinh viên", sub: "Mua bán đồ · SV tin nhau", tint: "#DCFCE7", color: "#16A34A" },
+  { href: "/reference-prices", icon: Receipt, title: "Bảng phụ phí", sub: "Tham khảo minh bạch", tint: "#FCE7F3", color: "#DB2777" },
+] as const;
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Chào buổi sáng";
+  if (h < 18) return "Chào buổi chiều";
+  return "Chào buổi tối";
+}
+
+function firstName(fullName?: string) {
+  if (!fullName?.trim()) return "bạn";
+  const parts = fullName.trim().split(/\s+/);
+  return parts.length === 1 ? parts[0] : parts[parts.length - 1];
+}
+
+function orderTitle(o: Order) {
+  const map: Record<string, string> = {
+    moving: "Chuyển nhà",
+    porter: "Dịch vụ khuân vác",
+    combo: "Combo chuyển trọ",
+    standard: "Đơn vận chuyển",
+  };
+  if (o.service_type && map[o.service_type]) return map[o.service_type];
+  const short = o.dropoff_address?.split(",")[0]?.trim();
+  return short ? `Chuyển đến ${short}` : "Đơn hàng";
+}
+
+function HeroVideo() {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.play().catch(() => {});
+  }, []);
+
   return (
-    <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4">
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-        style={{ backgroundColor: iconBg, color: iconColor }}>
-        {icon}
+    <video
+      ref={ref}
+      src="/hero.mp4"
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      className="absolute inset-0 h-full w-full object-cover object-[85%_center]"
+    />
+  );
+}
+
+function OrderRow({ order }: { order: Order }) {
+  const cancelled = order.status === "cancelled";
+  const completed = order.status === "completed";
+
+  return (
+    <Link href={`/don-hang/${order.id}`} className="group flex gap-4 rounded-2xl border border-gray-100 bg-white p-4 transition hover:border-blue-100 hover:shadow-md no-underline">
+      <div
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+          cancelled ? "bg-red-50 text-red-500" : completed ? "bg-blue-50 text-[#0047FF]" : "bg-gray-50 text-gray-500"
+        )}
+      >
+        {cancelled ? <X size={20} /> : completed ? <CheckCircle2 size={20} /> : <Truck size={20} />}
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      <p className="text-xs mt-1 text-gray-500">{label}</p>
-    </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className="truncate font-semibold text-gray-900 group-hover:text-[#0047FF]">{orderTitle(order)}</p>
+          <Badge
+            className="shrink-0 border-0 text-[10px] font-bold uppercase tracking-wide"
+            style={{
+              backgroundColor: getOrderStatusColor(order.status) + "22",
+              color: getOrderStatusColor(order.status),
+            }}
+          >
+            {getOrderStatusLabel(order.status)}
+          </Badge>
+        </div>
+        <p className="mt-1 truncate text-sm text-gray-500">
+          {order.pickup_address} → {order.dropoff_address}
+        </p>
+        <p className="mt-1 text-xs text-gray-400">{timeAgo(order.created_at)}</p>
+      </div>
+    </Link>
   );
 }
 
 export default function TrangChuPage() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser());
+  const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const [profileRes, ordersRes] = await Promise.allSettled([
-          customerApi.getMe(),
-          ordersApi.list({ page: 1 }),
-        ]);
-        if (profileRes.status === "fulfilled" && profileRes.value.success)
-          setUser(profileRes.value.data as AuthUser);
-        if (ordersRes.status === "fulfilled" && ordersRes.value.success) {
-          const d = ordersRes.value.data as { orders?: Order[] } | Order[];
-          setOrders((Array.isArray(d) ? d : (d?.orders ?? [])).slice(0, 5));
-        }
-      } finally { setLoading(false); }
-    })();
+    setMounted(true);
+    const stored = getStoredUser();
+    if (stored) setUser(stored);
+
+    Promise.allSettled([
+      customerApi.getMe(),
+      ordersApi.list({ page: 1 }),
+      notificationsApi.unreadCount(),
+    ]).then(([profileRes, ordersRes, notifRes]) => {
+      if (profileRes.status === "fulfilled" && profileRes.value.success) {
+        setUser(profileRes.value.data as AuthUser);
+      }
+      if (ordersRes.status === "fulfilled" && ordersRes.value.success) {
+        const d = ordersRes.value.data as { orders?: Order[] } | Order[];
+        setOrders((Array.isArray(d) ? d : (d?.orders ?? [])).slice(0, 5));
+      }
+      if (notifRes.status === "fulfilled" && notifRes.value.success) {
+        const c = notifRes.value.data as { count?: number };
+        setUnread(c.count ?? 0);
+      }
+    }).finally(() => setLoading(false));
   }, []);
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
-  const activeOrders = orders.filter(o => !["completed", "cancelled"].includes(o.status));
+  const greetText = mounted ? greeting() : "Xin chào";
+  const nameText = mounted ? firstName(user?.full_name) : "bạn";
 
-  const services = [
-    { label: "Chuyển trọ",    desc: "Báo giá minh bạch",  href: "/dat-chuyen",               icon: Truck,       iconColor: "#2563EB", iconBg: "#EFF6FF" },
-    { label: "Khuân vác",     desc: "Theo giờ linh hoạt", href: "/dat-chuyen?loai=khuan-vac", icon: Package,     iconColor: "#16a34a", iconBg: "#dcfce7" },
-    { label: "Chợ sinh viên", desc: "Mua bán đồ cũ",      href: "/cho-sinh-vien",             icon: ShoppingBag, iconColor: "#d97706", iconBg: "#fef3c7" },
-    { label: "Bảng phụ phí",  desc: "Giá tham khảo",      href: "/reference-prices",          icon: Shield,      iconColor: "#9333ea", iconBg: "#f3e8ff" },
-  ];
+  const completedOrders = orders.filter((o) => o.status === "completed");
+  const totalSpent = completedOrders.reduce(
+    (sum, o) => sum + (o.final_price ?? o.estimated_price ?? 0),
+    0
+  );
+  const movingGoal = orders.length > 0
+    ? Math.round((completedOrders.length / orders.length) * 100)
+    : 0;
 
   return (
-    <div className="space-y-5 px-4 pb-6 pt-4 max-w-2xl mx-auto lg:max-w-4xl">
-      {/* Welcome banner */}
-      <div className="relative overflow-hidden rounded-2xl"
-        style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #2563EB 55%, #3b82f6 100%)", minHeight: "140px" }}>
-        <div className="px-6 py-6 relative z-10">
-          <div className="inline-flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1 mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#FFCC00]" />
-            <span className="text-white/90 text-xs font-medium">{greeting}</span>
-          </div>
-          {loading
-            ? <div className="h-7 w-44 rounded-lg mb-1 bg-white/20 animate-pulse" />
-            : <h1 className="text-xl font-bold text-white mb-1">{user?.full_name ?? "Bạn"}</h1>
-          }
-          <p className="text-blue-100 text-sm mb-4">Bạn cần chuyển trọ hôm nay?</p>
-          <Link href="/dat-chuyen"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#FFCC00] text-gray-900 text-sm font-bold shadow-lg hover:bg-[#E6B800] transition-colors no-underline">
-            <Zap size={15} /> Đặt dịch vụ ngay
-          </Link>
-        </div>
-        <Truck className="absolute -right-4 top-1/2 -translate-y-1/2 text-white opacity-10" size={130} />
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="Đơn đang thực hiện"
-          value={activeOrders.length.toString()}
-          icon={<Truck size={20} />}
-          iconColor="#2563EB"
-          iconBg="#EFF6FF"
-        />
-        <StatCard
-          label="Đơn hoàn thành"
-          value={orders.filter(o => o.status === "completed").length.toString()}
-          icon={<TrendingUp size={20} />}
-          iconColor="#16a34a"
-          iconBg="#dcfce7"
-        />
-        <StatCard
-          label="Điểm thưởng"
-          value={(user as (AuthUser & { loyalty_points?: number }))?.loyalty_points?.toString() ?? "0"}
-          icon={<Star size={20} />}
-          iconColor="#d97706"
-          iconBg="#fef3c7"
-        />
-        <StatCard
-          label="Chờ báo giá"
-          value={orders.filter(o => o.status === "pending").length.toString()}
-          icon={<Clock size={20} />}
-          iconColor="#d97706"
-          iconBg="#fef3c7"
-        />
-      </div>
-
-      {/* Services */}
-      <section>
-        <h2 className="mb-3 text-sm font-bold text-gray-900">Dịch vụ</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {services.map(({ label, desc, href, icon: Icon, iconColor, iconBg }) => (
-            <Link key={href} href={href} className="no-underline">
-              <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 active:scale-[0.98] transition-all cursor-pointer">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
-                  style={{ backgroundColor: iconBg }}>
-                  <Icon size={22} style={{ color: iconColor }} />
-                </div>
-                <p className="text-sm font-bold text-gray-900">{label}</p>
-                <p className="text-xs mt-0.5 text-gray-500">{desc}</p>
-              </div>
+    <div className="pb-6 lg:pb-10">
+      {/* ── Mobile header ── */}
+      <header
+        className="sticky top-0 z-20 border-b border-gray-100/80 bg-white/90 px-5 py-3 backdrop-blur-xl lg:hidden"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/tai-khoan">
+              <PressableScale className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-[#0047FF] bg-[#EFF6FF]">
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <User size={20} className="text-[#0047FF]" />
+                )}
+              </PressableScale>
             </Link>
-          ))}
-        </div>
-
-        <Link href="/reference-prices" className="block mt-3 no-underline">
-          <div className="p-4 rounded-2xl flex items-center justify-between"
-            style={{ background: "linear-gradient(135deg, #FFCC00, #E6A800)" }}>
-            <div>
-              <p className="text-gray-900 text-xs font-bold uppercase tracking-wide">Giá tham khảo</p>
-              <p className="text-gray-800 text-sm font-medium mt-0.5">Xem bảng phụ phí chi tiết</p>
-            </div>
-            <ChevronRight size={18} className="text-gray-700 opacity-70" />
+            <span className="text-2xl font-extrabold tracking-tight">
+              <span className="text-[#FFC107]">Uni</span>
+              <span className="text-[#0047FF]">Move</span>
+            </span>
           </div>
-        </Link>
-      </section>
-
-      {/* Recent orders */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-gray-900">Đơn hàng gần đây</h2>
-          <Link href="/don-hang" className="text-xs font-semibold flex items-center gap-1 text-[#2563EB] hover:underline no-underline">
-            Xem tất cả <ChevronRight size={13} />
+          <Link href="/tin-nhan" className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm">
+            <Bell size={20} className="text-[#0047FF]" />
+            {mounted && unread > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
           </Link>
         </div>
+      </header>
 
-        <div className="rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
-          {loading ? (
-            <div className="p-4 space-y-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="flex gap-3">
-                  <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                </div>
-              ))}
+      <div className="mx-auto max-w-[var(--width-container)] space-y-6 px-5 pt-4 lg:space-y-8 lg:px-8 lg:pt-8">
+        {/* Mobile greeting */}
+        <FadeSlideIn delay={60} className="lg:hidden">
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900" suppressHydrationWarning>
+            {greetText}, {nameText}! 👋
+          </h1>
+          <p className="mt-1 text-base text-gray-500">So sánh báo giá nhà xe · Đặt cọc an toàn qua UniMove</p>
+        </FadeSlideIn>
+
+        {/* Mobile search */}
+        <FadeSlideIn delay={100} className="lg:hidden">
+          <Link href="/dat-chuyen" className="no-underline">
+            <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm">
+              <Search size={18} className="shrink-0 text-[#0047FF]" />
+              <span className="text-sm text-gray-500">Bạn muốn chuyển đến đâu?</span>
             </div>
-          ) : orders.length === 0 ? (
-            <div className="py-12 text-center">
-              <Truck size={44} className="mx-auto mb-3 text-gray-300" />
-              <p className="font-semibold mb-1 text-sm text-gray-900">Chưa có đơn hàng</p>
-              <p className="text-xs mb-4 text-gray-500">Đặt dịch vụ đầu tiên của bạn!</p>
-              <Link href="/dat-chuyen" className="no-underline">
-                <button className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-white text-sm font-bold bg-[#2563EB] shadow-[0_4px_12px_rgba(37,99,235,0.30)] hover:brightness-110 transition-all">
-                  <Plus size={16} /> Đặt ngay
-                </button>
+          </Link>
+        </FadeSlideIn>
+
+        {/* ── Desktop Hero ── */}
+        <FadeSlideIn delay={80} className="hidden lg:block">
+          <div className="relative min-h-[300px] overflow-hidden rounded-3xl shadow-lg">
+            <HeroVideo />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0047FF]/95 via-[#0047FF]/80 to-[#0047FF]/40" />
+            <div className="relative z-10 flex min-h-[300px] max-w-xl flex-col justify-center p-10 text-white">
+              <span className="mb-3 inline-flex w-fit rounded-full bg-[#FFC107] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-900">
+                Combo chuyển trọ
+              </span>
+              <h1 className="text-4xl font-bold leading-tight tracking-tight">
+                Gói trọn gói minh bạch.
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-blue-100">
+                Dịch vụ chuyển nhà chuyên nghiệp cho sinh viên và người đi làm. Đặt cọc an toàn qua PayOS, so sánh báo giá từ nhiều nhà xe.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/dat-chuyen?mode=combo"
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-bold text-[#0047FF] shadow-md transition hover:bg-blue-50 no-underline"
+                >
+                  Bắt đầu ngay <ArrowRight size={16} />
+                </Link>
+                <Link
+                  href="/dat-chuyen"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/40 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10 no-underline"
+                >
+                  Xem chi tiết
+                </Link>
+              </div>
+            </div>
+          </div>
+        </FadeSlideIn>
+
+        {/* Mobile combo card */}
+        <FadeSlideIn delay={140} className="lg:hidden">
+          <Link href="/dat-chuyen?mode=combo" className="no-underline">
+            <PressableScale>
+              <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] to-white p-5">
+                <div className="relative z-10 flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0047FF]">
+                    <Truck size={24} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="mb-1 text-xs font-bold uppercase tracking-wider text-[#0047FF]">Combo chuyển trọ</p>
+                    <h3 className="mb-1 text-lg font-bold text-gray-900">Gói trọn gói minh bạch</h3>
+                    <p className="text-sm text-gray-500">Chọn gói · Chốt nhà xe · Đặt cọc PayOS</p>
+                  </div>
+                  <ChevronRight size={20} className="text-gray-400" />
+                </div>
+              </div>
+            </PressableScale>
+          </Link>
+        </FadeSlideIn>
+
+        {/* ── Services ── */}
+        <section>
+          <FadeSlideIn delay={180}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 lg:text-xl">Tất cả dịch vụ</h2>
+              <Link href="/dat-chuyen" className="flex items-center gap-1 text-sm font-medium text-[#0047FF] no-underline hover:underline">
+                Xem tất cả <ExternalLink size={14} />
               </Link>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {orders.map(order => {
-                const sc = getOrderStatusColor(order.status);
-                const price = order.final_price ?? order.estimated_price;
-                return (
-                  <div key={order.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-blue-50">
-                      <MapPin size={14} className="text-[#2563EB]" />
+          </FadeSlideIn>
+          <StaggerContainer className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+            {SERVICES.map((s) => (
+              <StaggerItem key={s.href}>
+                <Link href={s.href} className="no-underline">
+                  <div className="flex h-full flex-col rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md lg:p-5">
+                    <div
+                      className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl lg:h-12 lg:w-12"
+                      style={{ backgroundColor: s.tint }}
+                    >
+                      <s.icon size={22} style={{ color: s.color }} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate text-gray-900">{order.dropoff_address}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {price && <span className="text-xs font-semibold text-gray-700">{formatVND(price)}</span>}
-                        <span className="text-xs text-gray-400">{timeAgo(order.created_at)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <Badge style={{ backgroundColor: sc + "22", color: sc, border: `1px solid ${sc}44`, fontSize: "10px" }}>
-                        {getOrderStatusLabel(order.status)}
-                      </Badge>
-                      <Link href={`/don-hang/${order.id}`}>
-                        <span className="text-xs font-medium text-[#2563EB]">Chi tiết</span>
-                      </Link>
-                    </div>
+                    <p className="font-semibold text-gray-900 lg:text-base">{s.title}</p>
+                    <p className="mt-0.5 text-xs leading-snug text-gray-500 lg:text-sm">{s.sub}</p>
                   </div>
-                );
-              })}
+                </Link>
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
+        </section>
+
+        {/* ── Flash sale ── */}
+        <FadeSlideIn delay={240}>
+          <Link href="/reference-prices" className="block no-underline">
+            <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-r from-[#FFC107] to-[#E6AD00] p-4 lg:rounded-3xl lg:p-5">
+              <Sparkles className="shrink-0 text-gray-800" size={28} />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-gray-900 lg:text-base">Flash Sale · Bảng phụ phí</p>
+                <p className="text-xs text-gray-800/80 lg:text-sm">Xem giá tham khảo trước khi đặt · Ưu đãi giờ vàng</p>
+              </div>
+              <div className="hidden items-center gap-1 text-sm font-semibold text-gray-800 sm:flex">
+                Ưu đãi có hạn <ChevronRight size={18} />
+              </div>
+              <ChevronRight className="text-gray-700 sm:hidden" size={20} />
             </div>
-          )}
+          </Link>
+        </FadeSlideIn>
+
+        {/* ── Dashboard: orders + overview ── */}
+        <div className="grid gap-6 lg:grid-cols-3 lg:gap-8">
+          <section className="lg:col-span-2">
+            <FadeSlideIn delay={300}>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900 lg:text-xl">Đơn hàng gần đây</h2>
+                <Link href="/hoat-dong" className="text-sm font-medium text-[#0047FF] no-underline hover:underline">
+                  Hoạt động →
+                </Link>
+              </div>
+            </FadeSlideIn>
+
+            {loading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+              </div>
+            ) : orders.length > 0 ? (
+              <div className="space-y-3">
+                {orders.slice(0, 4).map((order) => (
+                  <OrderRow key={order.id} order={order} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-100 bg-white p-10 text-center shadow-sm">
+                <Package size={40} className="mx-auto mb-3 text-gray-300" />
+                <p className="mb-1 font-semibold text-gray-900">Chưa có đơn hàng</p>
+                <p className="mb-4 text-sm text-gray-500">Đặt chuyến đầu tiên để theo dõi tại đây</p>
+                <Link
+                  href="/dat-chuyen"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0047FF] px-5 py-2.5 text-sm font-bold text-white no-underline"
+                >
+                  Đặt chuyến <ChevronRight size={16} />
+                </Link>
+              </div>
+            )}
+          </section>
+
+          <aside className="hidden lg:block">
+            <FadeSlideIn delay={360}>
+              <div className="overflow-hidden rounded-3xl bg-[#0047FF] p-6 text-white shadow-lg">
+                <p className="text-sm font-medium text-blue-200">Tổng quan logistics</p>
+                <p className="mt-4 text-sm text-blue-100">Tổng chi tiêu</p>
+                <p className="mt-1 text-3xl font-bold tracking-tight">
+                  {mounted ? formatVND(totalSpent) : "—"}
+                </p>
+
+                <div className="mt-6">
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-blue-100">Mục tiêu chuyển nhà</span>
+                    <span className="font-semibold">{movingGoal}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/20">
+                    <div
+                      className="h-full rounded-full bg-[#FFC107] transition-all duration-700"
+                      style={{ width: `${movingGoal}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl bg-[#0039CC]/60 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-[#FFC107]">
+                    <Lightbulb size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wide">Mẹo hôm nay</span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-blue-50">
+                    Đóng gói đồ nặng (sách, quần áo) trước — giúp nhà xe báo giá chính xác và tiết kiệm thời gian lên xe.
+                  </p>
+                </div>
+              </div>
+            </FadeSlideIn>
+          </aside>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
