@@ -1,7 +1,7 @@
 import { getStoredToken } from "./auth";
 import { toApiCategory } from "@/lib/marketplace/categories";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -27,9 +27,21 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     err.status = 0;
     throw err;
   }
-  const data = await res.json();
+  const text = await res.text();
+  let data: ApiResponse<T>;
+  try {
+    data = text ? JSON.parse(text) : { success: false };
+  } catch {
+    const err: ApiError = new Error(
+      res.status === 404
+        ? "Không tìm thấy API backend. Hãy chạy backend (npm run dev --prefix backend) trên port 3000 và kiểm tra NEXT_PUBLIC_API_URL."
+        : "Máy chủ trả về phản hồi không hợp lệ. Vui lòng thử lại sau."
+    );
+    err.status = res.status;
+    throw err;
+  }
   if (!res.ok) {
-    const err: ApiError = new Error(data.message || data.error || "API error");
+    const err: ApiError = new Error(data.message || (data as { error?: string }).error || "API error");
     err.status = res.status;
     throw err;
   }
@@ -48,8 +60,16 @@ async function upload<T>(endpoint: string, formData: FormData): Promise<ApiRespo
     err.status = 0;
     throw err;
   }
-  const data = await res.json();
-  if (!res.ok) { const err: ApiError = new Error(data.message || data.error || "Upload failed"); err.status = res.status; throw err; }
+  const text = await res.text();
+  let data: ApiResponse<T>;
+  try {
+    data = text ? JSON.parse(text) : { success: false };
+  } catch {
+    const err: ApiError = new Error("Máy chủ trả về phản hồi không hợp lệ khi tải lên.");
+    err.status = res.status;
+    throw err;
+  }
+  if (!res.ok) { const err: ApiError = new Error(data.message || (data as { error?: string }).error || "Upload failed"); err.status = res.status; throw err; }
   return data;
 }
 

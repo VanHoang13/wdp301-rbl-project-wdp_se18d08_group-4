@@ -15,8 +15,10 @@ import { Pagination } from "@/components/admin-dashboard/pagination";
 import { formatVND, formatDateTime, formatOrderNumber } from "@/lib/admin/formatters";
 import { forceCancelOrder } from "@/lib/admin/queries/orders";
 import type { OrderStatus, PaginationMeta, Order } from "@/lib/admin/types";
-import { ShoppingBag, Search, X, Loader2, AlertTriangle } from "lucide-react";
+import { ShoppingBag, Search, X, Loader2, AlertTriangle, RefreshCw, Ban } from "lucide-react";
+import { getProviderDisplayName } from "@/lib/admin/normalize-order-relations";
 import { cn } from "@/lib/admin/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/admin-ui/tooltip";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -69,11 +71,13 @@ function ForceCancelDialog({
   adminId,
   open,
   onOpenChange,
+  onSuccess,
 }: {
   order: OrderWithRelations;
   adminId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const [reason, setReason] = useState("");
@@ -97,6 +101,7 @@ function ForceCancelDialog({
         setError(err.message);
       } else {
         onOpenChange(false);
+        onSuccess?.();
         router.refresh();
       }
     });
@@ -179,11 +184,17 @@ function FilterBar({
   currentSearch,
   onStatusChange,
   onSearchChange,
+  isRefreshing,
+  lastUpdatedAt,
+  onRefresh,
 }: {
   activeStatus: OrderStatus | undefined;
   currentSearch: string;
   onStatusChange: (s: OrderStatus | undefined) => void;
   onSearchChange: (s: string) => void;
+  isRefreshing?: boolean;
+  lastUpdatedAt?: Date | null;
+  onRefresh?: () => void;
 }) {
   const [searchInput, setSearchInput] = useState(currentSearch);
 
@@ -265,6 +276,34 @@ function FilterBar({
           </button>
         )}
       </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        {lastUpdatedAt && (
+          <span className="text-xs hidden sm:inline" style={{ color: "var(--muted)" }}>
+            Cập nhật{" "}
+            {lastUpdatedAt.toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-opacity disabled:opacity-50"
+          style={{
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
+            color: "var(--muted)",
+          }}
+          title="Làm mới danh sách"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+          {isRefreshing ? "Đang cập nhật..." : "Làm mới"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -277,12 +316,18 @@ export function OrdersClient({
   activeStatus,
   currentSearch,
   adminId,
+  isRefreshing,
+  lastUpdatedAt,
+  onRefresh,
 }: {
   orders: OrderWithRelations[];
   meta: PaginationMeta;
   activeStatus: OrderStatus | undefined;
   currentSearch: string;
   adminId: string;
+  isRefreshing?: boolean;
+  lastUpdatedAt?: Date | null;
+  onRefresh?: () => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -316,16 +361,20 @@ export function OrdersClient({
   }
 
   function handleRowClick(orderId: string) {
-    router.push(`/orders/${orderId}`);
+    router.push(`/admin/orders/${orderId}`);
   }
 
   return (
     <>
+      <TooltipProvider>
       <FilterBar
         activeStatus={activeStatus}
         currentSearch={currentSearch}
         onStatusChange={handleStatusChange}
         onSearchChange={handleSearchChange}
+        isRefreshing={isRefreshing}
+        lastUpdatedAt={lastUpdatedAt}
+        onRefresh={onRefresh}
       />
 
       <div
@@ -341,7 +390,7 @@ export function OrdersClient({
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
                 <thead>
                   <tr
                     style={{
@@ -390,7 +439,7 @@ export function OrdersClient({
                       </td>
 
                       {/* Order number */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 w-[140px]">
                         <span
                           className="font-mono font-semibold text-xs"
                           style={{ color: "var(--primary)" }}
@@ -401,28 +450,35 @@ export function OrdersClient({
 
                       {/* Customer */}
                       <td
-                        className="px-4 py-3 whitespace-nowrap"
+                        className="px-4 py-3 whitespace-nowrap w-[160px] truncate"
                         style={{ color: "var(--text)" }}
+                        title={order.customer?.full_name ?? "—"}
                       >
                         {order.customer?.full_name ?? "—"}
                       </td>
 
                       {/* Provider */}
                       <td
-                        className="px-4 py-3 whitespace-nowrap"
-                        style={{ color: "var(--muted)" }}
+                        className="px-4 py-3 whitespace-nowrap w-[180px] truncate"
+                        style={{ color: "var(--text)" }}
+                        title={getProviderDisplayName(order.provider) ?? "Chưa có"}
                       >
-                        {order.provider?.full_name ?? (
-                          <span className="italic">Chưa có</span>
+                        {getProviderDisplayName(order.provider) ?? (
+                          <span className="italic" style={{ color: "var(--muted)" }}>
+                            Chưa có
+                          </span>
                         )}
                       </td>
 
                       {/* Route */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
-                          <span style={{ color: "var(--text)" }}>{order.pickup_city}</span>
-                          <span style={{ color: "var(--muted)" }}>→</span>
-                          <span style={{ color: "var(--text)" }}>{order.delivery_city}</span>
+                      <td className="px-4 py-3 w-[200px]">
+                        <div
+                          className="text-xs truncate"
+                          style={{ color: "var(--text)" }}
+                          title={`${order.pickup_city ?? "—"} → ${order.delivery_city ?? "—"}`}
+                        >
+                          {order.pickup_city ?? "—"} <span style={{ color: "var(--muted)" }}>→</span>{" "}
+                          {order.delivery_city ?? "—"}
                         </div>
                       </td>
 
@@ -436,10 +492,17 @@ export function OrdersClient({
 
                       {/* Vehicle size */}
                       <td
-                        className="px-4 py-3 whitespace-nowrap text-xs"
+                        className="px-4 py-3 whitespace-nowrap text-xs w-[110px] truncate"
                         style={{ color: "var(--muted)" }}
+                        title={
+                          order.vehicle_size
+                            ? (VEHICLE_SIZE_LABELS[order.vehicle_size] ?? order.vehicle_size)
+                            : "—"
+                        }
                       >
-                        {VEHICLE_SIZE_LABELS[order.vehicle_size] ?? order.vehicle_size}
+                        {order.vehicle_size
+                          ? (VEHICLE_SIZE_LABELS[order.vehicle_size] ?? order.vehicle_size)
+                          : "—"}
                       </td>
 
                       {/* Status */}
@@ -457,16 +520,27 @@ export function OrdersClient({
 
                       {/* Action — stop propagation so row click doesn't fire */}
                       <td
-                        className="px-4 py-3"
+                        className="px-4 py-3 w-[64px]"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {isCancellable(order.status) && (
-                          <button
-                            onClick={() => setCancelTarget(order)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
-                          >
-                            Hủy đơn
-                          </button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={() => setCancelTarget(order)}
+                                className={cn(
+                                  "w-9 h-9 inline-flex items-center justify-center rounded-xl",
+                                  "bg-red-50 text-red-700 hover:bg-red-100",
+                                  "dark:bg-red-900/20 dark:text-red-400"
+                                )}
+                                aria-label="Hủy đơn"
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">Hủy đơn</TooltipContent>
+                          </Tooltip>
                         )}
                       </td>
                     </tr>
@@ -497,8 +571,10 @@ export function OrdersClient({
           onOpenChange={(open) => {
             if (!open) setCancelTarget(null);
           }}
+          onSuccess={onRefresh}
         />
       )}
+      </TooltipProvider>
     </>
   );
 }

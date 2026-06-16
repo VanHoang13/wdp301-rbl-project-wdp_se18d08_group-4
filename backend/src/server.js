@@ -20,6 +20,7 @@ app.listen(env.PORT, '0.0.0.0', () => {
   const goongOk = Boolean(env.GOONG_API_KEY);
   console.log(`UniMove API: http://localhost:${env.PORT}`);
   console.log(`Health: http://localhost:${env.PORT}/api/health`);
+  console.log(`Web (Next.js): http://localhost:3001 — mở URL này trên trình duyệt`);
   console.log(`PayOS: ${payosOk ? 'đã cấu hình' : 'CHƯA cấu hình — lưu file .env ở thư mục gốc project'}`);
   console.log(`Goong: ${goongOk ? 'đã cấu hình' : 'CHƯA cấu hình — thêm GOONG_API_KEY vào .env (fallback OSM)'}`);
   const ips = lanAddresses();

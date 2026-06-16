@@ -12,6 +12,7 @@
     "create-admin": "node create-admin.js",
     "seed:admin": "node seed-admin-data.js",
     "seed:e2e": "node seed-e2e-test-accounts.js",
+    "seed:reviews": "node seed-demo-reviews.js",
     "migrate:quotes": "node scripts/apply-migration.js supabase/migrations/20240129000000_order_quotes_bidding.sql",
     "migrate:deposit-trigger": "node scripts/apply-migration.js supabase/migrations/20240130000000_fix_deposit_payment_trigger.sql",
     "fix:payment": "node scripts/fix-stuck-deposit-payment.js",

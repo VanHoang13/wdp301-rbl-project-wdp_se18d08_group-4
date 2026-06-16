@@ -16,10 +16,9 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 interface OrderDetailActionsProps {
   orderId: string;
   orderNumber: string;
-  adminId: string;
 }
 
-export function OrderDetailActions({ orderId, orderNumber, adminId }: OrderDetailActionsProps) {
+export function OrderDetailActions({ orderId, orderNumber }: OrderDetailActionsProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -38,7 +37,8 @@ export function OrderDetailActions({ orderId, orderNumber, adminId }: OrderDetai
     if (!reason.trim()) return;
     startTransition(async () => {
       setError(null);
-      const { error: err } = await forceCancelOrder(orderId, adminId, reason.trim());
+      // adminId is not required on server — auth is via admin_token cookie
+      const { error: err } = await forceCancelOrder(orderId, "", reason.trim());
       if (err) {
         setError(err.message);
       } else {

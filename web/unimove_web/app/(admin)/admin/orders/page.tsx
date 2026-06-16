@@ -1,68 +1,87 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiClient, adminApi } from "@/lib/admin/api";
 import { normalizeMeta } from "@/lib/admin/normalize-meta";
+import { usePolling } from "@/lib/admin/use-polling";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
 import type { OrderStatus } from "@/lib/admin/types";
 import { OrdersClient } from "./orders-client";
 
 const PAGE_SIZE = 10;
+const POLL_INTERVAL_MS = 8_000;
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
-  const status = searchParams.get('status') as OrderStatus | undefined;
-  const search = searchParams.get('search');
-  const page = Number(searchParams.get('page') ?? 1);
+  const status = searchParams.get("status") as OrderStatus | undefined;
+  const search = searchParams.get("search");
+  const page = Number(searchParams.get("page") ?? 1);
 
   const [data, setData] = useState<any[]>([]);
   const [meta, setMeta] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0 });
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [adminId, setAdminId] = useState("");
 
-  useEffect(() => {
-    // Set up API token from localStorage
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      apiClient.setToken(token);
-    }
-
-    const userStr = localStorage.getItem('admin_user');
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      setAdminId(user.id);
-    }
-
-    // Fetch data
-    loadOrders();
-  }, [status, search, page]);
-
-  async function loadOrders() {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await adminApi.getOrders({
-        page,
-        pageSize: PAGE_SIZE,
-        status: status || undefined,
-        search: search || undefined,
-      });
-      if (response.success) {
-        setData(Array.isArray(response.data) ? response.data : []);
-        setMeta(normalizeMeta(response.meta, { page, pageSize: PAGE_SIZE }));
+  const loadOrders = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setLoading(true);
       } else {
-        throw new Error(response.message || 'Failed to load orders');
+        setIsRefreshing(true);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  }
+      setError(null);
 
-  if (error) {
+      try {
+        const response = await adminApi.getOrders({
+          page,
+          pageSize: PAGE_SIZE,
+          status: status || undefined,
+          search: search || undefined,
+        });
+        if (response.success) {
+          setData(Array.isArray(response.data) ? response.data : []);
+          setMeta(normalizeMeta(response.meta, { page, pageSize: PAGE_SIZE }));
+          setLastUpdatedAt(new Date());
+        } else {
+          throw new Error(response.message || "Failed to load orders");
+        }
+      } catch (err) {
+        if (!silent) {
+          setError(err instanceof Error ? err : new Error("Unknown error"));
+        }
+      } finally {
+        if (!silent) setLoading(false);
+        else setIsRefreshing(false);
+      }
+    },
+    [page, search, status]
+  );
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin_token");
+    if (token) apiClient.setToken(token);
+
+    const userStr = localStorage.getItem("admin_user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setAdminId(user.id);
+      } catch {
+        // ignore
+      }
+    }
+
+    loadOrders();
+  }, [loadOrders]);
+
+  usePolling(() => loadOrders({ silent: true }), POLL_INTERVAL_MS, !loading && !error);
+
+  if (error && data.length === 0) {
     return (
       <div
         className="rounded-xl p-4 text-sm"
@@ -73,15 +92,13 @@ export default function OrdersPage() {
     );
   }
 
-  if (loading) {
+  if (loading && data.length === 0) {
     return (
       <div className="animate-pulse space-y-4">
-        {/* Filter bar skeleton */}
         <div className="flex gap-3">
           <div className="h-10 w-48 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
           <div className="h-10 w-64 rounded-xl" style={{ backgroundColor: "var(--border)" }} />
         </div>
-        {/* Table skeleton */}
         <div
           className="rounded-2xl overflow-hidden"
           style={{ border: "1px solid var(--border)", backgroundColor: "var(--card)" }}
@@ -111,6 +128,9 @@ export default function OrdersPage() {
         activeStatus={status}
         currentSearch={search ?? ""}
         adminId={adminId}
+        isRefreshing={isRefreshing}
+        lastUpdatedAt={lastUpdatedAt}
+        onRefresh={() => loadOrders({ silent: true })}
       />
     </div>
   );

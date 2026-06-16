@@ -1,9 +1,8 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
-const { ensurePublicImageBucket } = require('./storage.helpers');
+const { ensurePublicImageBucket, getImageExtFromMime, COMMON_IMAGE_MIME_TYPES } = require('./storage.helpers');
 
 const PROVIDER_DOCS_BUCKET = 'provider-documents';
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 const FIELD_TO_DOC_TYPE = {
   cccd_front: 'id_card',
   cccd_back: 'id_card',
@@ -22,6 +21,7 @@ const PROVIDER_SELECT = `
   price_per_floor,
   rating,
   total_reviews,
+  total_orders,
   is_verified,
   is_available,
   service_area,
@@ -76,6 +76,7 @@ function mapProviderRow(row) {
     price_per_floor: row.price_per_floor != null ? Number(row.price_per_floor) : null,
     rating: row.rating != null ? Number(row.rating) : 0,
     total_reviews: row.total_reviews ?? 0,
+    completed_trips: row.total_orders ?? 0,
     is_verified: Boolean(row.is_verified),
     is_available: Boolean(row.is_available),
     service_area: row.service_area ?? [],
@@ -387,7 +388,7 @@ async function uploadProviderDocuments(providerId, filesMap) {
 
   await ensurePublicImageBucket(PROVIDER_DOCS_BUCKET, {
     fileSizeLimit: 5242880,
-    allowedMimeTypes: ['image/jpeg', 'image/png'],
+    allowedMimeTypes: COMMON_IMAGE_MIME_TYPES,
   });
 
   const uploaded = [];
@@ -396,8 +397,8 @@ async function uploadProviderDocuments(providerId, filesMap) {
     const file = Array.isArray(files) ? files[0] : files;
     if (!file?.buffer?.length) continue;
 
-    const ext = EXT_BY_MIME[file.mimetype];
-    if (!ext) throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
+    const ext = getImageExtFromMime(file.mimetype);
+    if (!ext) throw httpError(400, 'Chỉ chấp nhận file ảnh', 'invalid_file_type');
 
     const objectPath = `${providerId}/${field}-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabaseAdmin.storage
@@ -433,6 +434,18 @@ async function uploadProviderDocuments(providerId, filesMap) {
   await supabaseAdmin
     .from('profiles')
     .update({ status: 'pending_verification' })
+    .eq('id', providerId);
+
+  // If provider re-submits documents (even after being verified),
+  // the admin should see them again in the "pending" verification list.
+  await supabaseAdmin
+    .from('provider_profiles')
+    .update({
+      verification_status: 'pending',
+      is_verified: false,
+      verified_at: null,
+      verified_by: null,
+    })
     .eq('id', providerId);
 
   return { uploaded: uploaded.length, documents: uploaded };

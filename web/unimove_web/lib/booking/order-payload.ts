@@ -3,8 +3,58 @@ import { tierVehicleSize, ALLEY_LABELS, CARGO_LABELS } from "./constants";
 
 type FlowState = ReturnType<typeof useBookingFlowStore.getState>;
 
+function normalizeAscii(s: string) {
+  return s
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const DA_NANG_DISTRICT_KEYWORDS = [
+  "ngu hanh son",
+  "hai chau",
+  "thanh khe",
+  "son tra",
+  "cam le",
+  "lien chieu",
+  "hoa vang",
+  "hoa khanh",
+  "thanh binh",
+  "an hai",
+  "an khe",
+  "man thai",
+  "hoa cuong",
+  "hoa xuan",
+];
+
+function mentionsDaNang(text: string) {
+  const n = normalizeAscii(text);
+  return n.includes("da nang") || n.includes("danang");
+}
+
+function isDaNangDistrictName(text: string) {
+  const n = normalizeAscii(text);
+  return DA_NANG_DISTRICT_KEYWORDS.some((k) => n.includes(k));
+}
+
 function splitAddress(full: string) {
   const parts = full.split(",").map((s) => s.trim()).filter(Boolean);
+
+  if (mentionsDaNang(full)) {
+    const districtPart =
+      parts.find((p) => isDaNangDistrictName(p)) ??
+      (parts.length >= 2 && !mentionsDaNang(parts[parts.length - 1])
+        ? parts[parts.length - 2]
+        : parts[0] ?? "");
+    return { address: full, city: "Đà Nẵng", district: districtPart };
+  }
+
+  const last = parts[parts.length - 1] ?? "";
+  if (isDaNangDistrictName(last)) {
+    return { address: full, city: "Đà Nẵng", district: last };
+  }
+
   const district = parts.length >= 2 ? parts[parts.length - 2] : "";
   const city = parts.length >= 1 ? parts[parts.length - 1] : "";
   return { address: full, district, city };

@@ -13,6 +13,7 @@ import {
   BarChart3,
   Bell,
   History,
+  Wallet,
   Settings,
   Truck,
   ChevronDown,
@@ -89,6 +90,11 @@ function buildNavItems(pendingVerifications?: number): NavItem[] {
       label: "Thống kê",
       href: "/admin/analytics",
       icon: BarChart3,
+    },
+    {
+      label: "Tài chính",
+      href: "/admin/finance",
+      icon: Wallet,
     },
     {
       label: "Thông báo",

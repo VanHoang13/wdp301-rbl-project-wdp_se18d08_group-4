@@ -1,8 +1,8 @@
 const { httpError, normalizePhone } = require('./auth.helpers');
 const { supabaseAdmin } = require('./supabase.service');
+const { getImageExtFromMime, ensurePublicImageBucket, COMMON_IMAGE_MIME_TYPES } = require('./storage.helpers');
 
 const AVATAR_BUCKET = 'avatars';
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 
 /** Validation helpers */
 function validateFullName(fullName) {
@@ -458,12 +458,19 @@ async function uploadAvatar(userId, file) {
     throw httpError(400, 'Thiếu file ảnh (field: avatar)', 'validation_error');
   }
 
-  const ext = EXT_BY_MIME[file.mimetype];
-  if (!ext) {
-    throw httpError(400, 'Chỉ chấp nhận ảnh JPG hoặc PNG', 'invalid_file_type');
-  }
+  const ext = getImageExtFromMime(file.mimetype);
+  if (!ext) throw httpError(400, 'Chỉ chấp nhận file ảnh', 'invalid_file_type');
 
   const objectPath = `${userId}/avatar.${ext}`;
+
+  try {
+    await ensurePublicImageBucket(AVATAR_BUCKET, {
+      fileSizeLimit: 2 * 1024 * 1024,
+      allowedMimeTypes: COMMON_IMAGE_MIME_TYPES,
+    });
+  } catch {
+    // ignore - bucket may be managed by migration in some environments
+  }
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(AVATAR_BUCKET)

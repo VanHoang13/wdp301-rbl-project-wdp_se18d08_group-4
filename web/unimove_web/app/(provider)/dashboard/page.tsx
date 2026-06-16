@@ -11,12 +11,20 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ordersApi } from "@/lib/api";
 import { getStoredUser, type AuthUser } from "@/lib/auth";
-import { formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/lib/utils";
+import { formatVND, getOrderStatusColor, timeAgo } from "@/lib/utils";
+import {
+  getProviderOrderStatusLabel,
+  isOpenQuoteRequest,
+  isReadyToAccept,
+} from "@/lib/provider-order";
 import { useToast } from "@/components/ui/toast";
 
 interface Order {
   id: string; status: string; pickup_address: string; dropoff_address: string;
-  estimated_price?: number; created_at: string;
+  quote_request?: boolean;
+  provider_id?: string | null;
+  deposit_paid?: boolean;
+  estimated_price?: number; total_price?: number; created_at: string;
   customer?: { full_name: string; phone: string };
 }
 
@@ -36,7 +44,7 @@ export default function ProviderDashboardPage() {
     setLoading(true);
     try {
       const [pRes, aRes, cRes] = await Promise.allSettled([
-        ordersApi.list({ status: "pending" }),
+        ordersApi.list({ status: "pending,matched" }),
         ordersApi.list({ status: "accepted,picking_up,in_progress" }),
         ordersApi.list({ status: "completed" }),
       ]);
@@ -136,7 +144,11 @@ export default function ProviderDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {pending.map(o => (
+                    {pending.map(o => {
+                      const providerId = user?.id;
+                      const openQuote = isOpenQuoteRequest(o);
+                      const acceptNow = isReadyToAccept(o, providerId);
+                      return (
                       <tr key={o.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-3.5">
                           <p className="font-semibold text-gray-900 truncate max-w-[180px]">{o.dropoff_address}</p>
@@ -152,25 +164,51 @@ export default function ProviderDashboardPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <span className="font-bold" style={{ color: GREEN }}>
-                            {o.estimated_price ? formatVND(o.estimated_price) : "Chờ báo giá"}
+                            {(o.total_price ?? o.estimated_price)
+                              ? formatVND(o.total_price ?? o.estimated_price ?? 0)
+                              : "Chờ báo giá"}
                           </span>
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {getProviderOrderStatusLabel(o, providerId)}
+                          </p>
                         </td>
                         <td className="px-4 py-3.5 text-xs text-gray-400">{timeAgo(o.created_at)}</td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => respond(o.id, "reject")}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
-                            >
-                              Từ chối
-                            </button>
-                            <button
-                              onClick={() => respond(o.id, "accept")}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
-                              style={{ backgroundColor: GREEN }}
-                            >
-                              Chấp nhận
-                            </button>
+                            {openQuote ? (
+                              <Link href={`/orders/${o.id}`}>
+                                <button
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
+                                  style={{ backgroundColor: BLUE }}
+                                >
+                                  Gửi báo giá
+                                </button>
+                              </Link>
+                            ) : acceptNow ? (
+                              <button
+                                onClick={() => respond(o.id, "accept")}
+                                className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
+                                style={{ backgroundColor: GREEN }}
+                              >
+                                Nhận đơn
+                              </button>
+                            ) : o.status === "pending" && !o.quote_request ? (
+                              <>
+                                <button
+                                  onClick={() => respond(o.id, "reject")}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                >
+                                  Từ chối
+                                </button>
+                                <button
+                                  onClick={() => respond(o.id, "accept")}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-white transition-colors"
+                                  style={{ backgroundColor: GREEN }}
+                                >
+                                  Chấp nhận
+                                </button>
+                              </>
+                            ) : null}
                             <Link href={`/orders/${o.id}`}>
                               <button className="px-3 py-1.5 rounded-full text-xs font-semibold text-[#2563EB] bg-blue-50 hover:bg-blue-100 transition-colors">
                                 Chi tiết
@@ -179,7 +217,7 @@ export default function ProviderDashboardPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>
@@ -206,7 +244,7 @@ export default function ProviderDashboardPage() {
                         style={{ borderLeft: `3px solid ${sc}` }}>
                         <div className="flex items-start justify-between mb-2">
                           <Badge style={{ backgroundColor: sc + "20", color: sc, border: `1px solid ${sc}40`, borderRadius: 999, fontSize: 11, fontWeight: 600 }}>
-                            {getOrderStatusLabel(o.status)}
+                            {getProviderOrderStatusLabel(o, user?.id)}
                           </Badge>
                           <span className="text-xs text-gray-400">{timeAgo(o.created_at)}</span>
                         </div>

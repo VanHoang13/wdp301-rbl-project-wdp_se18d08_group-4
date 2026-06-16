@@ -13,6 +13,7 @@ import {
 } from "@/lib/admin/queries/notifications";
 import type { Announcement, NotificationPriority } from "@/lib/admin/types";
 import { formatDateTime } from "@/lib/admin/formatters";
+import { getAdminUserId } from "@/lib/admin/client-auth";
 import { cn } from "@/lib/admin/utils";
 
 import { PageHeader } from "@/components/admin-dashboard/page-header";
@@ -142,7 +143,7 @@ function CreateAnnouncementDialog({ open, onClose, onCreated }: CreateAnnounceme
 
   const handleSubmit = () => {
     if (!validate()) return;
-    const adminId = "admin"; // placeholder — replace with session user id
+    const adminId = getAdminUserId();
     startSubmit(async () => {
       const { error } = await createAnnouncement({
         title: form.title.trim(),

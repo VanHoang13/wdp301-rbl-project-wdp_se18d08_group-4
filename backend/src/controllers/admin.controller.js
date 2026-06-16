@@ -277,6 +277,10 @@ async function getDashboardStats(req, res) {
 /** GET /api/admin/providers/pending */
 async function getPendingProviders(req, res) {
   try {
+    const { status = 'pending' } = req.query;
+    const allowed = ['pending', 'approved', 'rejected'];
+    const normalizedStatus = allowed.includes(String(status)) ? String(status) : 'pending';
+
     const { data: providers, error } = await supabaseAdmin
       .from('provider_profiles')
       .select(`
@@ -302,7 +306,7 @@ async function getPendingProviders(req, res) {
           is_verified
         )
       `)
-      .eq('verification_status', 'pending')
+      .eq('verification_status', normalizedStatus)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -832,6 +836,9 @@ async function getOrders(req, res) {
         total_price,
         pickup_address,
         delivery_address,
+        pickup_city,
+        delivery_city,
+        vehicle_size,
         scheduled_pickup_time,
         created_at,
         completed_at,

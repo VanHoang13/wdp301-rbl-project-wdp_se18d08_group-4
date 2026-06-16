@@ -2,15 +2,17 @@ const multer = require('multer');
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png']);
+function isImageMime(mimetype) {
+  return typeof mimetype === 'string' && mimetype.toLowerCase().startsWith('image/');
+}
 
 function makeImageUpload(field, maxBytes, sizeMessage) {
   return multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxBytes, files: 1 },
     fileFilter: (_req, file, cb) => {
-      if (!ALLOWED_MIME.has(file.mimetype)) {
-        const err = new Error('Chỉ chấp nhận ảnh JPG hoặc PNG.');
+      if (!isImageMime(file.mimetype)) {
+        const err = new Error('Chỉ chấp nhận file ảnh.');
         err.status = 400;
         err.code = 'invalid_file_type';
         return cb(err);
@@ -52,8 +54,8 @@ const providerDocsUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MARKETPLACE_IMAGE_MAX_BYTES, files: 5 },
   fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_MIME.has(file.mimetype)) {
-      const err = new Error('Chỉ chấp nhận ảnh JPG hoặc PNG.');
+    if (!isImageMime(file.mimetype)) {
+      const err = new Error('Chỉ chấp nhận file ảnh.');
       err.status = 400;
       err.code = 'invalid_file_type';
       return cb(err);

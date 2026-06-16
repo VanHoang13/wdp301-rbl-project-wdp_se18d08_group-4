@@ -89,25 +89,35 @@ export default function BaoGiaPage() {
         <div className="space-y-3">
           {quotes.map((q) => (
             <div key={q.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-bold text-gray-900">{q.provider_name ?? "Nhà xe"}</p>
-                  <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
-                    <Star size={12} fill="currentColor" /> Đánh giá tốt
+              <Link href={`/don-hang/${orderId}/bao-gia/${q.id}`} className="block">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-gray-900">{q.provider_name ?? "Nhà xe"}</p>
+                    <div className="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                      <Star size={12} fill="currentColor" /> Xem đánh giá & chi tiết →
+                    </div>
+                    {q.note && <p className="mt-2 text-xs text-gray-500 line-clamp-2">{q.note}</p>}
                   </div>
-                  {q.note && <p className="mt-2 text-xs text-gray-500">{q.note}</p>}
+                  <p className="text-lg font-bold text-[#0047FF]">{formatVND(q.total_price ?? q.base_price)}</p>
                 </div>
-                <p className="text-lg font-bold text-[#0047FF]">{formatVND(q.total_price ?? q.base_price)}</p>
-              </div>
-              {q.status === "pending" && (
-                <button
-                  type="button"
-                  disabled={acting}
-                  onClick={() => selectQuote(q.id)}
-                  className="mt-3 w-full rounded-full bg-[#0047FF] py-2.5 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  Chốt nhà xe này
-                </button>
+              </Link>
+              {q.status === "submitted" && orderStatus === "pending" && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Link
+                    href={`/don-hang/${orderId}/bao-gia/${q.id}`}
+                    className="rounded-full border border-gray-200 py-2.5 text-sm font-semibold text-center text-gray-700 hover:bg-gray-50"
+                  >
+                    Chi tiết
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={acting}
+                    onClick={() => selectQuote(q.id)}
+                    className="rounded-full bg-[#0047FF] py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    Chốt ngay
+                  </button>
+                </div>
               )}
             </div>
           ))}

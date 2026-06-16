@@ -6,7 +6,7 @@ import { Truck, MapPin, Clock, ChevronRight, RefreshCw, CheckCircle, XCircle } f
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { providerOrdersApi } from "@/lib/api";
+import { providerOrdersApi, providerQuotesApi } from "@/lib/api";
 import { getOrderStatusLabel, getOrderStatusColor, timeAgo, formatVND } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -16,6 +16,7 @@ interface Order {
   service_type: string;
   pickup_address: string;
   dropoff_address: string;
+  quote_request?: boolean;
   estimated_price?: number;
   final_price?: number;
   created_at: string;
@@ -57,17 +58,18 @@ export default function ProviderOrdersPage() {
     fetchOrders(TABS[activeTab].key);
   }, [activeTab, fetchOrders]);
 
-  const handleAccept = async (orderId: string) => {
+  const handleAccept = async (order: Order) => {
+    if (order.quote_request) return;
     try {
-      await providerOrdersApi.respondToOrder(orderId, { action: "accept" });
+      await providerOrdersApi.respondToOrder(order.id, { response: "accepted" });
       toast("Đã chấp nhận đơn!", "success");
       fetchOrders(TABS[activeTab].key);
     } catch { toast("Thử lại sau", "error"); }
   };
 
-  const handleReject = async (orderId: string) => {
+  const handleReject = async (order: Order) => {
     try {
-      await providerOrdersApi.respondToOrder(orderId, { action: "reject" });
+      await providerOrdersApi.respondToOrder(order.id, { response: "declined" });
       toast("Đã từ chối đơn", "info");
       fetchOrders(TABS[activeTab].key);
     } catch { toast("Thử lại sau", "error"); }
@@ -119,8 +121,8 @@ export default function ProviderOrdersPage() {
         ) : (
           orders.map((order) => (
             <OrderCard key={order.id} order={order}
-              onAccept={() => handleAccept(order.id)}
-              onReject={() => handleReject(order.id)} />
+              onAccept={() => handleAccept(order)}
+              onReject={() => handleReject(order)} />
           ))
         )}
       </div>
@@ -135,6 +137,7 @@ function OrderCard({ order, onAccept, onReject }: {
 }) {
   const statusColor = getOrderStatusColor(order.status);
   const isPending = order.status === "pending";
+  const isQuoteRequest = isPending && !!order.quote_request;
 
   return (
     <Link href={`/orders/${order.id}`}>
@@ -179,20 +182,34 @@ function OrderCard({ order, onAccept, onReject }: {
           </div>
         </div>
 
-        {/* Accept/Reject for pending */}
+        {/* Actions for pending */}
         {isPending && (
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}
             onClick={(e) => e.preventDefault()}>
-            <button onClick={onReject}
-              className="h-9 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
-              style={{ color: "var(--error)", backgroundColor: "var(--error-tint)", border: "1px solid var(--error)" + "44" }}>
-              <XCircle size={15} /> Từ chối
-            </button>
-            <button onClick={onAccept}
-              className="h-9 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-1.5"
-              style={{ backgroundColor: "var(--success)" }}>
-              <CheckCircle size={15} /> Chấp nhận
-            </button>
+            {isQuoteRequest ? (
+              <Link href={`/orders/${order.id}`} className="col-span-2">
+                <button
+                  type="button"
+                  className="h-9 w-full rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: "var(--primary)" }}
+                >
+                  Gửi báo giá
+                </button>
+              </Link>
+            ) : (
+              <>
+                <button onClick={onReject}
+                  className="h-9 rounded-xl text-sm font-semibold flex items-center justify-center gap-1.5"
+                  style={{ color: "var(--error)", backgroundColor: "var(--error-tint)", border: "1px solid var(--error)" + "44" }}>
+                  <XCircle size={15} /> Từ chối
+                </button>
+                <button onClick={onAccept}
+                  className="h-9 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: "var(--success)" }}>
+                  <CheckCircle size={15} /> Chấp nhận
+                </button>
+              </>
+            )}
           </div>
         )}
       </Card>

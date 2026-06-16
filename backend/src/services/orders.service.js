@@ -2,7 +2,7 @@ const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
 const paymentsService = require('./payments.service');
-const { isDaNangCity, isDaNangOrder } = require('../utils/da_nang');
+const { isDaNangCity, isDaNangDistrict, isDaNangOrder, textMentionsDaNang } = require('../utils/da_nang');
 
 const CANCELLABLE_STATUSES = ['pending', 'accepted'];
 
@@ -11,7 +11,21 @@ const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'we
 
 function splitAddress(raw) {
   const address = String(raw || '').trim() || 'Chưa nhập địa chỉ';
-  return { address, city: 'TP.HCM', district: 'Quận 1' };
+  if (textMentionsDaNang(address)) {
+    const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
+    const district =
+      parts.find((p) => isDaNangDistrict(p)) ||
+      (parts.length >= 2 && !isDaNangCity(parts[parts.length - 1]) ? parts[parts.length - 2] : parts[0]) ||
+      '';
+    return { address, city: 'Đà Nẵng', district };
+  }
+  return { address, city: '', district: '' };
+}
+
+function resolveCity(bodyCity, addressRaw, districtRaw) {
+  if (isDaNangCity(bodyCity) || isDaNangDistrict(bodyCity)) return 'Đà Nẵng';
+  if (textMentionsDaNang(addressRaw) || isDaNangDistrict(districtRaw)) return 'Đà Nẵng';
+  return bodyCity || splitAddress(addressRaw).city || 'Đà Nẵng';
 }
 
 function mapVehicleSize(body) {
@@ -92,14 +106,14 @@ async function normalizeCreatePayload(customerId, payload) {
     vehicle_size: mapVehicleSize(body),
     service_type: serviceType,
     pickup_address: pickup.address,
-    pickup_city: body.pickup_city || pickup.city,
+    pickup_city: resolveCity(body.pickup_city, body.pickup_address, body.pickup_district),
     pickup_district: body.pickup_district || pickup.district,
     pickup_floor: floor,
     pickup_contact_name: contactName,
     pickup_contact_phone: contactPhone,
     pickup_notes: notes || body.pickup_notes || null,
     delivery_address: delivery.address,
-    delivery_city: body.delivery_city || delivery.city,
+    delivery_city: resolveCity(body.delivery_city, body.delivery_address || body.dropoff_address, body.delivery_district),
     delivery_district: body.delivery_district || delivery.district,
     delivery_contact_name: body.delivery_contact_name || contactName,
     delivery_contact_phone: body.delivery_contact_phone || contactPhone,
@@ -115,7 +129,7 @@ async function enrichOrderWithProvider(order) {
   const { data: profile } = await supabaseAdmin
     .from('provider_profiles')
     .select(
-      'business_name, vehicle_type, rating, license_plate, profiles!provider_profiles_id_fkey(full_name, avatar_url)',
+      'business_name, vehicle_type, rating, license_plate, profiles!provider_profiles_id_fkey(full_name, avatar_url, phone)',
     )
     .eq('id', order.provider_id)
     .maybeSingle();
@@ -126,9 +140,18 @@ async function enrichOrderWithProvider(order) {
   return {
     ...order,
     provider_name: profile?.business_name || nestedProfile?.full_name || null,
+    provider_phone: nestedProfile?.phone || null,
     provider_avatar_url: nestedProfile?.avatar_url || null,
     provider_rating: profile?.rating ?? null,
     provider_plate: profile?.license_plate || null,
+    provider: {
+      id: order.provider_id,
+      full_name: profile?.business_name || nestedProfile?.full_name || 'Nhà xe',
+      phone: nestedProfile?.phone || null,
+      avatar_url: nestedProfile?.avatar_url || null,
+      rating: profile?.rating ?? null,
+      vehicle_type: profile?.vehicle_type || null,
+    },
   };
 }
 
@@ -173,6 +196,7 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
   if (role === 'provider') {
     const filtered = (data || []).filter((order) => {
       if (order.provider_id === userId) return true;
+      if (order.provider_id && order.provider_id !== userId) return false;
       if (order.status !== 'pending' && order.status !== 'matched') return false;
       return isDaNangOrder(order);
     });
@@ -416,7 +440,7 @@ async function declineOrder(orderId, providerId, reason) {
 async function completeOrder(orderId, providerId) {
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
-    .select('id, status, provider_id')
+    .select('id, status, provider_id, delivery_photo_url')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -426,6 +450,12 @@ async function completeOrder(orderId, providerId) {
     throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
   if (order.status !== 'in_progress')
     throw Object.assign(new Error('Chỉ có thể hoàn thành đơn đang thực hiện'), { status: 409 });
+  if (!order.delivery_photo_url) {
+    throw Object.assign(
+      new Error('Vui lòng tải ảnh giao hàng trước khi hoàn thành đơn'),
+      { status: 400 },
+    );
+  }
 
   const now = new Date().toISOString();
 

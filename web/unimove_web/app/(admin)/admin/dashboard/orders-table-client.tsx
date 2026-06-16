@@ -1,15 +1,17 @@
 ﻿"use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 
 import { getLatestOrders } from "@/lib/admin/queries/dashboard";
+import { usePolling } from "@/lib/admin/use-polling";
 import { formatVND, formatDateTime, formatOrderNumber } from "@/lib/admin/formatters";
 import { StatusBadge } from "@/components/admin-dashboard/status-badge";
 import { EmptyState } from "@/components/admin-dashboard/empty-state";
 import { Pagination } from "@/components/admin-dashboard/pagination";
 import { Skeleton } from "@/components/admin-ui/skeleton";
+import { getProviderDisplayName } from "@/lib/admin/normalize-order-relations";
 import {
   Avatar,
   AvatarImage,
@@ -41,10 +43,22 @@ interface OrdersTableClientProps {
   initialData: LatestOrderResult;
 }
 
+const POLL_INTERVAL_MS = 8_000;
+
 export function OrdersTableClient({ initialData }: OrdersTableClientProps) {
   const router = useRouter();
   const [data, setData] = useState<LatestOrderResult>(initialData);
   const [isPending, startTransition] = useTransition();
+
+  const refreshCurrentPage = useCallback(async () => {
+    const result = await getLatestOrders(data.meta.page, data.meta.pageSize);
+    setData(result);
+  }, [data.meta.page, data.meta.pageSize]);
+
+  usePolling(() => {
+    if (isPending) return;
+    void refreshCurrentPage();
+  }, POLL_INTERVAL_MS);
 
   function handlePageChange(page: number) {
     startTransition(async () => {
@@ -54,7 +68,7 @@ export function OrdersTableClient({ initialData }: OrdersTableClientProps) {
   }
 
   function handleRowClick(orderId: string) {
-    router.push(`/orders/${orderId}`);
+    router.push(`/admin/orders/${orderId}`);
   }
 
   const rows: OrderRow[] = data.data;

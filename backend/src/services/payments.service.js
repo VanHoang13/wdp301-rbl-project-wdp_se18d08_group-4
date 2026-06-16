@@ -837,6 +837,76 @@ async function findPaymentByPayOSData(payosData) {
   return null;
 }
 
+/**
+ * Sau khi payment deposit hoàn tất — cập nhật orders.deposit_paid (idempotent).
+ * Trạng thái đơn vẫn là matched; nhà xe cần accept sau khi khách cọc.
+ */
+async function applyOrderAfterDepositPaid(paymentId) {
+  const { data: payment, error } = await supabaseAdmin
+    .from('payments')
+    .select('id, order_id, customer_id, amount, status, payment_purpose')
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  if (error || !payment) return { applied: false };
+  if (payment.status !== 'completed') return { applied: false };
+  if (payment.payment_purpose !== 'deposit') return { applied: false };
+  if (!payment.order_id) return { applied: false };
+
+  const { data: order, error: orderErr } = await supabaseAdmin
+    .from('orders')
+    .select(
+      'id, status, deposit_paid, total_price, customer_id, provider_id, pickup_address, delivery_address, order_number',
+    )
+    .eq('id', payment.order_id)
+    .maybeSingle();
+
+  if (orderErr || !order) return { applied: false };
+  if (order.deposit_paid) return { applied: false, already: true };
+
+  const depositAmount = Number(payment.amount) || 0;
+  const totalPrice = Number(order.total_price) || 0;
+  const remainingAmount = totalPrice > 0 ? Math.max(0, totalPrice - depositAmount) : 0;
+  const now = new Date().toISOString();
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('orders')
+    .update({
+      deposit_paid: true,
+      deposit_paid_at: now,
+      deposit_amount: depositAmount,
+      remaining_amount: remainingAmount,
+      updated_at: now,
+    })
+    .eq('id', order.id)
+    .eq('deposit_paid', false);
+
+  if (updateErr) {
+    console.warn('[PayOS] applyOrderAfterDepositPaid failed:', updateErr.message);
+    return { applied: false, error: updateErr.message };
+  }
+
+  await createNotification(
+    order.customer_id,
+    'payment_received',
+    'Đặt cọc thành công',
+    `Đã đặt cọc ${depositAmount.toLocaleString('vi-VN')}đ. Chờ nhà xe xác nhận đơn.`,
+    { priority: 'high', actionData: { order_id: order.id } },
+  );
+
+  if (order.provider_id) {
+    await createNotification(
+      order.provider_id,
+      'payment_received',
+      'Khách đã đặt cọc',
+      `${order.pickup_address || 'Điểm lấy'} → ${order.delivery_address || 'Điểm giao'}. Vui lòng nhận đơn.`,
+      { priority: 'high', actionData: { order_id: order.id } },
+    );
+  }
+
+  return { applied: true, order_id: order.id };
+}
+
 async function applyPayOSPaymentUpdate(payment, options) {
   const {
     dbStatus,
@@ -847,6 +917,13 @@ async function applyPayOSPaymentUpdate(payment, options) {
   } = options;
 
   if (payment.status === 'completed' || payment.status === 'refunded') {
+    if (payment.status === 'completed') {
+      try {
+        await applyOrderAfterDepositPaid(payment.id);
+      } catch (err) {
+        console.warn('[PayOS] Order deposit repair failed:', err.message);
+      }
+    }
     return { payment, updated: false, newStatus: payment.status };
   }
 
@@ -875,6 +952,14 @@ async function applyPayOSPaymentUpdate(payment, options) {
 
   if (error) throw httpError(500, error.message, 'db_error');
 
+  if (dbStatus === 'completed') {
+    try {
+      await applyOrderAfterDepositPaid(updated.id);
+    } catch (err) {
+      console.warn('[PayOS] Order deposit update failed:', err.message);
+    }
+  }
+
   return {
     payment: updated,
     updated: true,
@@ -893,6 +978,13 @@ async function syncPaymentRecord(payment) {
     return { payment, synced: false, message: 'Giao dịch chưa có mã PayOS' };
   }
   if (payment.status === 'completed' || payment.status === 'refunded') {
+    if (payment.status === 'completed') {
+      try {
+        await applyOrderAfterDepositPaid(payment.id);
+      } catch (err) {
+        console.warn('[PayOS] Order deposit repair on sync failed:', err.message);
+      }
+    }
     return { payment, synced: false, message: 'Giao dịch đã được xử lý trước đó' };
   }
 
@@ -1063,4 +1155,5 @@ module.exports = {
   syncPaymentByCode,
   syncPaymentRecord,
   processPayOSWebhook,
+  applyOrderAfterDepositPaid,
 };

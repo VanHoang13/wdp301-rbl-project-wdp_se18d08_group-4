@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrderById } from "@/lib/admin/queries/orders";
-import { createClient } from "@/lib/admin/supabase/server";
+import { flattenOrderProvider } from "@/lib/admin/normalize-order-relations";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
 import { StatusBadge } from "@/components/admin-dashboard/status-badge";
 import { formatVND, formatDateTime, formatDate, formatOrderNumber } from "@/lib/admin/formatters";
@@ -140,9 +140,6 @@ type OrderFull = Order & {
 };
 
 async function OrderDetailContent({ id }: { id: string }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
   const { order, history, payments, error } = await getOrderById(id);
 
   if (error || !order) {
@@ -150,6 +147,7 @@ async function OrderDetailContent({ id }: { id: string }) {
   }
 
   const o = order as OrderFull;
+  const provider = flattenOrderProvider(o.provider);
   const canCancel: boolean = !["completed", "cancelled"].includes(o.status);
 
   return (
@@ -338,13 +336,13 @@ async function OrderDetailContent({ id }: { id: string }) {
       </SectionCard>
 
       {/* Provider card */}
-      {o.provider && (
+      {provider && (
         <SectionCard title="Nhà vận chuyển" icon={Truck}>
           <div className="flex items-center gap-4">
-            {o.provider.avatar_url ? (
+            {provider.avatar_url ? (
               <img
-                src={o.provider.avatar_url}
-                alt={o.provider.full_name}
+                src={provider.avatar_url}
+                alt={provider.full_name}
                 className="w-12 h-12 rounded-full object-cover shrink-0"
               />
             ) : (
@@ -352,34 +350,28 @@ async function OrderDetailContent({ id }: { id: string }) {
                 className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
                 style={{ backgroundColor: "var(--primary-tint)", color: "var(--primary)" }}
               >
-                {o.provider?.full_name ? o.provider.full_name.charAt(0).toUpperCase() : "?"}
+                {provider.full_name ? provider.full_name.charAt(0).toUpperCase() : "?"}
               </div>
             )}
             <div className="flex-1 min-w-0">
               <p className="font-semibold truncate" style={{ color: "var(--text)" }}>
-                {o.provider.full_name}
+                {provider.business_name ?? provider.full_name}
               </p>
-              {o.provider.business_name && (
+              {provider.business_name && provider.full_name && provider.business_name !== provider.full_name && (
                 <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: "var(--muted)" }}>
                   <Building2 className="w-3 h-3" />
-                  {o.provider.business_name}
-                </p>
-              )}
-              {o.provider.rating != null && (
-                <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: "var(--muted)" }}>
-                  <Star className="w-3 h-3 text-yellow-500" />
-                  {o.provider.rating.toFixed(1)}
+                  {provider.full_name}
                 </p>
               )}
             </div>
-            {o.provider.phone && (
+            {provider.phone && (
               <a
-                href={`tel:${o.provider.phone}`}
+                href={`tel:${provider.phone}`}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-colors"
                 style={{ backgroundColor: "var(--primary-tint)", color: "var(--primary)" }}
               >
                 <Phone className="w-4 h-4" />
-                {o.provider.phone}
+                {provider.phone}
               </a>
             )}
           </div>
@@ -507,7 +499,6 @@ async function OrderDetailContent({ id }: { id: string }) {
         <OrderDetailActions
           orderId={o.id}
           orderNumber={o.order_number}
-          adminId={user?.id ?? ""}
         />
       )}
     </div>
