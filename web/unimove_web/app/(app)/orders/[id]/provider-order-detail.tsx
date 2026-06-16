@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft, MapPin, Phone, CheckCircle, XCircle, DollarSign, Truck, Camera } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, MapPin, Phone, CheckCircle, XCircle, DollarSign, Truck, Camera, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,15 @@ interface OrderDetail {
 
 export default function ProviderOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { toast } = useToast();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const load = async () => {
     const r = await ordersApi.get(id);
@@ -57,8 +60,24 @@ export default function ProviderOrderDetailPage() {
     setActing(true);
     try {
       await ordersApi.respond(id, action, action === "accept" && price ? parseInt(price) : undefined);
-      toast(action === "accept" ? "Đã chấp nhận" : "Đã từ chối", action === "accept" ? "success" : "info");
-      await load();
+      toast(action === "accept" ? "Đã nhận đơn" : "Đã bỏ qua đơn", action === "accept" ? "success" : "info");
+      if (action === "reject") router.push("/orders");
+      else await load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Thử lại sau", "error");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const cancelOrder = async () => {
+    if (!cancelReason.trim()) { toast("Vui lòng nhập lý do hủy", "error"); return; }
+    setActing(true);
+    try {
+      await ordersApi.cancel(id, cancelReason.trim());
+      toast("Đã hủy đơn. Điểm tuân thủ bị trừ.", "info");
+      setShowCancelModal(false);
+      router.push("/orders");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Thử lại sau", "error");
     } finally {
@@ -149,24 +168,84 @@ export default function ProviderOrderDetailPage() {
             <Card className="p-5">
               <h3 className="font-bold mb-3">Phản hồi đơn</h3>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="destructive" loading={acting} onClick={() => respond("reject")}><XCircle size={16} /> Từ chối</Button>
-                <Button loading={acting} onClick={() => respond("accept")}><CheckCircle size={16} /> Nhận đơn</Button>
+                <Button variant="outline" loading={acting} onClick={() => respond("reject")}>
+                  Bỏ qua
+                </Button>
+                <Button loading={acting} onClick={() => respond("accept")}>
+                  <CheckCircle size={16} /> Nhận đơn
+                </Button>
               </div>
             </Card>
           )}
 
           {order.status === "accepted" && (
-            <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}><Truck size={16} /> Bắt đầu chuyến</Button>
+            <div className="space-y-3">
+              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
+                <Truck size={16} /> Bắt đầu chuyến
+              </Button>
+              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
+                <XCircle size={16} /> Hủy đơn
+              </Button>
+            </div>
           )}
+
+          {order.status === "picking_up" && (
+            <div className="space-y-3">
+              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
+                <Truck size={16} /> Bắt đầu vận chuyển
+              </Button>
+              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
+                <XCircle size={16} /> Hủy đơn
+              </Button>
+            </div>
+          )}
+
           {order.status === "in_progress" && (
-            <>
+            <div className="space-y-3">
               <input type="file" accept="image/*" id="delivery-photo" className="hidden" onChange={uploadPhoto} />
               <Button variant="outline" className="w-full gap-2" onClick={() => document.getElementById("delivery-photo")?.click()}>
                 <Camera size={16} /> Ảnh giao hàng
               </Button>
-              <Button className="w-full gap-2 mt-2" loading={acting} onClick={() => lifecycle("complete")}><CheckCircle size={16} /> Hoàn thành</Button>
-            </>
+              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("complete")}>
+                <CheckCircle size={16} /> Hoàn thành
+              </Button>
+              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
+                <XCircle size={16} /> Hủy đơn
+              </Button>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* Cancel confirm modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Hủy đơn hàng?</h3>
+                <p className="text-xs text-red-500 mt-0.5">Điểm tuân thủ sẽ bị trừ 2 điểm</p>
+              </div>
+            </div>
+            <textarea
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="Lý do hủy đơn (bắt buộc)..."
+              rows={3}
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" onClick={() => { setShowCancelModal(false); setCancelReason(""); }}>
+                Quay lại
+              </Button>
+              <Button variant="destructive" loading={acting} onClick={cancelOrder}>
+                Xác nhận hủy
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -3,8 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  Truck, RefreshCw, Search, CheckCircle, XCircle,
-  MapPin, Package, Clock,
+  RefreshCw, Search, MapPin, Package, Clock,
 } from "lucide-react";
 import { ordersApi } from "@/lib/api";
 import { timeAgo, formatVND } from "@/lib/utils";
@@ -70,15 +69,6 @@ export default function ProviderOrdersPage() {
   }, []);
 
   useEffect(() => { load(TABS[tab].key); }, [tab, load]);
-
-  const handle = async (id: string, action: "accept" | "reject") => {
-    try {
-      await ordersApi.respond(id, action);
-      toast(action === "accept" ? "Đã chấp nhận đơn!" : "Đã từ chối đơn",
-        action === "accept" ? "success" : "info");
-      load(TABS[tab].key);
-    } catch { toast("Thử lại sau", "error"); }
-  };
 
   const filtered = orders.filter(o =>
     !search ||
@@ -238,28 +228,11 @@ export default function ProviderOrdersPage() {
 
                       {/* Hành động */}
                       <td className="px-5 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {isPending && (
-                            <>
-                              <button
-                                onClick={() => handle(o.id, "reject")}
-                                className="px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 transition-colors bg-red-50 text-red-600 hover:bg-red-100">
-                                <XCircle size={12} /> Từ chối
-                              </button>
-                              <button
-                                onClick={() => handle(o.id, "accept")}
-                                className="px-3 py-1.5 rounded-full text-xs font-bold text-white flex items-center gap-1 transition-all hover:brightness-110"
-                                style={{ backgroundColor: BRAND }}>
-                                <CheckCircle size={12} /> Nhận
-                              </button>
-                            </>
-                          )}
-                          <Link href={`/orders/${o.id}`}>
-                            <button className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
-                              Chi tiết
-                            </button>
-                          </Link>
-                        </div>
+                        <Link href={`/orders/${o.id}`}>
+                          <button className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                            Xem chi tiết
+                          </button>
+                        </Link>
                       </td>
                     </tr>
                   );

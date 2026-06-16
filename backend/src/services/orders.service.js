@@ -5,6 +5,8 @@ const paymentsService = require('./payments.service');
 const { isDaNangCity, isDaNangOrder } = require('../utils/da_nang');
 
 const CANCELLABLE_STATUSES = ['pending', 'accepted'];
+const PROVIDER_CANCELLABLE_STATUSES = ['accepted', 'picking_up', 'in_progress'];
+const POINTS_PER_VIOLATION = 2;
 
 const DELIVERY_PHOTOS_BUCKET = 'delivery-photos';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -261,6 +263,7 @@ async function createOrder(customerId, payload) {
 }
 
 async function providerRespond(orderId, providerId, response, declineReason) {
+  if (response === 'accepted') await checkProviderBan(providerId);
   const order = await getOrderById(orderId);
 
   if (order.quote_request && response === 'accepted') {
@@ -332,6 +335,7 @@ async function getOrderById(orderId) {
 
 // ── PATCH /api/orders/:id/accept ──────────────────────────────────────────────
 async function acceptOrder(orderId, providerId) {
+  await checkProviderBan(providerId);
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
     .select('id, status, provider_id')
@@ -512,6 +516,29 @@ async function cancelOrder(orderId, userId, reason) {
   }
 
   if (!isCustomer) {
+    // Provider chỉ được hủy sau khi đã nhận đơn
+    if (!PROVIDER_CANCELLABLE_STATUSES.includes(previousStatus)) {
+      throw httpError(400, `Không thể hủy đơn ở trạng thái "${previousStatus}"`, 'cannot_cancel');
+    }
+
+    await supabaseAdmin.from('order_status_history').insert({
+      order_id: orderId,
+      from_status: previousStatus,
+      to_status: 'cancelled',
+      changed_by: userId,
+      notes: `Nhà xe hủy đơn${trimmedReason ? `: ${trimmedReason}` : ''}`,
+    });
+
+    await createNotification(
+      order.customer_id,
+      'order_cancelled',
+      'Nhà xe đã hủy đơn của bạn',
+      `Đơn ${order.order_number} bị hủy bởi nhà xe${trimmedReason ? `. Lý do: ${trimmedReason}` : ''}. Bạn có thể đặt lại.`,
+      { priority: 'high', actionData: { order_id: orderId } },
+    );
+
+    await applyProviderViolation(userId, orderId, order.order_number);
+
     return enrichOrderWithProvider(updated);
   }
 
@@ -611,6 +638,89 @@ async function uploadDeliveryPhoto(orderId, providerId, file) {
   return { photo_url: photoUrl };
 }
 
+// ── Provider compliance score ─────────────────────────────────────────────────
+async function applyProviderViolation(providerId, orderId, orderNumber) {
+  const { data: pp } = await supabaseAdmin
+    .from('provider_profiles')
+    .select('compliance_score, warning_level, ban_until, last_violation_at')
+    .eq('id', providerId)
+    .maybeSingle();
+
+  const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+  const lastViolation = pp?.last_violation_at ? new Date(pp.last_violation_at).getTime() : 0;
+  const shouldReset = lastViolation > 0 && (Date.now() - lastViolation) > MONTH_MS;
+
+  let score = shouldReset ? 20 : (pp?.compliance_score ?? 20);
+  let level = shouldReset ? 0 : (pp?.warning_level ?? 0);
+
+  score = Math.max(0, score - POINTS_PER_VIOLATION);
+
+  let banUntil = null;
+  let newLevel = level;
+  let title, body;
+
+  if (score <= 0) {
+    banUntil = new Date(Date.now() + MONTH_MS).toISOString();
+    newLevel = 4;
+    title = 'Tài khoản bị tạm khóa 30 ngày';
+    body = `Điểm tuân thủ về 0. Không thể nhận đơn đến ${new Date(banUntil).toLocaleDateString('vi-VN')}.`;
+  } else if (score <= 5) {
+    if (level >= 3) {
+      banUntil = new Date(Date.now() + MONTH_MS).toISOString();
+      newLevel = 4;
+      title = 'Tài khoản bị tạm khóa 30 ngày (tái phạm)';
+      body = `Điểm tuân thủ còn ${score}/20. Tái phạm sau cảnh báo nghiêm trọng. Tạm khóa đến ${new Date(banUntil).toLocaleDateString('vi-VN')}.`;
+    } else {
+      banUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      newLevel = 3;
+      title = 'Cảnh báo nghiêm trọng — Tạm khóa 3 ngày';
+      body = `Điểm tuân thủ còn ${score}/20. Tái phạm tiếp theo sẽ bị khóa 30 ngày.`;
+    }
+  } else if (score <= 10) {
+    banUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    newLevel = 2;
+    title = 'Cảnh báo lần 2 — Tạm khóa 1 ngày';
+    body = `Điểm tuân thủ còn ${score}/20. Tiếp tục vi phạm sẽ bị tạm khóa lâu hơn.`;
+  } else if (score <= 15) {
+    newLevel = 1;
+    title = 'Cảnh báo lần 1';
+    body = `Hủy đơn ${orderNumber}: điểm tuân thủ còn ${score}/20. Tiếp tục vi phạm sẽ bị tạm khóa tài khoản.`;
+  } else {
+    title = 'Trừ điểm tuân thủ';
+    body = `Hủy đơn ${orderNumber}: điểm tuân thủ còn ${score}/20.`;
+  }
+
+  await supabaseAdmin.from('provider_profiles').update({
+    compliance_score: score,
+    warning_level: newLevel,
+    ban_until: banUntil,
+    last_violation_at: new Date().toISOString(),
+  }).eq('id', providerId);
+
+  await createNotification(providerId, 'compliance_warning', title, body, {
+    priority: 'high',
+    actionData: { order_id: orderId },
+  });
+
+  return { score, warning_level: newLevel, ban_until: banUntil };
+}
+
+async function checkProviderBan(providerId) {
+  const { data: pp } = await supabaseAdmin
+    .from('provider_profiles')
+    .select('ban_until, compliance_score')
+    .eq('id', providerId)
+    .maybeSingle();
+
+  if (!pp?.ban_until) return;
+
+  const banExpiry = new Date(pp.ban_until);
+  if (banExpiry > new Date()) {
+    const days = Math.ceil((banExpiry - new Date()) / (24 * 60 * 60 * 1000));
+    throw httpError(403, `Tài khoản đang bị tạm khóa. Còn ${days} ngày.`, 'provider_banned');
+  }
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
@@ -622,4 +732,5 @@ module.exports = {
   completeOrder,
   cancelOrder,
   uploadDeliveryPhoto,
+  checkProviderBan,
 };
