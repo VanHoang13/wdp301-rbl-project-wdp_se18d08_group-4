@@ -465,7 +465,7 @@ async function cancelOrder(orderId, userId, reason) {
 
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
-    .select('id, status, customer_id, provider_id, order_number')
+    .select('id, status, customer_id, provider_id, order_number, provider_accepted_at')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -571,6 +571,10 @@ async function cancelOrder(orderId, userId, reason) {
   let refundRequest = null;
   let refundSkipReason = null;
   try {
+    const minutesSinceAccepted = order.provider_accepted_at
+      ? (Date.now() - new Date(order.provider_accepted_at).getTime()) / 60000
+      : undefined;
+
     refundRequest = await paymentsService.requestRefundForOrder(
       userId,
       orderId,
@@ -578,6 +582,7 @@ async function cancelOrder(orderId, userId, reason) {
       {
         statusBeforeCancel: previousStatus,
         hadProvider: Boolean(order.provider_id),
+        minutesSinceAccepted,
       },
     );
   } catch (err) {
@@ -636,6 +641,53 @@ async function uploadDeliveryPhoto(orderId, providerId, file) {
   if (updateErr) throw Object.assign(new Error(updateErr.message), { status: 500 });
 
   return { photo_url: photoUrl };
+}
+
+// ── GET /orders/:id/cancel-estimate ──────────────────────────────────────────
+async function estimateCancelRefund(orderId, customerId) {
+  const { data: order } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, customer_id, provider_id, provider_accepted_at')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (!order) throw httpError(404, 'Không tìm thấy đơn hàng', 'not_found');
+  if (order.customer_id !== customerId) throw httpError(403, 'Không có quyền', 'access_denied');
+
+  if (!CANCELLABLE_STATUSES.includes(order.status)) {
+    return { cancellable: false, status: order.status };
+  }
+
+  const { data: payment } = await supabaseAdmin
+    .from('payments')
+    .select('amount')
+    .eq('order_id', orderId)
+    .eq('customer_id', customerId)
+    .eq('status', 'completed')
+    .in('payment_purpose', ['deposit', 'full', 'final'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const depositAmount = payment ? Number(payment.amount) : 0;
+
+  let feePercent = 0;
+  if (order.status === 'accepted' && order.provider_accepted_at) {
+    const mins = (Date.now() - new Date(order.provider_accepted_at).getTime()) / 60000;
+    feePercent = mins < 30 ? 10 : 30;
+  }
+
+  const feeAmount = Math.round(depositAmount * feePercent / 100);
+  const refundAmount = depositAmount - feeAmount;
+
+  return {
+    cancellable: true,
+    status: order.status,
+    deposit_amount: depositAmount,
+    fee_percent: feePercent,
+    fee_amount: feeAmount,
+    refund_amount: refundAmount,
+  };
 }
 
 // ── Provider compliance score ─────────────────────────────────────────────────
@@ -733,4 +785,5 @@ module.exports = {
   cancelOrder,
   uploadDeliveryPhoto,
   checkProviderBan,
+  estimateCancelRefund,
 };

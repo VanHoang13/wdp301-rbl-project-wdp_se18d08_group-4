@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, MapPin, Phone, MessageCircle, Star,
-  Clock, CheckCircle, XCircle, Truck, ChevronRight
+  Clock, CheckCircle, XCircle, Truck, ChevronRight, AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ordersApi } from "@/lib/api";
 import { getOrderStatusLabel, getOrderStatusColor, formatVND, formatDate } from "@/lib/utils";
+
+interface CancelEstimate {
+  cancellable: boolean;
+  status: string;
+  deposit_amount: number;
+  fee_percent: number;
+  fee_amount: number;
+  refund_amount: number;
+}
+
+const CANCEL_REASONS = [
+  "Tôi muốn thay đổi địa chỉ",
+  "Không còn cần dịch vụ",
+  "Tìm được nhà xe khác",
+  "Nhà xe chưa đến đúng giờ",
+  "Lý do cá nhân",
+  "Khác",
+];
 
 interface OrderDetail {
   id: string;
@@ -54,8 +72,17 @@ const STATUS_STEPS = [
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Cancel flow state
+  const [cancelStep, setCancelStep] = useState<0 | 1 | 2>(0); // 0=closed, 1=policy, 2=reason
+  const [estimate, setEstimate] = useState<CancelEstimate | null>(null);
+  const [loadingEstimate, setLoadingEstimate] = useState(false);
+  const [selectedReason, setSelectedReason] = useState("");
+  const [customReason, setCustomReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     ordersApi.getOrder(id)
@@ -66,10 +93,40 @@ export default function OrderDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const openCancelFlow = async () => {
+    setLoadingEstimate(true);
+    setCancelStep(1);
+    try {
+      const res = await ordersApi.getCancelEstimate(id);
+      if (res.success && res.data) setEstimate(res.data as CancelEstimate);
+    } catch { /* estimate optional */ }
+    setLoadingEstimate(false);
+  };
+
+  const confirmCancel = async () => {
+    const reason = selectedReason === "Khác" ? customReason.trim() : selectedReason;
+    if (!reason) return;
+    setCancelling(true);
+    try {
+      await ordersApi.cancelOrder(id, reason);
+      setCancelStep(0);
+      router.push("/orders");
+    } catch { /* toast not available here — silent fail */ }
+    finally { setCancelling(false); }
+  };
+
+  const closeCancelModal = () => {
+    setCancelStep(0);
+    setSelectedReason("");
+    setCustomReason("");
+    setEstimate(null);
+  };
+
   const statusColor = order ? getOrderStatusColor(order.status) : "var(--muted)";
   const isCancelled = order?.status === "cancelled";
   const isCompleted = order?.status === "completed";
   const isActive = order && !isCancelled && !isCompleted;
+  const canCancel = order?.status === "pending" || order?.status === "accepted";
 
   const currentStepIdx = order
     ? STATUS_STEPS.findIndex((s) => s.key === order.status)
@@ -281,6 +338,121 @@ export default function OrderDetailPage() {
               </Card>
             </Link>
           )}
+
+          {/* Cancel button */}
+          {canCancel && (
+            <button
+              onClick={openCancelFlow}
+              className="w-full py-3 rounded-2xl text-sm font-semibold border transition-colors"
+              style={{ color: "var(--error)", borderColor: "var(--error)" + "44", backgroundColor: "var(--error-tint, #FEF2F2)" }}
+            >
+              Hủy đơn hàng
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Cancel Modal Step 1: Policy + Estimate ── */}
+      {cancelStep === 1 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Hủy đơn hàng?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Xem lại chính sách hoàn tiền trước khi xác nhận</p>
+              </div>
+            </div>
+
+            {loadingEstimate ? (
+              <div className="h-24 rounded-2xl bg-gray-100 animate-pulse" />
+            ) : estimate ? (
+              <div className="rounded-2xl overflow-hidden border border-gray-100">
+                <div className="px-4 py-3 flex justify-between text-sm">
+                  <span className="text-gray-500">Tiền cọc đã đặt</span>
+                  <span className="font-semibold text-gray-900">{formatVND(estimate.deposit_amount)}</span>
+                </div>
+                {estimate.fee_percent > 0 && (
+                  <div className="px-4 py-3 flex justify-between text-sm border-t border-gray-50">
+                    <span className="text-red-500">Phí hủy ({estimate.fee_percent}%)</span>
+                    <span className="font-semibold text-red-500">- {formatVND(estimate.fee_amount)}</span>
+                  </div>
+                )}
+                <div className="px-4 py-3 flex justify-between text-sm border-t border-gray-100 bg-green-50">
+                  <span className="font-bold text-gray-900">Hoàn lại</span>
+                  <span className="font-bold text-green-600">{formatVND(estimate.refund_amount)}</span>
+                </div>
+                {estimate.deposit_amount > 0 && (
+                  <p className="px-4 pb-3 text-xs text-gray-400">
+                    Hoàn tiền trong 3–5 ngày làm việc sau khi admin duyệt.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-4">Không thể tải thông tin hoàn tiền.</p>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" onClick={closeCancelModal}>Quay lại</Button>
+              <button
+                onClick={() => setCancelStep(2)}
+                className="py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+              >
+                Tiếp tục hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel Modal Step 2: Reason ── */}
+      {cancelStep === 2 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4">
+            <h3 className="font-bold text-gray-900">Lý do hủy đơn</h3>
+            <div className="space-y-2">
+              {CANCEL_REASONS.map(r => (
+                <button
+                  key={r}
+                  onClick={() => setSelectedReason(r)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm text-left transition-colors"
+                  style={{
+                    borderColor: selectedReason === r ? "var(--error)" : "var(--border)",
+                    backgroundColor: selectedReason === r ? "#FEF2F2" : "white",
+                    color: selectedReason === r ? "var(--error)" : "var(--text)",
+                    fontWeight: selectedReason === r ? 600 : 400,
+                  }}
+                >
+                  <span className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center"
+                    style={{ borderColor: selectedReason === r ? "var(--error)" : "#D1D5DB" }}>
+                    {selectedReason === r && <span className="w-2 h-2 rounded-full bg-red-500" />}
+                  </span>
+                  {r}
+                </button>
+              ))}
+              {selectedReason === "Khác" && (
+                <textarea
+                  value={customReason}
+                  onChange={e => setCustomReason(e.target.value)}
+                  placeholder="Nhập lý do của bạn..."
+                  rows={2}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
+                />
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <Button variant="outline" onClick={() => setCancelStep(1)}>Quay lại</Button>
+              <button
+                onClick={confirmCancel}
+                disabled={!selectedReason || (selectedReason === "Khác" && !customReason.trim()) || cancelling}
+                className="py-2.5 rounded-xl text-sm font-bold text-white bg-red-500 hover:bg-red-600 disabled:opacity-40 transition-colors"
+              >
+                {cancelling ? "Đang hủy..." : "Xác nhận hủy"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

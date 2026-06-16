@@ -175,6 +175,9 @@ export const ordersApi = {
     apiClient.get("/orders", params as Record<string, unknown>),
   createOrder: (body: Record<string, unknown>) => apiClient.post("/orders", body),
   getOrder: (id: string) => apiClient.get(`/orders/${id}`),
+  getCancelEstimate: (id: string) => apiClient.get(`/orders/${id}/cancel-estimate`),
+  cancelOrder: (id: string, reason: string) =>
+    apiClient.patch(`/orders/${id}/cancel`, { reason }),
 };
 
 export const providersApi = {

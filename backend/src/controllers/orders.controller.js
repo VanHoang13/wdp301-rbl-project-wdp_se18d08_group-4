@@ -95,6 +95,15 @@ async function completeOrder(req, res, next) {
   }
 }
 
+async function cancelEstimate(req, res, next) {
+  try {
+    const data = await ordersService.estimateCancelRefund(req.params.id, req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** BE-025 — PATCH /api/orders/:id/cancel */
 async function cancelOrder(req, res, next) {
   try {
@@ -132,5 +141,6 @@ module.exports = {
   declineOrder,
   completeOrder,
   cancelOrder,
+  cancelEstimate,
   uploadDeliveryPhoto,
 };
