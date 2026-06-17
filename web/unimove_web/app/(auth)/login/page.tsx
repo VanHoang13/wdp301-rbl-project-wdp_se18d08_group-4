@@ -1,7 +1,8 @@
 ﻿"use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Mail, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { storeAuth, storeAdminSession, getRoleHome, type AuthUser } from "@/lib/auth";
@@ -18,8 +19,18 @@ function UniMoveLogo() {
   );
 }
 
-export default function LoginPage() {
+function resolveRedirect(role: AuthUser["role"], tiepTheo: string | null): string {
+  if (tiepTheo && tiepTheo.startsWith("/") && !tiepTheo.startsWith("//")) {
+    return tiepTheo;
+  }
+  return getRoleHome(role);
+}
+
+function LoginForm() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const tiepTheo = searchParams.get("tiep-theo");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -40,12 +51,12 @@ export default function LoginPage() {
       if (user.role === "admin") {
         storeAdminSession(user, accessToken);
         toast(`Chào mừng ${user.full_name}!`, "success");
-        window.location.href = getRoleHome("admin");
+        window.location.href = resolveRedirect("admin", tiepTheo);
         return;
       }
       storeAuth(user, accessToken);
       toast(`Chào mừng ${user.full_name}!`, "success");
-      window.location.href = getRoleHome(user.role);
+      window.location.href = resolveRedirect(user.role, tiepTheo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể kết nối đến server.");
     } finally {
@@ -60,7 +71,7 @@ export default function LoginPage() {
       const redirect = await handleGoogleAuthResponse(idToken, setError);
       if (redirect) {
         toast("Đăng nhập Google thành công!", "success");
-        window.location.href = redirect;
+        window.location.href = tiepTheo?.startsWith("/") ? tiepTheo : redirect;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập Google thất bại");
@@ -71,13 +82,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-5 py-10">
-      {/* Logo */}
       <Link href="/" className="flex flex-col items-center mb-8 gap-2.5 no-underline">
         <UniMoveLogo />
         <p className="text-sm text-gray-500 font-medium">Chuyển trọ thông minh cho sinh viên</p>
       </Link>
 
-      {/* Card */}
       <div className="w-full max-w-sm bg-white rounded-3xl p-7 shadow-[0_8px_40px_rgba(37,99,235,0.10)] border border-gray-100">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Đăng nhập</h2>
 
@@ -88,8 +97,20 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* Google — đặt trên form email để dễ thấy */}
+        <GoogleSignInButton
+          onCredential={handleGoogle}
+          disabled={loading}
+          label="Tiếp tục với Google"
+        />
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-xs text-gray-400 whitespace-nowrap">hoặc dùng email</span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
             <div className="relative">
@@ -108,11 +129,10 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Password */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-sm font-semibold text-gray-700">Mật khẩu</label>
-              <Link href="/forgot-password" className="text-xs font-medium text-[#2563EB] hover:underline">
+              <Link href="/quen-mat-khau" className="text-xs font-medium text-[#2563EB] hover:underline">
                 Quên mật khẩu?
               </Link>
             </div>
@@ -139,7 +159,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
@@ -159,20 +178,15 @@ export default function LoginPage() {
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gray-100" />
-          <span className="text-xs text-gray-400 whitespace-nowrap">hoặc</span>
-          <div className="flex-1 h-px bg-gray-100" />
-        </div>
-
-        <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
-
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gray-100" />
           <span className="text-xs text-gray-400 whitespace-nowrap">Chưa có tài khoản?</span>
           <div className="flex-1 h-px bg-gray-100" />
         </div>
 
-        <Link href="/register" className="block">
-          <button className="w-full h-12 rounded-full text-sm font-bold border-2 border-[#FFCC00] text-gray-800 bg-transparent hover:bg-[#FFFBEB] active:scale-[0.98] transition-all duration-200">
+        <Link href="/dang-ky" className="block">
+          <button
+            type="button"
+            className="w-full h-12 rounded-full text-sm font-bold border-2 border-[#FFCC00] text-gray-800 bg-transparent hover:bg-[#FFFBEB] active:scale-[0.98] transition-all duration-200"
+          >
             Tạo tài khoản mới
           </button>
         </Link>
@@ -182,5 +196,19 @@ export default function LoginPage() {
         Hệ thống tự động chuyển đến giao diện phù hợp sau khi đăng nhập.
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-white">
+          <span className="w-8 h-8 rounded-full border-2 border-[#2563EB]/30 border-t-[#2563EB] animate-spin" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

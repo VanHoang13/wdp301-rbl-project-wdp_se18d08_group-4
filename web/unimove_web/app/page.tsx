@@ -177,12 +177,12 @@ export default function LandingPage() {
 
           {/* Desktop actions — right */}
           <div className="hidden items-center justify-end gap-3 md:flex">
-            <Link href="/login"
+            <Link href="/dang-nhap"
               className="rounded-full border px-5 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02]"
               style={{ borderColor: B, color: B }}>
               Đăng nhập
             </Link>
-            <Link href="/register"
+            <Link href="/dang-ky"
               className="flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition-all hover:scale-[1.03]"
               style={{ backgroundColor: B }}>
               Đăng ký miễn phí <ArrowRight size={14} />
@@ -212,12 +212,12 @@ export default function LandingPage() {
               ))}
             </nav>
             <div className="mt-4 flex flex-col gap-2">
-              <Link href="/login" onClick={() => setMenuOpen(false)}
+              <Link href="/dang-nhap" onClick={() => setMenuOpen(false)}
                 className="rounded-full border py-3 text-center text-sm font-semibold"
                 style={{ borderColor: B, color: B }}>
                 Đăng nhập
               </Link>
-              <Link href="/register" onClick={() => setMenuOpen(false)}
+              <Link href="/dang-ky" onClick={() => setMenuOpen(false)}
                 className="rounded-full py-3 text-center text-sm font-semibold text-white"
                 style={{ backgroundColor: B }}>
                 Đăng ký miễn phí
@@ -285,12 +285,12 @@ export default function LandingPage() {
 
             {/* CTAs */}
             <motion.div variants={fadeInUp} className="mt-10 flex flex-col gap-4 sm:flex-row">
-              <Link href="/register"
+              <Link href="/dang-ky"
                 className="flex items-center justify-center gap-2 rounded-full px-10 py-4 text-base font-bold text-white transition-all hover:scale-[1.03] hover:brightness-110 active:scale-[0.98]"
                 style={{ backgroundColor: B, boxShadow: `0 8px 24px ${B}44` }}>
                 Bắt đầu ngay — Miễn phí <ArrowRight size={18} />
               </Link>
-              <Link href="/login"
+              <Link href="/dang-nhap"
                 className="flex items-center justify-center gap-2 rounded-full border-2 px-10 py-4 text-base font-semibold transition-all hover:scale-[1.03] hover:brightness-95 active:scale-[0.98]"
                 style={{ borderColor: Y, color: D, backgroundColor: "white" }}>
                 Đã có tài khoản
@@ -467,7 +467,7 @@ export default function LandingPage() {
                 ))}
               </motion.ul>
               <motion.div variants={fadeInUp}>
-                <Link href="/register"
+                <Link href="/dang-ky"
                   className="group mt-10 flex w-fit items-center gap-2 rounded-full px-8 py-4 text-base font-bold transition-all hover:scale-[1.03] hover:brightness-95 active:scale-[0.98]"
                   style={{ backgroundColor: Y, color: D }}>
                   Đăng ký làm đối tác
@@ -524,12 +524,12 @@ export default function LandingPage() {
             Tạo tài khoản miễn phí. Không cần thẻ tín dụng.
           </motion.p>
           <motion.div variants={fadeInUp} className="mt-10 flex w-full flex-col gap-4 sm:w-auto sm:flex-row">
-            <Link href="/register"
+            <Link href="/dang-ky"
               className="flex items-center justify-center gap-2 rounded-full px-10 py-4 text-base font-bold text-white transition-all hover:scale-[1.03] hover:brightness-110"
               style={{ backgroundColor: B, boxShadow: `0 8px 24px ${B}44` }}>
               Tạo tài khoản — Miễn phí
             </Link>
-            <Link href="/login"
+            <Link href="/dang-nhap"
               className="flex items-center justify-center gap-2 rounded-full border-2 px-10 py-4 text-base font-semibold transition-all hover:scale-[1.03]"
               style={{ borderColor: Y, color: D }}>
               Đã có tài khoản? Đăng nhập

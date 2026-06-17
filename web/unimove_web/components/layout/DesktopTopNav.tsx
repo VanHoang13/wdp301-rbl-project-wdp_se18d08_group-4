@@ -185,7 +185,7 @@ export function DesktopTopNav() {
               </>
             ) : (
               <div className="flex items-center gap-3">
-                <Link href="/login" className="text-sm font-semibold text-[#0047FF] hover:underline no-underline">
+                <Link href="/dang-nhap" className="text-sm font-semibold text-[#0047FF] hover:underline no-underline">
                   Đăng nhập
                 </Link>
                 <Link

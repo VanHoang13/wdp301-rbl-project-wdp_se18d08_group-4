@@ -264,7 +264,11 @@ export default function RegisterPage() {
               <span className="text-xs text-gray-400">hoặc đăng ký bằng Google</span>
               <div className="flex-1 h-px bg-gray-100" />
             </div>
-            <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
+            <GoogleSignInButton
+              onCredential={handleGoogle}
+              disabled={loading}
+              label="Đăng ký với Google"
+            />
           </>
         )}
 
