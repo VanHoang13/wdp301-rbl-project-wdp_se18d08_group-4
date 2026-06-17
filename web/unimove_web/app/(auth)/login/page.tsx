@@ -97,19 +97,6 @@ function LoginForm() {
           </div>
         )}
 
-        {/* Google — đặt trên form email để dễ thấy */}
-        <GoogleSignInButton
-          onCredential={handleGoogle}
-          disabled={loading}
-          label="Tiếp tục với Google"
-        />
-
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gray-100" />
-          <span className="text-xs text-gray-400 whitespace-nowrap">hoặc dùng email</span>
-          <div className="flex-1 h-px bg-gray-100" />
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
@@ -175,6 +162,18 @@ function LoginForm() {
             )}
           </button>
         </form>
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-xs text-gray-400 whitespace-nowrap">hoặc</span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
+        <GoogleSignInButton
+          onCredential={handleGoogle}
+          disabled={loading}
+          label="Tiếp tục với Google"
+        />
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gray-100" />
