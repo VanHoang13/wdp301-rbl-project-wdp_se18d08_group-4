@@ -156,17 +156,17 @@ export default function LandingPage() {
         className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur-md"
         style={{ borderColor: "#FFF0A0" }}
       >
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
-          {/* Logo */}
-          <Link href="/" className="shrink-0">
-            <UniMoveLogo />
+        <div className="mx-auto grid h-20 max-w-7xl grid-cols-3 items-center px-6 lg:px-8">
+          {/* Logo — left */}
+          <Link href="/" className="shrink-0 justify-self-start">
+            <UniMoveLogo size="lg" />
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden items-center gap-7 md:flex">
+          {/* Desktop nav — truly centered */}
+          <nav className="hidden items-center justify-center gap-9 md:flex">
             {NAV_LINKS.map(({ label, href }) => (
               <a key={href} href={href}
-                className="text-sm font-medium transition-colors"
+                className="text-base font-semibold transition-colors"
                 style={{ color: G }}
                 onMouseEnter={e => (e.currentTarget.style.color = B)}
                 onMouseLeave={e => (e.currentTarget.style.color = G)}>
@@ -175,26 +175,28 @@ export default function LandingPage() {
             ))}
           </nav>
 
-          {/* Desktop actions */}
-          <div className="hidden items-center gap-3 md:flex">
+          {/* Desktop actions — right */}
+          <div className="hidden items-center justify-end gap-3 md:flex">
             <Link href="/login"
-              className="rounded-full border px-5 py-2 text-sm font-semibold transition-all hover:scale-[1.02]"
+              className="rounded-full border px-5 py-2.5 text-sm font-semibold transition-all hover:scale-[1.02]"
               style={{ borderColor: B, color: B }}>
               Đăng nhập
             </Link>
             <Link href="/register"
-              className="flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold text-white transition-all hover:scale-[1.03]"
+              className="flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition-all hover:scale-[1.03]"
               style={{ backgroundColor: B }}>
               Đăng ký miễn phí <ArrowRight size={14} />
             </Link>
           </div>
 
-          {/* Mobile hamburger */}
-          <button onClick={() => setMenuOpen(o => !o)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl md:hidden"
-            style={{ backgroundColor: YL }}>
-            {menuOpen ? <X size={18} style={{ color: D }} /> : <Menu size={18} style={{ color: D }} />}
-          </button>
+          {/* Mobile hamburger — col 2 & 3 right-aligned */}
+          <div className="col-start-3 flex justify-end md:hidden">
+            <button onClick={() => setMenuOpen(o => !o)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl"
+              style={{ backgroundColor: YL }}>
+              {menuOpen ? <X size={18} style={{ color: D }} /> : <Menu size={18} style={{ color: D }} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile menu */}
@@ -348,7 +350,7 @@ export default function LandingPage() {
               Tính năng nổi bật
             </motion.span>
             <motion.h2 variants={fadeInUp}
-              className="mt-6 text-4xl font-extrabold tracking-tight md:text-5xl"
+              className="mt-6 text-4xl font-extrabold tracking-tight md:text-[58px]"
               style={{ color: D, letterSpacing: "-1px" }}>
               Tại sao chọn{" "}
               <span className="relative inline-block">
@@ -400,7 +402,7 @@ export default function LandingPage() {
               Quy trình
             </motion.span>
             <motion.h2 variants={fadeInUp}
-              className="mt-6 text-4xl font-extrabold tracking-tight md:text-5xl"
+              className="mt-6 text-4xl font-extrabold tracking-tight md:text-[58px]"
               style={{ color: D, letterSpacing: "-1px" }}>
               Chỉ <span style={{ color: B }}>4 bước</span> là xong
             </motion.h2>
@@ -449,7 +451,7 @@ export default function LandingPage() {
                 Đối tác vận chuyển
               </motion.span>
               <motion.h2 variants={fadeInUp}
-                className="text-4xl font-extrabold leading-tight tracking-tight text-white md:text-5xl"
+                className="text-4xl font-extrabold leading-tight tracking-tight text-white md:text-[58px]"
                 style={{ letterSpacing: "-1px" }}>
                 Bạn có <span style={{ color: Y }}>xe tải</span>?<br />Hãy cùng kiếm tiền.
               </motion.h2>
@@ -508,7 +510,7 @@ export default function LandingPage() {
             <Zap size={12} style={{ color: YD }} /> Bắt đầu ngay hôm nay
           </motion.span>
           <motion.h2 variants={fadeInUp}
-            className="mt-6 text-4xl font-extrabold tracking-tight md:text-5xl"
+            className="mt-6 text-4xl font-extrabold tracking-tight md:text-[58px]"
             style={{ color: D, letterSpacing: "-1.5px" }}>
             Sẵn sàng{" "}
             <span className="relative">

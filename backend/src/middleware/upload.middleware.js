@@ -28,13 +28,19 @@ const marketplaceImageUpload = makeImageUpload('image', MARKETPLACE_IMAGE_MAX_BY
 function wrapUpload(upload, sizeMessage) {
   return (req, res, next) => {
     upload(req, res, (err) => {
-      if (!err) return next();
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        err.status = 400;
-        err.message = sizeMessage;
-        err.code = 'file_too_large';
+      if (err) {
+        console.error('[upload] multer error:', err.code, err.message);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          err.status = 400;
+          err.message = sizeMessage;
+          err.code = 'file_too_large';
+        }
+        return next(err);
       }
-      next(err);
+      if (!req.file && !req.files) {
+        console.warn('[upload] multer OK but no file. content-type:', req.headers['content-type']);
+      }
+      next();
     });
   };
 }

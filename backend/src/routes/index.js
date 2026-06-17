@@ -11,6 +11,7 @@ const notificationRoutes = require('./notification.routes');
 const conversationsRoutes = require('./conversations.routes');
 const mapsRoutes = require('./maps.routes');
 const reviewsRoutes = require('./reviews.routes');
+const devRoutes = require('./dev.routes');
 
 const router = express.Router();
 
@@ -34,5 +35,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/maps', mapsRoutes);
 router.use('/reviews', reviewsRoutes);
+router.use('/dev', devRoutes);
 
 module.exports = router;

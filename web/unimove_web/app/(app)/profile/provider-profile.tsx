@@ -91,18 +91,24 @@ export default function ProviderProfilePage() {
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <TrendingUp size={20} className="mx-auto mb-2" style={{ color: "var(--provider)" }} />
-          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>0</p>
+          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>
+            {loading ? "—" : (profile?.total_orders ?? 0)}
+          </p>
           <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Tổng chuyến</p>
         </div>
         <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <Star size={20} className="mx-auto mb-2" fill="#f59e0b" style={{ color: "#f59e0b" }} />
-          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>{profile?.rating?.toFixed(1) ?? "—"}</p>
+          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>
+            {loading ? "—" : (profile?.rating ? profile.rating.toFixed(1) : "0.0")}
+          </p>
           <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Đánh giá TB</p>
         </div>
         <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <Truck size={20} className="mx-auto mb-2" style={{ color: "var(--primary)" }} />
-          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>0</p>
-          <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Đơn đã nhận</p>
+          <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>
+            {loading ? "—" : (profile?.total_reviews ?? 0)}
+          </p>
+          <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Đánh giá nhận được</p>
         </div>
       </div>
 

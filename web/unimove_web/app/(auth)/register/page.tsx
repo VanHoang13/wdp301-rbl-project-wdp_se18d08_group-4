@@ -38,7 +38,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     full_name: "", email: "", phone: "", password: "",
-    business_name: "", vehicle_type: "van",
+    business_name: "",
   });
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -55,14 +55,13 @@ export default function RegisterPage() {
       };
       if (role === "provider") {
         body.business_name = form.business_name || undefined;
-        body.vehicle_type = form.vehicle_type;
       }
       const res = await authApi.register(body);
       if (!res.success || !res.data) { setError((res as { message?: string }).message || "Đăng ký thất bại"); return; }
       const { accessToken, user } = res.data as { accessToken: string; user: AuthUser };
       storeAuth(user, accessToken);
       toast("Đăng ký thành công! Chào mừng đến với UniMove", "success");
-      window.location.href = getRoleHome(user.role);
+      window.location.href = user.role === "provider" ? "/dang-ky-tai-xe" : getRoleHome(user.role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi kết nối");
     } finally { setLoading(false); }
@@ -223,18 +222,6 @@ export default function RegisterPage() {
                 onChange={(e) => set("phone", e.target.value)} />
             </InputRow>
           </Field>
-
-          {isProvider && (
-            <Field label="Loại phương tiện" required>
-              <select
-                value={form.vehicle_type}
-                onChange={(e) => set("vehicle_type", e.target.value)}
-                className="w-full h-12 rounded-xl border border-gray-200 px-4 text-sm bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#FFCC00] focus:border-[#FFCC00]"
-              >
-                {VEHICLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </Field>
-          )}
 
           <Field label="Mật khẩu" required>
             <InputRow icon={<Lock size={16} />} accentColor={accentColor} trailing={

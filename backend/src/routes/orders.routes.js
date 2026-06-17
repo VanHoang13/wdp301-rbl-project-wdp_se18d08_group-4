@@ -9,6 +9,7 @@ const router = express.Router();
 router.get('/', requireAuth, ordersController.listOrders);
 router.post('/', requireAuth, requireRole('customer'), ordersController.createOrder);
 router.patch('/:id/cancel', requireAuth, requireRole('customer'), ordersController.cancelOrder);
+router.get('/:id/cancel-estimate', requireAuth, requireRole('customer'), ordersController.cancelEstimate);
 router.get('/:id', requireAuth, ordersController.getOrder);
 router.get('/:id/quotes', requireAuth, orderQuotesController.listQuotes);
 router.post(
@@ -32,6 +33,7 @@ router.post(
 
 router.patch('/:id/accept', requireAuth, requireRole('provider'), ordersController.acceptOrder);
 router.patch('/:id/start', requireAuth, requireRole('provider'), ordersController.startOrder);
+router.patch('/:id/skip', requireAuth, requireRole('provider'), ordersController.skipOrder);
 router.patch('/:id/decline', requireAuth, requireRole('provider'), ordersController.declineOrder);
 router.patch('/:id/complete', requireAuth, requireRole('provider'), ordersController.completeOrder);
 router.patch('/:id/cancel', requireAuth, ordersController.cancelOrder);

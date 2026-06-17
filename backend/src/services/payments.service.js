@@ -525,7 +525,7 @@ async function getPlatformSetting(key, defaultValue) {
   return Number.isFinite(num) ? num : defaultValue;
 }
 
-function resolveRefundRate({ percent, statusBeforeCancel, hadProvider }) {
+function resolveRefundRate({ percent, statusBeforeCancel, hadProvider, minutesSinceAccepted }) {
   if (percent !== undefined && percent !== null) {
     const pct = Number(percent);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
@@ -534,6 +534,16 @@ function resolveRefundRate({ percent, statusBeforeCancel, hadProvider }) {
     return pct / 100;
   }
 
+  // pending chưa có provider, hoặc matched (chọn báo giá nhưng chưa bắt đầu) → hoàn 100%
+  if (statusBeforeCancel === 'pending' && !hadProvider) return 1.0;
+  if (statusBeforeCancel === 'matched') return 1.0;
+
+  // accepted → time-based
+  if (statusBeforeCancel === 'accepted' && minutesSinceAccepted !== undefined) {
+    return minutesSinceAccepted < 30 ? 0.9 : 0.7;
+  }
+
+  // fallback to platform settings
   const providerAccepted = hadProvider
     || (statusBeforeCancel && ['accepted', 'picking_up', 'in_progress'].includes(statusBeforeCancel));
 
@@ -947,7 +957,7 @@ async function applyPayOSPaymentUpdate(payment, options) {
     .from('payments')
     .update(updatePayload)
     .eq('id', payment.id)
-    .select('id, payment_code, order_id, amount, status, escrow_status, paid_at')
+    .select('id, payment_code, order_id, amount, status, escrow_status, paid_at, payment_purpose')
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');

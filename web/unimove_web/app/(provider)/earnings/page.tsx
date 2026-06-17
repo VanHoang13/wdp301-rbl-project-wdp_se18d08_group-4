@@ -16,6 +16,9 @@ interface EarningsData {
   breakdown: { date: string; earned: number; orders: number }[];
 }
 
+const BRAND   = "#1A56DB";  // provider primary
+const SUCCESS = "#16A34A";  // semantic: +tiền, hoàn thành
+
 export default function EarningsPage() {
   const [data, setData] = useState<EarningsData | null>(null);
   const [period, setPeriod] = useState<Period>("month");
@@ -34,7 +37,8 @@ export default function EarningsPage() {
   useEffect(() => { load(period); }, [period]);
 
   const total = data?.total_earned ?? 0;
-  const net = total * 0.9;
+  const net   = total * 0.9;
+  const fee   = total * 0.1;
   const orders = data?.total_orders ?? 0;
 
   return (
@@ -55,10 +59,27 @@ export default function EarningsPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-2xl p-5 lg:col-span-2 text-white" style={{ background: "linear-gradient(135deg, #14532d 0%, #16a34a 100%)" }}>
-          <div className="flex items-center gap-2 mb-3"><DollarSign size={17} className="text-green-200" /><p className="text-green-100 text-sm">Tổng doanh thu</p></div>
-          {loading ? <div className="h-9 w-40 bg-white/20 rounded animate-pulse" /> : <p className="text-3xl font-extrabold">{formatVND(total)}</p>}
-          <p className="text-green-200 text-sm mt-2">Thực nhận ~{formatVND(net)} (sau phí 10%)</p>
+        {/* Revenue hero card */}
+        <div className="rounded-2xl p-5 lg:col-span-2 text-white"
+          style={{ background: "linear-gradient(135deg, #1648C0 0%, #1A56DB 100%)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <DollarSign size={17} className="text-blue-200" />
+            <p className="text-blue-100 text-sm font-medium">Tổng doanh thu</p>
+          </div>
+          {loading
+            ? <div className="h-9 w-40 rounded-lg mb-1 animate-pulse bg-white/20" />
+            : <p className="text-3xl font-extrabold">{formatVND(total)}</p>
+          }
+          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/20">
+            <div>
+              <p className="text-blue-200 text-xs mb-0.5">Thực nhận (90%)</p>
+              <p className="text-xl font-bold">{formatVND(net)}</p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-xs mb-0.5">Phí nền tảng (10%)</p>
+              <p className="text-xl font-bold text-yellow-200">{formatVND(fee ?? 0)}</p>
+            </div>
+          </div>
         </div>
         <div className="rounded-2xl p-5 bg-white border border-gray-100 shadow-sm">
           <Package size={18} className="text-[#2563EB] mb-2" />

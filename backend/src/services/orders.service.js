@@ -4,7 +4,9 @@ const { createNotification } = require('./notification.service');
 const paymentsService = require('./payments.service');
 const { isDaNangCity, isDaNangDistrict, isDaNangOrder, textMentionsDaNang } = require('../utils/da_nang');
 
-const CANCELLABLE_STATUSES = ['pending', 'accepted'];
+const CANCELLABLE_STATUSES = ['pending', 'matched', 'accepted'];
+const PROVIDER_CANCELLABLE_STATUSES = ['accepted', 'picking_up', 'in_progress'];
+const POINTS_PER_VIOLATION = 2;
 
 const DELIVERY_PHOTOS_BUCKET = 'delivery-photos';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -161,14 +163,14 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
   if (role === 'customer') {
     query = query.eq('customer_id', userId);
   } else if (role === 'provider') {
-    // Lấy danh sách đơn provider đã từ chối để loại ra khỏi kết quả
-    const { data: declined } = await supabaseAdmin
+    // Lấy danh sách đơn provider đã từ chối hoặc bỏ qua để loại ra khỏi kết quả
+    const { data: dismissed } = await supabaseAdmin
       .from('order_provider_responses')
       .select('order_id')
       .eq('provider_id', userId)
-      .eq('response', 'declined');
+      .in('response', ['declined', 'skipped']);
 
-    const declinedIds = (declined || []).map((r) => r.order_id);
+    const declinedIds = (dismissed || []).map((r) => r.order_id);
 
     query = query.or(`provider_id.eq.${userId},status.eq.pending,status.eq.matched`);
 
@@ -177,7 +179,11 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
     }
   }
 
-  const { status } = queryParams;
+  const { status, ward } = queryParams;
+  if (ward && role === 'provider') {
+    // Filter orders where delivery ward matches provider's ward
+    query = query.ilike('delivery_district', `%${ward}%`);
+  }
   if (status) {
     const statuses = String(status)
       .split(',')
@@ -285,6 +291,7 @@ async function createOrder(customerId, payload) {
 }
 
 async function providerRespond(orderId, providerId, response, declineReason) {
+  if (response === 'accepted') await checkProviderBan(providerId);
   const order = await getOrderById(orderId);
 
   if (order.quote_request && response === 'accepted') {
@@ -356,6 +363,7 @@ async function getOrderById(orderId) {
 
 // ── PATCH /api/orders/:id/accept ──────────────────────────────────────────────
 async function acceptOrder(orderId, providerId) {
+  await checkProviderBan(providerId);
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
     .select('id, status, provider_id')
@@ -399,18 +407,40 @@ async function startOrder(orderId, providerId) {
   if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
   if (order.provider_id !== providerId)
     throw Object.assign(new Error('Bạn không phải provider của đơn hàng này'), { status: 403 });
-  if (order.status !== 'accepted')
+  if (!['accepted', 'picking_up'].includes(order.status))
     throw Object.assign(new Error('Chỉ có thể bắt đầu đơn đã được nhận'), { status: 409 });
+
+  const nextStatus = order.status === 'accepted' ? 'picking_up' : 'in_progress';
+  const extra = nextStatus === 'in_progress' ? { actual_pickup_time: new Date().toISOString() } : {};
 
   const { data, error } = await supabaseAdmin
     .from('orders')
-    .update({ status: 'in_progress', actual_pickup_time: new Date().toISOString() })
+    .update({ status: nextStatus, ...extra })
     .eq('id', orderId)
     .select('*')
     .single();
 
   if (error) throw Object.assign(new Error(error.message), { status: 500 });
   return data;
+}
+
+// ── PATCH /api/orders/:id/skip ────────────────────────────────────────────────
+async function skipOrder(orderId, providerId) {
+  const { data: order, error: fetchErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchErr) throw Object.assign(new Error(fetchErr.message), { status: 500 });
+  if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
+
+  await supabaseAdmin.from('order_provider_responses').upsert(
+    { order_id: orderId, provider_id: providerId, response: 'skipped' },
+    { onConflict: 'order_id,provider_id', ignoreDuplicates: false },
+  );
+
+  return { order_id: orderId };
 }
 
 // ── PATCH /api/orders/:id/decline ─────────────────────────────────────────────
@@ -491,7 +521,7 @@ async function cancelOrder(orderId, userId, reason) {
 
   const { data: order, error: fetchErr } = await supabaseAdmin
     .from('orders')
-    .select('id, status, customer_id, provider_id, order_number')
+    .select('id, status, customer_id, provider_id, order_number, provider_accepted_at')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -514,11 +544,12 @@ async function cancelOrder(orderId, userId, reason) {
       throw httpError(400, 'Lý do hủy không được để trống', 'validation_error');
     }
     if (!CANCELLABLE_STATUSES.includes(order.status)) {
-      throw httpError(
-        400,
-        `Không thể hủy đơn ở trạng thái "${order.status}"`,
-        'cannot_cancel',
-      );
+      throw httpError(400, `Không thể hủy đơn ở trạng thái "${order.status}"`, 'cannot_cancel');
+    }
+  } else {
+    // Provider: kiểm tra TRƯỚC khi update DB
+    if (!PROVIDER_CANCELLABLE_STATUSES.includes(order.status)) {
+      throw httpError(400, `Không thể hủy đơn ở trạng thái "${order.status}"`, 'cannot_cancel');
     }
   }
 
@@ -542,6 +573,24 @@ async function cancelOrder(orderId, userId, reason) {
   }
 
   if (!isCustomer) {
+    await supabaseAdmin.from('order_status_history').insert({
+      order_id: orderId,
+      from_status: previousStatus,
+      to_status: 'cancelled',
+      changed_by: userId,
+      notes: `Nhà xe hủy đơn${trimmedReason ? `: ${trimmedReason}` : ''}`,
+    });
+
+    await createNotification(
+      order.customer_id,
+      'order_cancelled',
+      'Nhà xe đã hủy đơn của bạn',
+      `Đơn ${order.order_number} bị hủy bởi nhà xe${trimmedReason ? `. Lý do: ${trimmedReason}` : ''}. Bạn có thể đặt lại.`,
+      { priority: 'high', actionData: { order_id: orderId } },
+    );
+
+    await applyProviderViolation(userId, orderId, order.order_number);
+
     return enrichOrderWithProvider(updated);
   }
 
@@ -574,6 +623,10 @@ async function cancelOrder(orderId, userId, reason) {
   let refundRequest = null;
   let refundSkipReason = null;
   try {
+    const minutesSinceAccepted = order.provider_accepted_at
+      ? (Date.now() - new Date(order.provider_accepted_at).getTime()) / 60000
+      : undefined;
+
     refundRequest = await paymentsService.requestRefundForOrder(
       userId,
       orderId,
@@ -581,6 +634,7 @@ async function cancelOrder(orderId, userId, reason) {
       {
         statusBeforeCancel: previousStatus,
         hadProvider: Boolean(order.provider_id),
+        minutesSinceAccepted,
       },
     );
   } catch (err) {
@@ -641,6 +695,136 @@ async function uploadDeliveryPhoto(orderId, providerId, file) {
   return { photo_url: photoUrl };
 }
 
+// ── GET /orders/:id/cancel-estimate ──────────────────────────────────────────
+async function estimateCancelRefund(orderId, customerId) {
+  const { data: order } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, customer_id, provider_id, provider_accepted_at')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (!order) throw httpError(404, 'Không tìm thấy đơn hàng', 'not_found');
+  if (order.customer_id !== customerId) throw httpError(403, 'Không có quyền', 'access_denied');
+
+  if (!CANCELLABLE_STATUSES.includes(order.status)) {
+    return { cancellable: false, status: order.status };
+  }
+
+  const { data: payment } = await supabaseAdmin
+    .from('payments')
+    .select('amount')
+    .eq('order_id', orderId)
+    .eq('customer_id', customerId)
+    .eq('status', 'completed')
+    .in('payment_purpose', ['deposit', 'full', 'final'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const depositAmount = payment ? Number(payment.amount) : 0;
+
+  let feePercent = 0;
+  if (order.status === 'accepted' && order.provider_accepted_at) {
+    const mins = (Date.now() - new Date(order.provider_accepted_at).getTime()) / 60000;
+    feePercent = mins < 30 ? 10 : 30;
+  }
+
+  const feeAmount = Math.round(depositAmount * feePercent / 100);
+  const refundAmount = depositAmount - feeAmount;
+
+  return {
+    cancellable: true,
+    status: order.status,
+    deposit_amount: depositAmount,
+    fee_percent: feePercent,
+    fee_amount: feeAmount,
+    refund_amount: refundAmount,
+  };
+}
+
+// ── Provider compliance score ─────────────────────────────────────────────────
+async function applyProviderViolation(providerId, orderId, orderNumber) {
+  const { data: pp } = await supabaseAdmin
+    .from('provider_profiles')
+    .select('compliance_score, warning_level, ban_until, last_violation_at')
+    .eq('id', providerId)
+    .maybeSingle();
+
+  const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+  const lastViolation = pp?.last_violation_at ? new Date(pp.last_violation_at).getTime() : 0;
+  const shouldReset = lastViolation > 0 && (Date.now() - lastViolation) > MONTH_MS;
+
+  let score = shouldReset ? 20 : (pp?.compliance_score ?? 20);
+  let level = shouldReset ? 0 : (pp?.warning_level ?? 0);
+
+  score = Math.max(0, score - POINTS_PER_VIOLATION);
+
+  let banUntil = null;
+  let newLevel = level;
+  let title, body;
+
+  if (score <= 0) {
+    banUntil = new Date(Date.now() + MONTH_MS).toISOString();
+    newLevel = 4;
+    title = 'Tài khoản bị tạm khóa 30 ngày';
+    body = `Điểm tuân thủ về 0. Không thể nhận đơn đến ${new Date(banUntil).toLocaleDateString('vi-VN')}.`;
+  } else if (score <= 5) {
+    if (level >= 3) {
+      banUntil = new Date(Date.now() + MONTH_MS).toISOString();
+      newLevel = 4;
+      title = 'Tài khoản bị tạm khóa 30 ngày (tái phạm)';
+      body = `Điểm tuân thủ còn ${score}/20. Tái phạm sau cảnh báo nghiêm trọng. Tạm khóa đến ${new Date(banUntil).toLocaleDateString('vi-VN')}.`;
+    } else {
+      banUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      newLevel = 3;
+      title = 'Cảnh báo nghiêm trọng — Tạm khóa 3 ngày';
+      body = `Điểm tuân thủ còn ${score}/20. Tái phạm tiếp theo sẽ bị khóa 30 ngày.`;
+    }
+  } else if (score <= 10) {
+    banUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    newLevel = 2;
+    title = 'Cảnh báo lần 2 — Tạm khóa 1 ngày';
+    body = `Điểm tuân thủ còn ${score}/20. Tiếp tục vi phạm sẽ bị tạm khóa lâu hơn.`;
+  } else if (score <= 15) {
+    newLevel = 1;
+    title = 'Cảnh báo lần 1';
+    body = `Hủy đơn ${orderNumber}: điểm tuân thủ còn ${score}/20. Tiếp tục vi phạm sẽ bị tạm khóa tài khoản.`;
+  } else {
+    title = 'Trừ điểm tuân thủ';
+    body = `Hủy đơn ${orderNumber}: điểm tuân thủ còn ${score}/20.`;
+  }
+
+  await supabaseAdmin.from('provider_profiles').update({
+    compliance_score: score,
+    warning_level: newLevel,
+    ban_until: banUntil,
+    last_violation_at: new Date().toISOString(),
+  }).eq('id', providerId);
+
+  await createNotification(providerId, 'compliance_warning', title, body, {
+    priority: 'high',
+    actionData: { order_id: orderId },
+  });
+
+  return { score, warning_level: newLevel, ban_until: banUntil };
+}
+
+async function checkProviderBan(providerId) {
+  const { data: pp } = await supabaseAdmin
+    .from('provider_profiles')
+    .select('ban_until, compliance_score')
+    .eq('id', providerId)
+    .maybeSingle();
+
+  if (!pp?.ban_until) return;
+
+  const banExpiry = new Date(pp.ban_until);
+  if (banExpiry > new Date()) {
+    const days = Math.ceil((banExpiry - new Date()) / (24 * 60 * 60 * 1000));
+    throw httpError(403, `Tài khoản đang bị tạm khóa. Còn ${days} ngày.`, 'provider_banned');
+  }
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
@@ -648,8 +832,11 @@ module.exports = {
   getOrderById,
   acceptOrder,
   startOrder,
+  skipOrder,
   declineOrder,
   completeOrder,
   cancelOrder,
   uploadDeliveryPhoto,
+  checkProviderBan,
+  estimateCancelRefund,
 };

@@ -238,7 +238,9 @@ export const ordersApi = {
       response: action === "accept" ? "accepted" : "declined",
       decline_reason: notes || undefined,
     }),
+  skip: (id: string) => patch(`/orders/${id}/skip`, {}),
   cancel: (id: string, reason?: string) => patch(`/orders/${id}/cancel`, { reason }),
+  getCancelEstimate: (id: string) => get(`/orders/${id}/cancel-estimate`),
   accept: (id: string) => patch(`/orders/${id}/accept`),
   start: (id: string) => patch(`/orders/${id}/start`),
   complete: (id: string) => patch(`/orders/${id}/complete`),
@@ -383,6 +385,12 @@ export const paymentsApi = {
   updateMethod: (id: string, body: Record<string, unknown>) => patch(`/payments/me/payment-methods/${id}`, body),
   deleteMethod: (id: string) => del(`/payments/me/payment-methods/${id}`),
   createRefund: (body: Record<string, unknown>) => post("/payments/refund", body),
+};
+
+/* ── Dev helpers (chỉ dùng khi test local) ── */
+export const devApi = {
+  simulatePayment: (orderId: string) =>
+    post("/dev/payments/simulate", { order_id: orderId }),
 };
 
 /* ── Maps ── */

@@ -7,6 +7,7 @@ import { Bell, User, LogOut, Settings, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
 import { useNotificationStore } from '@/lib/stores'
+import { notificationsApi } from '@/lib/api'
 
 const NAV_LINKS = [
   { href: '/trang-chu', label: 'Trang chủ' },
@@ -19,7 +20,8 @@ const NAV_LINKS = [
 export function DesktopTopNav() {
   const pathname    = usePathname()
   const router      = useRouter()
-  const unreadCount = useNotificationStore((s) => s.unreadCount)
+  const unreadCount    = useNotificationStore((s) => s.unreadCount)
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
 
   const [user, setUser]           = useState<AuthUser | null>(null)
   const [open, setOpen]           = useState(false)
@@ -31,6 +33,20 @@ export function DesktopTopNav() {
   useEffect(() => {
     setUser(getStoredUser())
   }, [pathname])
+
+  // Poll unread count mỗi 30s để cập nhật chuông
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await notificationsApi.unreadCount()
+        const count = (res.data as { count?: number })?.count ?? 0
+        setUnreadCount(count)
+      } catch { /* ignore */ }
+    }
+    fetchUnread()
+    const timer = setInterval(fetchUnread, 30_000)
+    return () => clearInterval(timer)
+  }, [setUnreadCount])
 
   useEffect(() => {
     if (!open) return

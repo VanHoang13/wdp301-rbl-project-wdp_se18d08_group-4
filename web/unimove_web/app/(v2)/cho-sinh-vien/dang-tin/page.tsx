@@ -151,7 +151,7 @@ export default function DangTinPage() {
           <label className="mt-2 flex flex-col items-center justify-center h-28 rounded-xl border-2 border-dashed border-gray-200 cursor-pointer hover:bg-gray-50">
             <ImagePlus size={24} className="text-gray-400 mb-1" />
             <span className="text-xs text-gray-500">Chọn ảnh</span>
-            <input type="file" accept="image/*" multiple className="hidden" onChange={onPickImages} />
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={onPickImages} />
           </label>
           {images.length > 0 && (
             <p className="text-xs text-gray-500 mt-1">{images.length} ảnh đã chọn</p>

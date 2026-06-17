@@ -27,7 +27,7 @@ export function getOrderStatusLabel(status: string): string {
     pending: "Chờ xác nhận",
     matched: "Đã chọn nhà xe",
     accepted: "Đã chấp nhận",
-    picking_up: "Đang đến",
+    picking_up: "Đang đến lấy",
     in_progress: "Đang vận chuyển",
     completed: "Hoàn thành",
     cancelled: "Đã hủy",
