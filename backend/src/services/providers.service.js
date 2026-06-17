@@ -451,6 +451,18 @@ async function uploadProviderDocuments(providerId, filesMap) {
   return { uploaded: uploaded.length, documents: uploaded };
 }
 
+async function getMyDocuments(providerId) {
+  const { supabaseAdmin } = require('./supabase.service');
+  const { data, error } = await supabaseAdmin
+    .from('provider_documents')
+    .select('id, document_type, document_url, document_number, issue_date, expiry_date, is_verified, notes, created_at')
+    .eq('provider_id', providerId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
 module.exports = {
   browseProviders,
   getProviderById,
@@ -458,4 +470,5 @@ module.exports = {
   getSchedule,
   updateSchedule,
   uploadProviderDocuments,
+  getMyDocuments,
 };

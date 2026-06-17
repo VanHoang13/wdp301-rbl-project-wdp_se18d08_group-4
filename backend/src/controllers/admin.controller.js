@@ -361,6 +361,14 @@ async function verifyProvider(req, res) {
       `)
       .maybeSingle();
 
+    // Khi approve: đánh dấu tất cả giấy tờ của provider là đã xác minh
+    if (is_verified) {
+      await supabaseAdmin
+        .from('provider_documents')
+        .update({ is_verified: true, verified_by: req.user.id })
+        .eq('provider_id', id);
+    }
+
     if (error) {
       console.error('Update provider error:', error);
       throw error;

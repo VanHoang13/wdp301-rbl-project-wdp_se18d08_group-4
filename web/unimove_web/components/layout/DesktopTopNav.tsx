@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, User, LogOut, Settings, Search } from 'lucide-react'
+import { Bell, MessageCircle, User, LogOut, Settings, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
 import { useNotificationStore } from '@/lib/stores'
@@ -146,7 +146,15 @@ export function DesktopTopNav() {
             {user ? (
               <>
                 <Link
-                  href="/tin-nhan?tab=thong-bao"
+                  href="/tin-nhan"
+                  aria-label="Tin nhắn"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
+                >
+                  <MessageCircle className="h-5 w-5 text-gray-600" strokeWidth={1.75} />
+                </Link>
+
+                <Link
+                  href="/thong-bao"
                   aria-label={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Thông báo'}
                   className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
                 >

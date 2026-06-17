@@ -34,25 +34,39 @@ interface ApiListing {
   category: string
   condition?: string
   city?: string
+  area?: string
   status: string
   images?: string[]
+  image_url?: string
   created_at: string
   is_urgent?: boolean
+  is_negotiable?: boolean
   seller?: { full_name?: string }
 }
 
+// Map API condition values → store slugs dùng trong CONDITION_LABELS / ProductCard
+const CONDITION_MAP: Record<string, string> = {
+  new:      'moi',
+  like_new: 'nhu-moi',
+  likeNew:  'nhu-moi',
+  good:     'con-tot',
+  fair:     'da-dung-nhieu',
+  poor:     'da-dung-nhieu',
+}
+
 function toListing(l: ApiListing): ProductCardData {
+  const rawImg = l.images?.[0] ?? l.image_url
   return {
-    id: l.id,
-    title: l.title,
-    price: l.price ?? 0,
-    isNegotiable: false,
-    condition: l.condition,
-    location: l.city,
-    imageUrl: l.images?.[0],
-    isUrgent: l.is_urgent,
-    created_at: l.created_at,
-    seller_name: l.seller?.full_name,
+    id:           l.id,
+    title:        l.title,
+    price:        l.price ?? 0,
+    isNegotiable: l.is_negotiable ?? false,
+    condition:    CONDITION_MAP[l.condition ?? ''] ?? l.condition,
+    location:     l.city ?? l.area,
+    imageUrl:     rawImg,
+    isUrgent:     l.is_urgent,
+    created_at:   l.created_at,
+    seller_name:  l.seller?.full_name,
   }
 }
 
@@ -145,7 +159,7 @@ function CategorySidebar({
           Tin của tôi
         </Link>
         <Link
-          href="/cho-sinh-vien/dang-tin"
+          href="/cho-sinh-vien/dang-ban"
           className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-[#0047FF] hover:bg-white"
         >
           <Plus size={16} />
@@ -375,7 +389,7 @@ export default function KhamPhaPage() {
                   : 'Thử chọn danh mục khác hoặc đăng tin đầu tiên!'}
               </p>
               <Link
-                href="/cho-sinh-vien/dang-tin"
+                href="/cho-sinh-vien/dang-ban"
                 className="mt-5 inline-flex rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-bold text-gray-900"
               >
                 Đăng tin bán đồ

@@ -270,6 +270,7 @@ export const providerApi = {
     get("/providers/me/earnings", { period }),
   getSchedule: () => get("/providers/me/schedule"),
   updateSchedule: (slots: Record<string, unknown>[]) => patch("/providers/me/schedule", { slots }),
+  getDocuments: () => get("/providers/me/documents"),
   uploadDocuments: (files: Record<string, File>) => {
     const fd = new FormData();
     Object.entries(files).forEach(([k, v]) => fd.append(k, v));
@@ -370,6 +371,7 @@ export const marketplaceApi = {
   markTransportBooked: (listingId: string) =>
     post(`/marketplace/listings/${listingId}/transport-booked`, {}),
   confirmReceived: (id: string) => post(`/marketplace/listings/${id}/confirm-received`, {}),
+  myConversations: () => get('/marketplace/my-conversations'),
 };
 
 /* ── Payments ── */

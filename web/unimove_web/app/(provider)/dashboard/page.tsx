@@ -60,7 +60,10 @@ export default function ProviderDashboardPage() {
     const u = getStoredUser();
     setUser(u);
     setHydrated(true);
-    if (u && !u.is_verified) router.replace("/cho-duyet");
+    if (u && !u.is_verified) {
+      const hasSubmitted = u.verification_status === 'pending' || u.verification_status === 'rejected';
+      router.replace(hasSubmitted ? "/cho-duyet" : "/dang-ky-tai-xe");
+    }
   }, [router]);
 
   const totalEarnings = completed.reduce((s, o) => s + (o.estimated_price ?? 0), 0);

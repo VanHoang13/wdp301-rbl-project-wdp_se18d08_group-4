@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { MoreVertical, Pencil, CheckCircle, Eye, EyeOff, Trash2, RefreshCw } from 'lucide-react'
+import { MoreVertical, Pencil, CheckCircle, Eye, EyeOff, Trash2, RefreshCw, Zap } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import type { ListingCondition } from '@/lib/stores/useMarketplaceStore'
@@ -9,7 +9,7 @@ import { CONDITION_LABELS } from '@/lib/stores/useMarketplaceStore'
 
 /* ── Types ──────────────────────────────────────────────────── */
 
-export type ListingStatus = 'dang-ban' | 'da-ban' | 'da-an' | 'het-han'
+export type ListingStatus = 'dang-ban' | 'da-ban' | 'da-an' | 'het-han' | 'chua-kich-hoat'
 
 export interface ListingCardData {
   id:        string
@@ -32,16 +32,18 @@ interface ListingCardProps {
   onUnhide?:     (id: string) => void
   onRenew?:      (id: string) => void
   onDelete?:     (id: string) => void
+  onActivate?:   (id: string) => void
   className?:    string
 }
 
 /* ── Status config ──────────────────────────────────────────── */
 
 const STATUS_CONFIG: Record<ListingStatus, { label: string; className: string }> = {
-  'dang-ban': { label: 'Đang bán',  className: 'bg-success/10 text-success' },
-  'da-ban':   { label: 'Đã bán',    className: 'bg-muted/60 text-muted-foreground' },
-  'da-an':    { label: 'Đã ẩn',     className: 'bg-warning/10 text-warning' },
-  'het-han':  { label: 'Hết hạn',   className: 'bg-error/10 text-error' },
+  'dang-ban':        { label: 'Đang bán',         className: 'bg-green-100 text-green-700' },
+  'da-ban':          { label: 'Đã bán',            className: 'bg-gray-100 text-gray-500' },
+  'da-an':           { label: 'Đã ẩn',             className: 'bg-yellow-50 text-yellow-700' },
+  'het-han':         { label: 'Hết hạn',           className: 'bg-red-50 text-red-600' },
+  'chua-kich-hoat':  { label: 'Chưa kích hoạt',   className: 'bg-orange-100 text-orange-700' },
 }
 
 function formatPrice(price: number) {
@@ -54,16 +56,17 @@ function formatPrice(price: number) {
 /* ── Action menu ────────────────────────────────────────────── */
 
 interface ActionMenuProps {
-  data:       ListingCardData
-  onEdit?:    (id: string) => void
-  onMarkSold?:(id: string) => void
-  onHide?:    (id: string) => void
-  onUnhide?:  (id: string) => void
-  onRenew?:   (id: string) => void
-  onDelete?:  (id: string) => void
+  data:        ListingCardData
+  onEdit?:     (id: string) => void
+  onMarkSold?: (id: string) => void
+  onHide?:     (id: string) => void
+  onUnhide?:   (id: string) => void
+  onRenew?:    (id: string) => void
+  onDelete?:   (id: string) => void
+  onActivate?: (id: string) => void
 }
 
-function ActionMenu({ data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDelete }: ActionMenuProps) {
+function ActionMenu({ data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDelete, onActivate }: ActionMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -77,6 +80,7 @@ function ActionMenu({ data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDel
   }, [open])
 
   const actions = [
+    data.status === 'chua-kich-hoat' && onActivate && { icon: Zap,         label: 'Kích hoạt tin',       fn: () => onActivate(data.id), className: 'text-orange-600' },
     data.status === 'dang-ban' && onEdit     && { icon: Pencil,      label: 'Chỉnh sửa',        fn: () => onEdit(data.id),     className: '' },
     data.status === 'dang-ban' && onMarkSold && { icon: CheckCircle, label: 'Đánh dấu đã bán',  fn: () => onMarkSold(data.id), className: 'text-success' },
     data.status === 'dang-ban' && onHide     && { icon: EyeOff,      label: 'Ẩn tin',            fn: () => onHide(data.id),     className: '' },
@@ -129,12 +133,27 @@ function ActionMenu({ data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDel
 /* ── Card ───────────────────────────────────────────────────── */
 
 export function ListingCard({
-  data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDelete, className,
+  data, onEdit, onMarkSold, onHide, onUnhide, onRenew, onDelete, onActivate, className,
 }: ListingCardProps) {
   const { label: statusLabel, className: statusClass } = STATUS_CONFIG[data.status]
 
   return (
-    <div className={cn('flex gap-3 rounded-card bg-surface p-3 shadow-card', className)}>
+    <div className={cn('rounded-card bg-surface shadow-card overflow-hidden', className)}>
+      {data.status === 'chua-kich-hoat' && (
+        <div className="flex items-center justify-between gap-2 bg-orange-50 border-b border-orange-100 px-3 py-2">
+          <p className="text-xs font-semibold text-orange-700">⚡ Tin chưa kích hoạt — cần thanh toán phí để hiển thị</p>
+          {onActivate && (
+            <button
+              type="button"
+              onClick={() => onActivate(data.id)}
+              className="shrink-0 rounded-full bg-orange-500 px-3 py-1 text-[11px] font-bold text-white hover:bg-orange-600 transition-colors"
+            >
+              Kích hoạt
+            </button>
+          )}
+        </div>
+      )}
+      <div className="flex gap-3 p-3">
       {/* Image */}
       <Link href={`/cho-sinh-vien/${data.id}`} className="shrink-0">
         <div className="relative h-20 w-20 overflow-hidden rounded-xl bg-surface-2">
@@ -161,6 +180,7 @@ export function ListingCard({
             onUnhide={onUnhide}
             onRenew={onRenew}
             onDelete={onDelete}
+            onActivate={onActivate}
           />
         </div>
 
@@ -181,6 +201,7 @@ export function ListingCard({
             </span>
           )}
         </div>
+      </div>
       </div>
     </div>
   )

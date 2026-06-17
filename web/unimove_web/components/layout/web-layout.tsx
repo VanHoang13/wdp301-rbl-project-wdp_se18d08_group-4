@@ -72,13 +72,23 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
           const token = localStorage.getItem("unimove_token");
           if (token) storeAuth(fresh, token);
           setUser(fresh);
-          if (!fresh.is_verified) router.replace("/cho-duyet");
+          if (!fresh.is_verified) {
+            // Chỉ redirect /cho-duyet nếu đã nộp giấy tờ (verification_status = 'pending')
+            // Nếu chưa nộp → về form đăng ký tiếp
+            const hasSubmitted = fresh.verification_status === 'pending' || fresh.verification_status === 'rejected';
+            router.replace(hasSubmitted ? "/cho-duyet" : "/dang-ky-tai-xe");
+          }
         } else {
-          // API failed → fall back to cached value
-          if (!u?.is_verified) router.replace("/cho-duyet");
+          if (!u?.is_verified) {
+            const hasSubmitted = u?.verification_status === 'pending' || u?.verification_status === 'rejected';
+            router.replace(hasSubmitted ? "/cho-duyet" : "/dang-ky-tai-xe");
+          }
         }
       }).catch(() => {
-        if (!u?.is_verified) router.replace("/cho-duyet");
+        if (!u?.is_verified) {
+          const hasSubmitted = u?.verification_status === 'pending' || u?.verification_status === 'rejected';
+          router.replace(hasSubmitted ? "/cho-duyet" : "/dang-ky-tai-xe");
+        }
       });
     }
   }, [pathname]); // re-run on every route change

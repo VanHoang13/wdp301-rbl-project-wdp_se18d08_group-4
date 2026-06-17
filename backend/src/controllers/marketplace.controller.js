@@ -180,11 +180,19 @@ async function uploadListingImage(req, res, next) {
   } catch (error) { next(error); }
 }
 
+/** GET /api/marketplace/my-conversations */
+async function getMyConversations(req, res, next) {
+  try {
+    const data = await marketplaceService.getMyConversations(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   createListing, payListingFee, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, bumpListing, createRating, getSellerStats,
-  confirmReceived, uploadListingImage,
+  confirmReceived, uploadListingImage, getMyConversations,
 };

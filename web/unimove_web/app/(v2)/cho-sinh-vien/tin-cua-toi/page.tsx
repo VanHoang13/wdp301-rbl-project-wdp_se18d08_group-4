@@ -17,11 +17,13 @@ const ACCENT  = '#FACC15'
 interface ApiListing {
   id: string; title: string; price?: number; status: string; condition?: string
   images?: string[]; view_count?: number; interest_count?: number
-  created_at?: string; expires_at?: string
+  created_at?: string; expires_at?: string; fee_paid?: boolean
 }
 
-function apiStatusToListingStatus(s: string): ListingStatus {
+function apiStatusToListingStatus(l: ApiListing): ListingStatus {
+  const s = l.status
   if (s === 'sold' || s === 'completed') return 'da-ban'
+  if (s === 'hidden' && l.fee_paid === false) return 'chua-kich-hoat'
   if (s === 'hidden')                    return 'da-an'
   if (s === 'expired')                   return 'het-han'
   return 'dang-ban'
@@ -32,7 +34,7 @@ function toListing(l: ApiListing): ListingCardData {
     id:        l.id,
     title:     l.title,
     price:     l.price ?? 0,
-    status:    apiStatusToListingStatus(l.status),
+    status:    apiStatusToListingStatus(l),
     condition: l.condition as ListingCardData['condition'],
     imageUrl:  l.images?.[0],
     views:     l.view_count,
@@ -109,7 +111,7 @@ const EMPTY_CONFIG: Record<MyListingsSubtab, {
     icon: Tag, bg: '#EFF6FF', color: PRIMARY,
     title: 'Chưa có tin đang bán',
     desc:  'Đăng tin ngay để bán đồ dùng sinh viên của bạn!',
-    cta:   { label: 'Đăng tin ngay', href: '/cho-sinh-vien/dang-tin' },
+    cta:   { label: 'Đăng tin ngay', href: '/cho-sinh-vien/dang-ban' },
   },
   'da-ban': {
     icon: ShoppingBag, bg: '#F0FDF4', color: '#16A34A',
@@ -183,12 +185,30 @@ export default function TinCuaToiPage() {
 
   const filtered = state.status === 'success'
     ? state.data.filter((l) => {
-        if (subtab === 'dang-ban') return l.status === 'dang-ban' || l.status === 'het-han'
+        if (subtab === 'dang-ban') return l.status === 'dang-ban' || l.status === 'het-han' || l.status === 'chua-kich-hoat'
         if (subtab === 'da-ban')   return l.status === 'da-ban'
         if (subtab === 'da-an')    return l.status === 'da-an'
         return true
       })
     : []
+
+  const handleActivate = async (id: string) => {
+    try {
+      const pay = await marketplaceApi.payListingFee(id, { payment_method: 'dev_bypass' })
+      const activated = (pay.data as { activated?: boolean })?.activated
+      if (activated || (pay.data as { already_paid?: boolean })?.already_paid) {
+        showSuccess('Tin đã được kích hoạt và hiển thị trên chợ!')
+        load()
+        return
+      }
+      // Fallback: nếu backend trả checkout_url thì redirect PayOS
+      const checkout = (pay.data as { checkout_url?: string })?.checkout_url
+      if (checkout) { window.location.href = checkout; return }
+      showError('Không kích hoạt được. Thử lại sau.')
+    } catch {
+      showError('Lỗi khi kích hoạt tin.')
+    }
+  }
 
   const handleMarkSold = async (id: string) => {
     try { await marketplaceApi.updateStatus(id, 'sold'); showSuccess('Đã đánh dấu đã bán'); load() }
@@ -251,6 +271,7 @@ export default function TinCuaToiPage() {
                 onMarkSold={handleMarkSold}
                 onHide={handleHide}
                 onUnhide={handleUnhide}
+                onActivate={handleActivate}
                 onDelete={(id) => setDeleteId(id)}
               />
             ))}

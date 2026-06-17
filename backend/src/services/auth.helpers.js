@@ -43,6 +43,7 @@ function publicProfile(row, providerProfile) {
   if (providerProfile) {
     base.business_name = providerProfile.business_name;
     base.is_verified = providerProfile.is_verified;
+    base.verification_status = providerProfile.verification_status ?? null;
     base.rating = providerProfile.rating;
     base.total_reviews = providerProfile.total_reviews ?? 0;
     base.total_orders = providerProfile.total_orders ?? 0;

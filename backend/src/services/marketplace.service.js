@@ -318,6 +318,20 @@ async function payListingFeeWithPayos(userId, listingId, fee, body = {}) {
 /** PASS-03 — POST /api/marketplace/listings/:id/listing-fee/pay */
 async function payListingFee(userId, listingId, body = {}) {
   const paymentMethod = body.payment_method || 'payos';
+
+  // Dev bypass: kích hoạt ngay không cần thanh toán (chỉ dùng khi NODE_ENV !== production)
+  if (paymentMethod === 'dev_bypass') {
+    if (process.env.NODE_ENV === 'production') {
+      throw httpError(403, 'dev_bypass không khả dụng trong môi trường production', 'forbidden');
+    }
+    const listing = await loadListingForFeePay(userId, listingId);
+    if (listing.fee_paid) {
+      return { listing, fee_paid: 0, already_paid: true, payment_method: 'dev_bypass' };
+    }
+    const updated = await selectListingAfterFeePay(listingId);
+    return { listing: updated, fee_paid: 0, already_paid: false, payment_method: 'dev_bypass', activated: true };
+  }
+
   if (!['wallet', 'payos'].includes(paymentMethod)) {
     throw httpError(400, 'payment_method phải là wallet hoặc payos', 'unsupported_payment_method');
   }
@@ -1085,6 +1099,41 @@ async function uploadListingImage(userId, file) {
   return { url };
 }
 
+async function getMyConversations(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('marketplace_conversations')
+    .select(`
+      id, listing_id, buyer_id, seller_id,
+      last_message_text, last_message_at, seller_unread, buyer_unread,
+      listing:listing_id ( id, title, images ),
+      buyer:buyer_id ( id, full_name, avatar_url ),
+      seller:seller_id ( id, full_name, avatar_url )
+    `)
+    .or(`seller_id.eq.${userId},buyer_id.eq.${userId}`)
+    .not('last_message_at', 'is', null)
+    .order('last_message_at', { ascending: false });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  return (data || []).map((conv) => {
+    const isSeller   = conv.seller_id === userId;
+    const counterpart = isSeller ? conv.buyer : conv.seller;
+    const unread     = isSeller ? (conv.seller_unread ?? 0) : (conv.buyer_unread ?? 0);
+    return {
+      id:              conv.id,
+      listing_id:      conv.listing_id,
+      buyer_id:        conv.buyer_id,
+      listing_title:   conv.listing?.title,
+      listing_image:   conv.listing?.images?.[0],
+      counterpart:     { id: counterpart?.id, full_name: counterpart?.full_name, avatar_url: counterpart?.avatar_url },
+      last_message:    conv.last_message_text,
+      last_message_at: conv.last_message_at,
+      unread_count:    unread,
+      is_seller:       isSeller,
+    };
+  });
+}
+
 module.exports = {
   createListing, payListingFee, finalizeListingFeePayment, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
@@ -1092,5 +1141,5 @@ module.exports = {
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, browseByOwner, bumpListing,
   confirmReceived, createRating, getSellerStats,
-  uploadListingImage, computeListingFee,
+  uploadListingImage, computeListingFee, getMyConversations,
 };

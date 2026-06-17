@@ -10,6 +10,8 @@ const router = express.Router();
 router.get('/listings', requireAuth, marketplaceController.browseListings);
 // API-060 — Tin của tôi
 router.get('/my-listings', requireAuth, marketplaceController.getMyListings);
+// Danh sách hội thoại chợ của tôi
+router.get('/my-conversations', requireAuth, marketplaceController.getMyConversations);
 // API-062 — Đăng tin
 router.post('/listings', requireAuth, marketplaceController.createListing);
 // PASS-03 — Thanh toán phí đăng tin
