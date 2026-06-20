@@ -866,7 +866,7 @@ async function applyOrderAfterDepositPaid(paymentId) {
   const { data: order, error: orderErr } = await supabaseAdmin
     .from('orders')
     .select(
-      'id, status, deposit_paid, total_price, customer_id, provider_id, pickup_address, delivery_address, order_number',
+      'id, status, deposit_paid, total_price, customer_id, provider_id, pickup_address, delivery_address, order_number, scheduled_pickup_time',
     )
     .eq('id', payment.order_id)
     .maybeSingle();
@@ -879,15 +879,26 @@ async function applyOrderAfterDepositPaid(paymentId) {
   const remainingAmount = totalPrice > 0 ? Math.max(0, totalPrice - depositAmount) : 0;
   const now = new Date().toISOString();
 
+  const updateFields = {
+    deposit_paid: true,
+    deposit_paid_at: now,
+    deposit_amount: depositAmount,
+    remaining_amount: remainingAmount,
+    lock_expires_at: null, // clear lock vì đã đặt cọc xong
+    updated_at: now,
+  };
+
+  if (order.status === 'matched') {
+    // Đơn đặt trước (> 24h) → scheduled, đơn trong ngày → accepted
+    const hoursUntilPickup = order.scheduled_pickup_time
+      ? (new Date(order.scheduled_pickup_time).getTime() - Date.now()) / (1000 * 60 * 60)
+      : 0;
+    updateFields.status = hoursUntilPickup > 24 ? 'scheduled' : 'accepted';
+  }
+
   const { error: updateErr } = await supabaseAdmin
     .from('orders')
-    .update({
-      deposit_paid: true,
-      deposit_paid_at: now,
-      deposit_amount: depositAmount,
-      remaining_amount: remainingAmount,
-      updated_at: now,
-    })
+    .update(updateFields)
     .eq('id', order.id)
     .eq('deposit_paid', false);
 
@@ -896,11 +907,14 @@ async function applyOrderAfterDepositPaid(paymentId) {
     return { applied: false, error: updateErr.message };
   }
 
+  const isScheduled = updateFields.status === 'scheduled';
   await createNotification(
     order.customer_id,
     'payment_received',
     'Đặt cọc thành công',
-    `Đã đặt cọc ${depositAmount.toLocaleString('vi-VN')}đ. Chờ nhà xe xác nhận đơn.`,
+    isScheduled
+      ? `Đã đặt cọc ${depositAmount.toLocaleString('vi-VN')}đ. Đơn đã được xếp lịch, nhà xe sẽ đến đúng giờ hẹn.`
+      : `Đã đặt cọc ${depositAmount.toLocaleString('vi-VN')}đ. Nhà xe đã xác nhận và sẽ đến lấy hàng sớm.`,
     { priority: 'high', actionData: { order_id: order.id } },
   );
 
@@ -908,8 +922,10 @@ async function applyOrderAfterDepositPaid(paymentId) {
     await createNotification(
       order.provider_id,
       'payment_received',
-      'Khách đã đặt cọc',
-      `${order.pickup_address || 'Điểm lấy'} → ${order.delivery_address || 'Điểm giao'}. Vui lòng nhận đơn.`,
+      isScheduled ? 'Đơn đặt trước đã xác nhận' : 'Đơn hàng đã xác nhận — đến lấy hàng',
+      isScheduled
+        ? `Khách đã đặt cọc cho chuyến sắp tới. ${order.pickup_address || 'Điểm lấy'} → ${order.delivery_address || 'Điểm giao'}.`
+        : `Khách đã đặt cọc. ${order.pickup_address || 'Điểm lấy'} → ${order.delivery_address || 'Điểm giao'}. Hãy đến lấy hàng.`,
       { priority: 'high', actionData: { order_id: order.id } },
     );
   }

@@ -19,7 +19,7 @@ export default function ProviderProfilePage() {
 
   const menu = [
     { icon: User, label: "Chỉnh sửa thông tin", desc: "Tên, SĐT, tên doanh nghiệp", href: "/profile/edit" },
-    { icon: FileText, label: "Giấy tờ xác minh", desc: isVerified ? "✓ Đã xác minh" : "Chưa xác minh - Upload ngay", href: "/documents" },
+    { icon: FileText, label: "Giấy tờ xác minh", desc: isVerified ? "✓ Đã xác minh" : "Chưa xác minh - Upload ngay", href: "/tai-xe/giay-to" },
     { icon: Lock, label: "Đổi mật khẩu", desc: "Cập nhật mật khẩu đăng nhập", href: "/profile/change-password" },
     { icon: HelpCircle, label: "Trợ giúp", desc: "FAQ, liên hệ hỗ trợ", href: "/profile/help" },
   ];

@@ -22,4 +22,13 @@ async function respondToReview(req, res, next) {
   }
 }
 
-module.exports = { getMyReviews, respondToReview };
+async function submitReview(req, res, next) {
+  try {
+    const data = await reviewsService.createReview(req.user.id, req.params.orderId, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { getMyReviews, respondToReview, submitReview };

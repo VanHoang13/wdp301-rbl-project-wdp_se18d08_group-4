@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { authApi, providerApi } from "@/lib/api";
 import { getStoredUser, isAuthenticated, storeAuth, type AuthUser } from "@/lib/auth";
+import { TermsModal } from "@/components/modals/TermsModal";
 
 const BRAND   = "#1A56DB";  // provider primary
 const SUCCESS = "#16A34A";  // semantic: success screen step 4, icon hoàn tất
@@ -68,6 +69,8 @@ export default function DangKyTaiXePage() {
 
   const [docs,     setDocs]     = useState<Partial<Record<DocKey, File>>>({});
   const [previews, setPreviews] = useState<Partial<Record<DocKey, string>>>({});
+  const [tosAgreed,       setTosAgreed]       = useState(false);
+  const [showProviderTos, setShowProviderTos] = useState(false);
   const docRef0 = useRef<HTMLInputElement>(null);
   const docRef1 = useRef<HTMLInputElement>(null);
   const docRef2 = useRef<HTMLInputElement>(null);
@@ -141,6 +144,10 @@ export default function DangKyTaiXePage() {
       setError(`Vui lòng upload: ${missing.map(d => d.label).join(", ")}`);
       return;
     }
+    if (!tosAgreed) {
+      setError("Vui lòng đọc và đồng ý với điều khoản dịch vụ trước khi nộp hồ sơ");
+      return;
+    }
     setLoading(true);
     try {
       const files: Record<string, File> = {};
@@ -153,6 +160,7 @@ export default function DangKyTaiXePage() {
   };
 
   return (
+    <>
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#F8FAFC" }}>
 
       {/* ── Top bar ── */}
@@ -335,6 +343,40 @@ export default function DangKyTaiXePage() {
                 );
               })}
             </div>
+            {/* Điều khoản nhà xe */}
+            <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3.5 space-y-3">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTosAgreed(v => !v)}
+                  className="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors"
+                  style={{ borderColor: tosAgreed ? BRAND : "#D1D5DB", backgroundColor: tosAgreed ? BRAND : "white" }}
+                >
+                  {tosAgreed && <CheckCircle size={12} className="text-white" />}
+                </button>
+                <p className="text-sm text-gray-700 leading-snug">
+                  Tôi đã đọc và đồng ý với{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowProviderTos(true)}
+                    className="font-semibold underline underline-offset-2"
+                    style={{ color: BRAND }}
+                  >
+                    Điều khoản dịch vụ nhà vận chuyển
+                  </button>
+                  , bao gồm chính sách hủy đơn và điểm tuân thủ.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProviderTos(true)}
+                className="text-xs font-medium flex items-center gap-1"
+                style={{ color: BRAND }}
+              >
+                📄 Xem toàn bộ điều khoản →
+              </button>
+            </div>
+
             <StepFooter onBack={() => setStep(2)} onNext={submitDocs} loading={loading} nextLabel="Nộp giấy tờ" nextIcon={<CheckCircle size={16} />} />
           </div>
         )}
@@ -380,6 +422,14 @@ export default function DangKyTaiXePage() {
         )}
       </div>
     </div>
+    {showProviderTos && (
+      <TermsModal
+        type="provider"
+        onAgree={() => { setTosAgreed(true); setShowProviderTos(false); }}
+        onClose={() => setShowProviderTos(false)}
+      />
+    )}
+    </>
   );
 }
 

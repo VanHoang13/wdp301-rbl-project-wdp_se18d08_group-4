@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Bell, LogOut, User,
   Home, ClipboardList, ShoppingBag, CreditCard, LayoutDashboard,
-  DollarSign, MessageSquare, FileText, Menu, X,
+  DollarSign, MessageSquare, FileText, Menu, X, CalendarDays,
 } from "lucide-react";
 import { getStoredUser, logoutToHome, storeAuth, type AuthUser } from "@/lib/auth";
 import { notificationsApi, customerApi, authApi } from "@/lib/api";
@@ -28,12 +28,12 @@ const customerNav: NavItem[] = [
 ];
 
 const providerNav: NavItem[] = [
-  { href: "/dashboard",   label: "Tổng quan",  icon: LayoutDashboard },
-  { href: "/orders",      label: "Đơn hàng",   icon: ClipboardList },
-  { href: "/orders/chat", label: "Tin nhắn",   icon: MessageSquare },
-  { href: "/earnings",    label: "Thu nhập",   icon: DollarSign },
-  { href: "/messages",    label: "Thông báo",  icon: Bell },
-  { href: "/documents",   label: "Giấy tờ",    icon: FileText },
+  { href: "/tai-xe/tong-quan", label: "Tổng quan",  icon: LayoutDashboard },
+  { href: "/orders",           label: "Đơn hàng",   icon: ClipboardList },
+  { href: "/tai-xe/lich",      label: "Lịch",       icon: CalendarDays },
+  { href: "/tai-xe/tin-nhan",  label: "Tin nhắn",   icon: MessageSquare },
+  { href: "/tai-xe/thu-nhap",  label: "Thu nhập",   icon: DollarSign },
+  { href: "/tai-xe/thong-bao", label: "Thông báo",  icon: Bell },
 ];
 
 const BRAND = "#1A56DB";  // provider primary (royal blue)
@@ -131,7 +131,7 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
               >
                 <Icon size={18} strokeWidth={active ? 2.5 : 1.8} />
                 <span className="flex-1">{label}</span>
-                {href === "/messages" && unread > 0 && (
+                {href === "/tai-xe/thong-bao" && unread > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-bold bg-red-500">
                     {unread}
                   </span>
@@ -202,7 +202,7 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Link href={isProvider ? "/messages" : "/thong-bao"}>
+            <Link href={isProvider ? "/tai-xe/thong-bao" : "/thong-bao"}>
               <button className="relative w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                 <Bell size={17} />
                 {unread > 0 && (

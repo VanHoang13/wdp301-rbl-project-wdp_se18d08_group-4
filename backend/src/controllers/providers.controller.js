@@ -70,6 +70,15 @@ async function getMyDocuments(req, res, next) {
   }
 }
 
+async function getQuotedOrders(req, res, next) {
+  try {
+    const data = await providersService.getQuotedOrders(req.user.id);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   browse,
   getById,
@@ -78,4 +87,5 @@ module.exports = {
   updateSchedule,
   uploadDocuments,
   getMyDocuments,
+  getQuotedOrders,
 };

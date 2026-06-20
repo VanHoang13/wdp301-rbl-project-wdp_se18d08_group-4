@@ -125,7 +125,7 @@ export function UserMenuDropdown({ user, accentGradient }: UserMenuDropdownProps
             <MenuLink icon={User} label="Hồ sơ" href="/profile" />
             <MenuLink icon={Settings} label="Chỉnh sửa hồ sơ" href="/profile/edit" />
             <MenuLink icon={KeyRound} label="Đổi mật khẩu" href="/profile/change-password" />
-            {isProvider && <MenuLink icon={Shield} label="Giấy tờ xác minh" href="/documents" />}
+            {isProvider && <MenuLink icon={Shield} label="Giấy tờ xác minh" href="/tai-xe/giay-to" />}
           </div>
 
           <DropdownMenu.Separator style={{ backgroundColor: "var(--border)", height: 1 }} />

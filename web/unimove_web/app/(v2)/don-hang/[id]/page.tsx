@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ordersApi, quotesApi, paymentsApi, providersApi, devApi } from "@/lib/api";
+import { ordersApi, quotesApi, paymentsApi, providersApi, devApi, reviewsApi } from "@/lib/api";
 import { formatVND, formatDate } from "@/lib/utils";
 import { useUIStore } from "@/lib/stores";
 import { getStoredUser } from "@/lib/auth";
@@ -21,8 +21,11 @@ interface OrderDetail {
   pickup_address: string; dropoff_address: string; description?: string;
   estimated_price?: number; final_price?: number; total_price?: number;
   deposit_amount?: number; deposit_paid?: boolean; created_at: string;
+  provider_accepted_at?: string; scheduled_pickup_time?: string;
+  cancellation_reason?: string; cancelled_at?: string;
   provider?: { id: string; full_name: string; phone: string; rating: number; vehicle_type?: string; total_reviews?: number };
   provider_name?: string;
+  my_review?: { id: string; rating: number; comment?: string; tags: string[]; created_at: string };
 }
 
 interface Quote {
@@ -69,6 +72,7 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   pending:     { label: "Chờ báo giá",     color: "#D97706", bg: "#FFFBEB" },
   matched:     { label: "Chờ thanh toán",  color: "#2563EB", bg: "#EFF6FF" },
   accepted:    { label: "Đã xác nhận",     color: "#059669", bg: "#ECFDF5" },
+  scheduled:   { label: "Đã lên lịch",     color: "#0891B2", bg: "#ECFEFF" },
   picking_up:  { label: "Đang đến lấy",    color: "#7C3AED", bg: "#F5F3FF" },
   in_progress: { label: "Đang vận chuyển", color: "#7C3AED", bg: "#F5F3FF" },
   completed:   { label: "Hoàn thành",      color: "#059669", bg: "#ECFDF5" },
@@ -111,12 +115,19 @@ export default function DonHangDetailPage() {
   const [selectedReason, setSelectedReason]   = useState("");
   const [customReason, setCustomReason]       = useState("");
   const [cancelling, setCancelling]           = useState(false);
+  const [cancellingTimeout, setCancellingTimeout] = useState(false);
 
   const [drawerProvider, setDrawerProvider]   = useState<ProviderProfile | null>(null);
   const [loadingProfile, setLoadingProfile]   = useState(false);
 
   /* UI state for route expand */
   const [showFullRoute, setShowFullRoute] = useState(false);
+
+  /* review form state */
+  const [reviewStars,   setReviewStars]   = useState(0);
+  const [reviewTags,    setReviewTags]    = useState<string[]>([]);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   /* ── functions (ALL unchanged) ── */
   const openProviderDrawer = async (providerId: string) => {
@@ -141,6 +152,31 @@ export default function DonHangDetailPage() {
   };
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [id]);
+
+  // Polling 15s khi đơn đang active — tự cập nhật step mà không cần reload
+  useEffect(() => {
+    const ACTIVE = ["pending", "matched", "accepted", "scheduled", "picking_up", "picked_up", "in_progress", "delivering"];
+    if (!order || !ACTIVE.includes(order.status)) return;
+    const timer = setInterval(() => { load(); }, 15_000);
+    return () => clearInterval(timer);
+  }, [order?.status]);
+
+  const submitReview = async () => {
+    if (reviewStars === 0) return;
+    setSubmittingReview(true);
+    try {
+      await reviewsApi.submit(id, {
+        rating: reviewStars,
+        comment: reviewComment.trim() || undefined,
+        tags: reviewTags,
+      });
+      await load();
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Gửi đánh giá thất bại");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const openCancelFlow = async () => {
     setCancelStep(1);
@@ -204,8 +240,23 @@ export default function DonHangDetailPage() {
     finally { setActing(false); }
   };
 
+  const cancelByTimeout = async () => {
+    if (!confirm("Bạn chắc chắn muốn hủy đơn vì nhà xe không phản hồi? Tiền cọc sẽ được hoàn lại.")) return;
+    setCancellingTimeout(true);
+    try {
+      await ordersApi.cancelTimeout(id);
+      showSuccess("Đã hủy đơn. Yêu cầu hoàn tiền đang chờ xử lý.");
+      await load();
+    } catch (e) { showError(e instanceof Error ? e.message : "Không thể hủy đơn"); }
+    finally { setCancellingTimeout(false); }
+  };
+
   /* ── derived (unchanged logic) ── */
-  const canCancel = order && ["pending", "matched", "accepted"].includes(order.status);
+  const canCancel = order && ["pending", "matched", "accepted", "scheduled"].includes(order.status);
+
+  // Banner hủy: accepted + còn ≤15 phút đến giờ hẹn mà provider chưa bấm "Đang đến lấy"
+  const pickupTime = order?.scheduled_pickup_time ? new Date(order.scheduled_pickup_time).getTime() : 0;
+  const canCancelTimeout = order?.status === "accepted" && pickupTime > 0 && Date.now() >= pickupTime - 15 * 60 * 1000;
   const hasProviderLinked = order && (
     !!order.provider || ["matched", "accepted", "picking_up", "in_progress", "completed"].includes(order.status)
   );
@@ -222,7 +273,11 @@ export default function DonHangDetailPage() {
   const totalPrice = order ? (order.final_price ?? order.total_price ?? order.estimated_price ?? 0) : 0;
   const hasPrice = totalPrice > 0;
   const selectedQuote = quotes.find(q => q.status === "selected");
-  const statusCfg = order ? (STATUS_CFG[order.status] ?? { label: order.status, color: "#6B7280", bg: "#F9FAFB" }) : null;
+  const statusCfg = order
+    ? order.status === "matched" && order.deposit_paid
+      ? { label: "Đặt cọc thành công", color: "#059669", bg: "#ECFDF5" }
+      : (STATUS_CFG[order.status] ?? { label: order.status, color: "#6B7280", bg: "#F9FAFB" })
+    : null;
 
   /* ══════════════════════════════════════════════════════════════ */
   return (
@@ -288,7 +343,9 @@ export default function DonHangDetailPage() {
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Tiến trình đơn hàng</p>
                 <div>
                   {V_STEPS.map((step, i) => {
-                    const currentIdx = STATUS_STEP[order.status] ?? 0;
+                    const currentIdx = (order.status === "matched" && order.deposit_paid)
+                      ? STATUS_STEP["accepted"]
+                      : (STATUS_STEP[order.status] ?? 0);
                     const done = i < currentIdx;
                     const current = i === currentIdx;
                     const isLast = i === V_STEPS.length - 1;
@@ -335,9 +392,17 @@ export default function DonHangDetailPage() {
             {order.status === "cancelled" && (
               <div className="mx-4 mt-4 rounded-2xl bg-red-50 border border-red-100 p-5 flex gap-3 items-start">
                 <span className="text-2xl shrink-0">❌</span>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="font-bold text-red-700">Đơn hàng đã bị huỷ</p>
-                  <p className="text-sm text-red-500 mt-0.5">Nếu bạn đã đặt cọc, tiền hoàn lại sẽ xử lý trong 1–3 ngày làm việc.</p>
+                  {order.cancellation_reason && (
+                    <p className="text-sm text-red-600 mt-1 font-medium">{order.cancellation_reason}</p>
+                  )}
+                  {order.cancelled_at && (
+                    <p className="text-xs text-red-400 mt-0.5">Huỷ lúc {formatDate(order.cancelled_at)}</p>
+                  )}
+                  {order.deposit_paid && (
+                    <p className="text-sm text-red-500 mt-1.5">Tiền đặt cọc sẽ được hoàn trong 1–3 ngày làm việc.</p>
+                  )}
                 </div>
               </div>
             )}
@@ -546,19 +611,112 @@ export default function DonHangDetailPage() {
                   <XCircle size={14} /> Huỷ đơn hàng
                 </button>
               )}
+              {canCancelTimeout && (
+                <button
+                  onClick={cancelByTimeout}
+                  disabled={cancellingTimeout}
+                  className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 flex items-center gap-3 hover:bg-orange-100 transition-colors disabled:opacity-60"
+                >
+                  <AlertTriangle size={16} className="text-orange-500 shrink-0" />
+                  <div className="text-left flex-1">
+                    <p className="text-sm font-semibold text-orange-700">Nhà xe không phản hồi?</p>
+                    <p className="text-xs text-orange-500 mt-0.5">Còn 15 phút đến giờ hẹn mà nhà xe chưa lên đường</p>
+                  </div>
+                </button>
+              )}
             </div>
 
-            {/* ─ 8. Completed: rating nudge ─ */}
+            {/* ─ 8. Completed: review form or submitted review ─ */}
             {order.status === "completed" && (
-              <Link href="/cho-sinh-vien" className="block mx-4 mt-3">
-                <div className="rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">Mua bán trên Chợ sinh viên?</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Tìm đồ cũ giá tốt từ sinh viên ĐN</p>
+              <div className="mx-4 mt-3">
+                {order.my_review ? (
+                  /* Already reviewed — show submitted card */
+                  <div className="rounded-2xl border border-green-100 bg-green-50 px-4 py-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle size={16} className="text-green-600 shrink-0" />
+                      <p className="text-sm font-bold text-green-800">Đánh giá của bạn</p>
+                    </div>
+                    <div className="flex gap-0.5 mb-2">
+                      {[1,2,3,4,5].map(s => (
+                        <Star key={s} size={16}
+                          fill={s <= order.my_review!.rating ? "#F59E0B" : "none"}
+                          stroke={s <= order.my_review!.rating ? "#F59E0B" : "#D1D5DB"} />
+                      ))}
+                    </div>
+                    {order.my_review.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {order.my_review.tags.map(t => (
+                          <span key={t} className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                    {order.my_review.comment && (
+                      <p className="text-sm text-gray-600 italic">"{order.my_review.comment}"</p>
+                    )}
                   </div>
-                  <span className="text-2xl">🛍️</span>
-                </div>
-              </Link>
+                ) : (
+                  /* Review form */
+                  <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-4 space-y-4">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Đánh giá chuyến đi</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Chia sẻ trải nghiệm để giúp các khách hàng khác</p>
+                    </div>
+
+                    {/* Stars */}
+                    <div className="flex gap-2 justify-center py-1">
+                      {[1,2,3,4,5].map(s => (
+                        <button key={s} onClick={() => setReviewStars(s)} className="transition-transform active:scale-90">
+                          <Star size={36}
+                            fill={s <= reviewStars ? "#F59E0B" : "none"}
+                            stroke={s <= reviewStars ? "#F59E0B" : "#D1D5DB"}
+                            strokeWidth={1.5} />
+                        </button>
+                      ))}
+                    </div>
+                    {reviewStars > 0 && (
+                      <p className="text-center text-sm font-semibold text-amber-500 -mt-2">
+                        {["","Rất tệ","Tệ","Bình thường","Tốt","Xuất sắc"][reviewStars]}
+                      </p>
+                    )}
+
+                    {/* Tags */}
+                    <div className="flex flex-wrap gap-2">
+                      {["Cẩn thận","Đúng giờ","Chuyên nghiệp","Thân thiện","Giá tốt","Nhanh chóng","Gọn gàng"].map(tag => {
+                        const on = reviewTags.includes(tag);
+                        return (
+                          <button key={tag}
+                            onClick={() => setReviewTags(p => on ? p.filter(t => t !== tag) : [...p, tag])}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+                            style={on
+                              ? { backgroundColor: "#EFF6FF", borderColor: "#2563EB", color: "#2563EB" }
+                              : { backgroundColor: "#F9FAFB", borderColor: "#E5E7EB", color: "#6B7280" }}>
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Comment */}
+                    <textarea
+                      placeholder="Nhận xét thêm (tuỳ chọn)..."
+                      value={reviewComment}
+                      onChange={e => setReviewComment(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                    />
+
+                    <Button
+                      className="w-full h-11 rounded-2xl text-sm font-bold"
+                      style={{ backgroundColor: reviewStars > 0 ? "#2563EB" : undefined }}
+                      disabled={reviewStars === 0}
+                      loading={submittingReview}
+                      onClick={submitReview}
+                    >
+                      Gửi đánh giá
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

@@ -116,11 +116,7 @@ function DocCard({ doc }: { doc: ProviderDocument }) {
           )}
         </div>
 
-        {doc.notes && (
-          <p className="text-xs text-orange-600 bg-orange-50 rounded-lg px-2.5 py-1.5">
-            💬 {doc.notes}
-          </p>
-        )}
+
 
         <a
           href={doc.document_url}

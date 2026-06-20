@@ -51,7 +51,7 @@ export default function LichHenPage() {
 
   const validate = () => {
     if (!isValidPickupTime(combined)) {
-      setError("Chọn thời gian sau ít nhất 2 giờ nữa");
+      setError("Chọn thời gian sau ít nhất 1 giờ nữa");
       return false;
     }
     setError("");

@@ -71,7 +71,7 @@ export function isAuthenticated(): boolean {
 /** Trả về route trang chủ tương ứng với role */
 export function getRoleHome(role: UserRole): string {
   if (role === "admin") return "/admin/dashboard";
-  if (role === "provider") return "/dashboard";
+  if (role === "provider") return "/tai-xe/tong-quan";
   return "/trang-chu";
 }
 

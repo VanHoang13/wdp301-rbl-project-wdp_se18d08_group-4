@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
@@ -16,8 +16,8 @@ interface EarningsData {
   breakdown: { date: string; earned: number; orders: number }[];
 }
 
-const BRAND   = "#1A56DB";  // provider primary
-const SUCCESS = "#16A34A";  // semantic: +tiền, hoàn thành
+const BRAND   = "#1A56DB";
+const SUCCESS = "#16A34A";
 
 export default function EarningsPage() {
   const [data, setData] = useState<EarningsData | null>(null);
@@ -59,7 +59,6 @@ export default function EarningsPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Revenue hero card */}
         <div className="rounded-2xl p-5 lg:col-span-2 text-white"
           style={{ background: "linear-gradient(135deg, #1648C0 0%, #1A56DB 100%)" }}>
           <div className="flex items-center gap-2 mb-3">

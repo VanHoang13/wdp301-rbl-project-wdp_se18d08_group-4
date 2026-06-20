@@ -117,7 +117,7 @@ export default function ChoDuyetPage() {
                 Chúc bạn kinh doanh thuận lợi! 🚛
               </p>
 
-              <button onClick={() => router.replace("/dashboard")}
+              <button onClick={() => router.replace("/tai-xe/tong-quan")}
                 className="w-full rounded-full font-bold text-white flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-[0.98] shadow-lg"
                 style={{ height: 52, backgroundColor: BRAND, boxShadow: "0 8px 24px rgba(26,86,219,0.35)" }}>
                 Vào Dashboard <ArrowRight size={18} />

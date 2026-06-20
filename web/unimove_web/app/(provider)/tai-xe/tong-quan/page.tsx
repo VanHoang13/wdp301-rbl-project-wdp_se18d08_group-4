@@ -81,7 +81,7 @@ export default function ProviderDashboardPage() {
     <div className="space-y-6">
       {/* KYC warning */}
       {hydrated && user && !user.is_verified && (
-        <Link href="/documents">
+        <Link href="/tai-xe/giay-to">
           <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 transition-colors">
             <AlertTriangle size={18} className="text-yellow-600 shrink-0" />
             <p className="text-sm font-medium flex-1 text-yellow-700">
@@ -233,12 +233,12 @@ export default function ProviderDashboardPage() {
             <h2 className="text-base font-bold text-gray-900 mb-3">Truy cập nhanh</h2>
             <div className="space-y-2">
               {[
-                { href: "/earnings",  label: "Thu nhập của tôi",   icon: DollarSign, color: BRAND,  bg: "#EFF4FE" },
-                { href: "/documents", label: hydrated && user?.is_verified ? "Đã xác minh ✓" : "Upload giấy tờ",
+                { href: "/tai-xe/thu-nhap", label: "Thu nhập của tôi",   icon: DollarSign, color: BRAND,  bg: "#EFF4FE" },
+                { href: "/tai-xe/giay-to",  label: hydrated && user?.is_verified ? "Đã xác minh ✓" : "Upload giấy tờ",
                   icon: Users,
                   color: hydrated && user?.is_verified ? SUCCESS : "#D97706",
                   bg:    hydrated && user?.is_verified ? "#F0FDF4" : "#FFFBEB" },
-                { href: "/orders",    label: "Tất cả đơn hàng",    icon: Package,    color: BLUE,   bg: "#EFF6FF" },
+                { href: "/orders",          label: "Tất cả đơn hàng",    icon: Package,    color: BLUE,   bg: "#EFF6FF" },
               ].map(item => (
                 <Link key={item.href} href={item.href}>
                   <div className="flex items-center gap-3 p-3.5 rounded-xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer">

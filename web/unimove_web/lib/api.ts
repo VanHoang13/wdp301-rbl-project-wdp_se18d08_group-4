@@ -245,6 +245,8 @@ export const ordersApi = {
   start: (id: string) => patch(`/orders/${id}/start`),
   complete: (id: string) => patch(`/orders/${id}/complete`),
   decline: (id: string, reason?: string) => patch(`/orders/${id}/decline`, { reason }),
+  cancelTimeout: (id: string) => post(`/orders/${id}/cancel-timeout`, {}),
+  mySchedule: (from?: string, to?: string) => get("/orders/my-schedule", { from, to }),
   uploadDeliveryPhoto: (id: string, file: File) => {
     const fd = new FormData();
     fd.append("photo", file);
@@ -263,6 +265,7 @@ export const quotesApi = {
 export const providersApi = {
   browse: (params?: Record<string, unknown>) => get("/providers/browse", params),
   getById: (id: string, params?: Record<string, unknown>) => get(`/providers/${id}`, params),
+  getQuotedOrders: () => get("/providers/me/quoted-orders"),
 };
 
 export const providerApi = {
@@ -409,4 +412,9 @@ export const mapsApi = {
 export const reviewsApi = {
   mine: () => get("/reviews/mine"),
   respond: (id: string, response: string) => patch(`/reviews/${id}/respond`, { response }),
+  submit: (orderId: string, payload: {
+    rating: number; comment?: string; tags?: string[];
+    service_quality_rating?: number; punctuality_rating?: number;
+    professionalism_rating?: number; value_for_money_rating?: number;
+  }) => post(`/reviews/orders/${orderId}`, payload),
 };

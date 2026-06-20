@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ClipboardList, DollarSign, MessageCircle, User } from "lucide-react";
+import { LayoutDashboard, ClipboardList, DollarSign, MessageCircle, User, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
-  { href: "/orders",    label: "Đơn hàng",  icon: ClipboardList },
-  { href: "/earnings",  label: "Thu nhập",  icon: DollarSign },
-  { href: "/messages",  label: "Tin nhắn",  icon: MessageCircle },
-  { href: "/profile",   label: "Hồ sơ",     icon: User },
+  { href: "/tai-xe/tong-quan", label: "Tổng quan", icon: LayoutDashboard },
+  { href: "/orders",           label: "Đơn hàng",  icon: ClipboardList },
+  { href: "/tai-xe/lich",      label: "Lịch",      icon: CalendarDays },
+  { href: "/tai-xe/thu-nhap",  label: "Thu nhập",  icon: DollarSign },
+  { href: "/tai-xe/tin-nhan",  label: "Tin nhắn",  icon: MessageCircle },
 ];
 
 export function ProviderNav() {
