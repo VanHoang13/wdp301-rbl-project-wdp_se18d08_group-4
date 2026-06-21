@@ -858,7 +858,17 @@ async function getOrders(req, res) {
       .range(offset, offset + pageSize - 1)
       .order('created_at', { ascending: false });
 
-    if (status !== 'all') {
+    const STATUS_GROUPS = {
+      pending: ['pending', 'matched', 'accepted'],
+      shipping: ['picking_up', 'picked_up', 'in_progress'],
+      completed: ['completed'],
+      cancelled: ['cancelled'],
+      disputed: ['disputed'],
+    };
+    const statusGroup = req.query.statusGroup;
+    if (statusGroup && STATUS_GROUPS[statusGroup]) {
+      query = query.in('status', STATUS_GROUPS[statusGroup]);
+    } else if (status !== 'all') {
       query = query.eq('status', status);
     }
     
@@ -879,7 +889,9 @@ async function getOrders(req, res) {
 
     // Get total count
     let countQuery = supabaseAdmin.from('orders').select('*', { count: 'exact', head: true });
-    if (status !== 'all') countQuery = countQuery.eq('status', status);
+    if (statusGroup && STATUS_GROUPS[statusGroup]) {
+      countQuery = countQuery.in('status', STATUS_GROUPS[statusGroup]);
+    } else if (status !== 'all') countQuery = countQuery.eq('status', status);
     if (search) countQuery = countQuery.ilike('order_number', `%${search}%`);
     if (dateFrom) countQuery = countQuery.gte('created_at', dateFrom);
     if (dateTo) countQuery = countQuery.lte('created_at', dateTo);

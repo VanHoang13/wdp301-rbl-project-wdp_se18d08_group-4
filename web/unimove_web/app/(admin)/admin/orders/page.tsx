@@ -6,7 +6,6 @@ import { apiClient, adminApi } from "@/lib/admin/api";
 import { normalizeMeta } from "@/lib/admin/normalize-meta";
 import { usePolling } from "@/lib/admin/use-polling";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
-import type { OrderStatus } from "@/lib/admin/types";
 import { OrdersClient } from "./orders-client";
 
 const PAGE_SIZE = 10;
@@ -14,7 +13,7 @@ const POLL_INTERVAL_MS = 8_000;
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
-  const status = searchParams.get("status") as OrderStatus | undefined;
+  const tab = searchParams.get("tab") || "pending";
   const search = searchParams.get("search");
   const page = Number(searchParams.get("page") ?? 1);
 
@@ -40,7 +39,7 @@ export default function OrdersPage() {
         const response = await adminApi.getOrders({
           page,
           pageSize: PAGE_SIZE,
-          status: status || undefined,
+          statusGroup: tab,
           search: search || undefined,
         });
         if (response.success) {
@@ -59,7 +58,7 @@ export default function OrdersPage() {
         else setIsRefreshing(false);
       }
     },
-    [page, search, status]
+    [page, search, tab]
   );
 
   useEffect(() => {
@@ -125,7 +124,7 @@ export default function OrdersPage() {
       <OrdersClient
         orders={data as any[]}
         meta={meta}
-        activeStatus={status}
+        activeTab={tab}
         currentSearch={search ?? ""}
         adminId={adminId}
         isRefreshing={isRefreshing}

@@ -445,7 +445,10 @@ async function OrderDetailContent({ id }: { id: string }) {
             />
             <div className="space-y-4">
               {(history as StatusHistoryEntry[]).map((entry, idx) => (
-                <div key={entry.id} className="relative flex gap-4 pl-4">
+                <div
+                  key={entry.id ? `${entry.id}-${idx}` : `history-${entry.created_at}-${idx}`}
+                  className="relative flex gap-4 pl-4"
+                >
                   {/* Dot */}
                   <div
                     className="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 shrink-0"

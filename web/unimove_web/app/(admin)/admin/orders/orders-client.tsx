@@ -14,25 +14,28 @@ import { EmptyState } from "@/components/admin-dashboard/empty-state";
 import { Pagination } from "@/components/admin-dashboard/pagination";
 import { formatVND, formatDateTime, formatOrderNumber } from "@/lib/admin/formatters";
 import { forceCancelOrder } from "@/lib/admin/queries/orders";
-import type { OrderStatus, PaginationMeta, Order } from "@/lib/admin/types";
+import type { PaginationMeta, Order } from "@/lib/admin/types";
 import { ShoppingBag, Search, X, Loader2, AlertTriangle, RefreshCw, Ban } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/admin-ui/tabs";
 import { getProviderDisplayName } from "@/lib/admin/normalize-order-relations";
 import { cn } from "@/lib/admin/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/admin-ui/tooltip";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ORDER_STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
+export const ORDER_STATUS_TABS = [
   { value: "pending", label: "Chờ xử lý" },
-  { value: "matched", label: "Đã ghép" },
-  { value: "accepted", label: "Đã nhận" },
-  { value: "picking_up", label: "Đang đến lấy" },
-  { value: "picked_up", label: "Đã lấy hàng" },
-  { value: "in_progress", label: "Đang vận chuyển" },
+  { value: "shipping", label: "Đang vận chuyển" },
   { value: "completed", label: "Hoàn thành" },
-  { value: "cancelled", label: "Đã hủy" },
+  { value: "cancelled", label: "Hủy" },
   { value: "disputed", label: "Tranh chấp" },
-];
+] as const;
+
+export type OrderStatusTab = (typeof ORDER_STATUS_TABS)[number]["value"];
+
+type OrderStatus = import("@/lib/admin/types").OrderStatus;
+
+const TERMINAL_STATUSES: OrderStatus[] = ["completed", "cancelled"];
 
 const VEHICLE_SIZE_LABELS: Record<string, string> = {
   motorbike: "Xe máy",
@@ -40,8 +43,6 @@ const VEHICLE_SIZE_LABELS: Record<string, string> = {
   medium_truck: "Xe tải vừa",
   large_truck: "Xe tải lớn",
 };
-
-const TERMINAL_STATUSES: OrderStatus[] = ["completed", "cancelled"];
 
 function isCancellable(status: OrderStatus): boolean {
   return !TERMINAL_STATUSES.includes(status);
@@ -180,17 +181,17 @@ function ForceCancelDialog({
 // ─── Filter Bar ──────────────────────────────────────────────────────────────
 
 function FilterBar({
-  activeStatus,
+  activeTab,
   currentSearch,
-  onStatusChange,
+  onTabChange,
   onSearchChange,
   isRefreshing,
   lastUpdatedAt,
   onRefresh,
 }: {
-  activeStatus: OrderStatus | undefined;
+  activeTab: OrderStatusTab;
   currentSearch: string;
-  onStatusChange: (s: OrderStatus | undefined) => void;
+  onTabChange: (tab: OrderStatusTab) => void;
   onSearchChange: (s: string) => void;
   isRefreshing?: boolean;
   lastUpdatedAt?: Date | null;
@@ -210,42 +211,18 @@ function FilterBar({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 mb-6">
-      {/* Status filter */}
-      <div className="relative">
-        <select
-          value={activeStatus ?? ""}
-          onChange={(e) => onStatusChange((e.target.value as OrderStatus) || undefined)}
-          className="appearance-none pl-3 pr-8 py-2 rounded-xl text-sm outline-none transition-colors cursor-pointer"
-          style={{
-            backgroundColor: "var(--card)",
-            border: "1px solid var(--border)",
-            color: "var(--text)",
-          }}
-        >
-          <option value="">Tất cả trạng thái</option>
-          {ORDER_STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
+    <div className="space-y-4 mb-6">
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as OrderStatusTab)}>
+        <TabsList className="w-full flex flex-wrap h-auto gap-1">
+          {ORDER_STATUS_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="flex-1 min-w-[120px]">
+              {tab.label}
+            </TabsTrigger>
           ))}
-        </select>
-        <div
-          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
-          style={{ color: "var(--muted)" }}
-        >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M4 6l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </div>
+        </TabsList>
+      </Tabs>
 
+      <div className="flex flex-wrap items-center gap-3">
       {/* Search input */}
       <div className="relative">
         <Search
@@ -304,6 +281,7 @@ function FilterBar({
           {isRefreshing ? "Đang cập nhật..." : "Làm mới"}
         </button>
       </div>
+      </div>
     </div>
   );
 }
@@ -313,7 +291,7 @@ function FilterBar({
 export function OrdersClient({
   orders,
   meta,
-  activeStatus,
+  activeTab,
   currentSearch,
   adminId,
   isRefreshing,
@@ -322,7 +300,7 @@ export function OrdersClient({
 }: {
   orders: OrderWithRelations[];
   meta: PaginationMeta;
-  activeStatus: OrderStatus | undefined;
+  activeTab: OrderStatusTab;
   currentSearch: string;
   adminId: string;
   isRefreshing?: boolean;
@@ -346,8 +324,8 @@ export function OrdersClient({
     [router, searchParams]
   );
 
-  function handleStatusChange(status: OrderStatus | undefined) {
-    updateParams({ status });
+  function handleTabChange(tab: OrderStatusTab) {
+    updateParams({ tab });
   }
 
   function handleSearchChange(search: string) {
@@ -368,9 +346,9 @@ export function OrdersClient({
     <>
       <TooltipProvider>
       <FilterBar
-        activeStatus={activeStatus}
+        activeTab={activeTab}
         currentSearch={currentSearch}
-        onStatusChange={handleStatusChange}
+        onTabChange={handleTabChange}
         onSearchChange={handleSearchChange}
         isRefreshing={isRefreshing}
         lastUpdatedAt={lastUpdatedAt}
