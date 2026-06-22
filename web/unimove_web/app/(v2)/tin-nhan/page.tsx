@@ -13,6 +13,8 @@ function TinNhanContent() {
   const withName = searchParams.get("with");
   const listingId = searchParams.get("listingId");
   const buyerIdParam = searchParams.get("buyerId");
+  const inboxCategory =
+    searchParams.get("tab") === "pass-do" ? "pass-do" : "chuyen-tro";
   const me = getStoredUser()?.id ?? "";
   const buyerId = buyerIdParam ?? (listingId ? me : null);
 
@@ -24,6 +26,8 @@ function TinNhanContent() {
         initialListingId={listingId}
         initialBuyerId={buyerId}
         initialTab="messages"
+        initialInboxCategory={inboxCategory}
+        enableInboxCategoryTabs
         enableNotificationsTab={false}
         className="h-[calc(100vh-68px-2rem)] min-h-[560px]"
       />

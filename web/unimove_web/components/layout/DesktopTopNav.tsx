@@ -3,11 +3,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, User, LogOut, Settings, Search, MessageCircle } from 'lucide-react'
+import { User, LogOut, Settings, Search, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
-import { useNotificationStore } from '@/lib/stores'
-import { notificationsApi, conversationsApi } from '@/lib/api'
+import { conversationsApi } from '@/lib/api'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 const NAV_LINKS = [
   { href: '/trang-chu', label: 'Trang chủ' },
@@ -20,9 +20,7 @@ const NAV_LINKS = [
 export function DesktopTopNav() {
   const pathname    = usePathname()
   const router      = useRouter()
-  const unreadCount    = useNotificationStore((s) => s.unreadCount)
   const [chatUnread, setChatUnread] = useState(0)
-  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
 
   const [user, setUser]           = useState<AuthUser | null>(null)
   const [open, setOpen]           = useState(false)
@@ -35,15 +33,8 @@ export function DesktopTopNav() {
     setUser(getStoredUser())
   }, [pathname])
 
-  // Poll unread count mỗi 30s để cập nhật chuông
+  // Poll chat unread mỗi 30s
   useEffect(() => {
-    const fetchUnread = async () => {
-      try {
-        const res = await notificationsApi.unreadCount()
-        const count = (res.data as { count?: number })?.count ?? 0
-        setUnreadCount(count)
-      } catch { /* ignore */ }
-    }
     const fetchChatUnread = async () => {
       if (!user) {
         setChatUnread(0)
@@ -60,14 +51,10 @@ export function DesktopTopNav() {
         }
       } catch { /* ignore */ }
     }
-    fetchUnread()
     fetchChatUnread()
-    const timer = setInterval(() => {
-      fetchUnread()
-      fetchChatUnread()
-    }, 30_000)
+    const timer = setInterval(fetchChatUnread, 30_000)
     return () => clearInterval(timer)
-  }, [setUnreadCount, user])
+  }, [user])
 
   useEffect(() => {
     if (!open) return
@@ -183,20 +170,11 @@ export function DesktopTopNav() {
                   )}
                 </Link>
 
-                <Link
-                  href="/thong-bao"
-                  aria-label={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Thông báo'}
-                  aria-current={isActive('/thong-bao') ? 'page' : undefined}
-                  className={cn(
-                    'relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100',
-                    isActive('/thong-bao') && 'bg-blue-50 text-[#0047FF]'
-                  )}
-                >
-                  <Bell className="h-5 w-5 text-gray-600" strokeWidth={1.75} />
-                  {unreadCount > 0 && (
-                    <span aria-hidden="true" className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-                  )}
-                </Link>
+                <NotificationBell
+                  buttonClassName="h-10 w-10"
+                  iconClassName="h-5 w-5 text-gray-600"
+                  iconSize={20}
+                />
 
                 <button
                   ref={avatarRef}

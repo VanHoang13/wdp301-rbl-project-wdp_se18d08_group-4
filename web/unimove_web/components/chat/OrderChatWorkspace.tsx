@@ -26,6 +26,7 @@ import {
   HelpCircle,
   ArrowLeft,
   MessageSquare,
+  ShoppingBag,
 } from "lucide-react";
 import { conversationsApi, notificationsApi, ordersApi, marketplaceApi } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
@@ -126,7 +127,10 @@ export interface OrderChatWorkspaceProps {
   initialListingId?: string | null;
   initialBuyerId?: string | null;
   initialTab?: "messages" | "notifications";
+  initialInboxCategory?: "chuyen-tro" | "pass-do";
   enableNotificationsTab?: boolean;
+  /** Tách danh sách Chuyển trọ (đơn hàng) và Pass đồ (Chợ SV). Mặc định: bật với khách, tắt với tài xế. */
+  enableInboxCategoryTabs?: boolean;
   orderDetailPath?: (orderId: string) => string;
   className?: string;
 }
@@ -188,7 +192,9 @@ export function OrderChatWorkspace({
   initialListingId = null,
   initialBuyerId = null,
   initialTab = "messages",
+  initialInboxCategory,
   enableNotificationsTab = false,
+  enableInboxCategoryTabs,
   orderDetailPath = (id) => `/don-hang/${id}`,
   className,
 }: OrderChatWorkspaceProps) {
@@ -196,6 +202,7 @@ export function OrderChatWorkspace({
   const role = getStoredUser()?.role ?? "customer";
   const userId = getStoredUser()?.id ?? "";
   const isProvider = role === "provider";
+  const showInboxCategoryTabs = enableInboxCategoryTabs ?? !isProvider;
 
   const initialThread = useMemo((): ActiveChatThread | null => {
     if (initialOrderId) return { type: "order", orderId: initialOrderId };
@@ -207,6 +214,9 @@ export function OrderChatWorkspace({
 
   const [sidebarTab, setSidebarTab] = useState<"messages" | "notifications">(
     initialTab === "notifications" && enableNotificationsTab ? "notifications" : "messages",
+  );
+  const [inboxCategory, setInboxCategory] = useState<"chuyen-tro" | "pass-do">(
+    initialInboxCategory ?? (initialListingId ? "pass-do" : "chuyen-tro"),
   );
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -239,10 +249,10 @@ export function OrderChatWorkspace({
   const loadInbox = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoadingList(true);
     try {
-      const [orderRes, mpRes] = await Promise.all([
-        conversationsApi.list(),
-        marketplaceApi.listConversations(),
-      ]);
+      const orderRes = await conversationsApi.list();
+      const mpRes = isProvider
+        ? { success: false as const }
+        : await marketplaceApi.listConversations();
       let orders: ChatConversation[] =
         orderRes.success && Array.isArray(orderRes.data)
           ? (orderRes.data as ChatConversation[])
@@ -251,7 +261,7 @@ export function OrderChatWorkspace({
         orders = upsertConversation(orders, initialOrderId, initialWithName);
       }
       const marketplace: MarketplaceConversation[] =
-        mpRes.success && Array.isArray(mpRes.data)
+        !isProvider && mpRes.success && Array.isArray(mpRes.data)
           ? (mpRes.data as MarketplaceConversation[])
           : [];
       setInboxItems(mergeInboxItems(orders, marketplace));
@@ -260,7 +270,7 @@ export function OrderChatWorkspace({
     } finally {
       if (!opts?.silent) setLoadingList(false);
     }
-  }, [initialOrderId, initialWithName]);
+  }, [initialOrderId, initialWithName, isProvider]);
 
   const loadNotifs = useCallback(async () => {
     if (!enableNotificationsTab) return;
@@ -385,12 +395,14 @@ export function OrderChatWorkspace({
     if (initialOrderId) {
       deepLinkedRef.current = true;
       setSidebarTab("messages");
+      setInboxCategory("chuyen-tro");
       setActiveThread({ type: "order", orderId: initialOrderId });
       return;
     }
     if (initialListingId && initialBuyerId) {
       deepLinkedRef.current = true;
       setSidebarTab("messages");
+      setInboxCategory("pass-do");
       setActiveThread({
         type: "marketplace",
         listingId: initialListingId,
@@ -398,6 +410,24 @@ export function OrderChatWorkspace({
       });
     }
   }, [initialOrderId, initialListingId, initialBuyerId, loadingList]);
+
+  const visibleInboxItems = useMemo(() => {
+    if (!showInboxCategoryTabs) return inboxItems;
+    return inboxItems.filter((item) =>
+      inboxCategory === "chuyen-tro" ? item.kind === "order" : item.kind === "marketplace",
+    );
+  }, [inboxItems, inboxCategory, showInboxCategoryTabs]);
+
+  const handleInboxCategoryChange = (category: "chuyen-tro" | "pass-do") => {
+    setInboxCategory(category);
+    if (!activeThread) return;
+    if (category === "chuyen-tro" && activeThread.type === "marketplace") {
+      setActiveThread(null);
+    }
+    if (category === "pass-do" && activeThread.type === "order") {
+      setActiveThread(null);
+    }
+  };
 
   useEffect(() => {
     if (!activeThread) {
@@ -654,7 +684,13 @@ export function OrderChatWorkspace({
         <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-4">
           <div>
             <h2 className="text-base font-bold text-gray-900">Tin nhắn</h2>
-            <p className="mt-0.5 text-xs text-gray-400">Chat & thông báo đơn hàng</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              {enableNotificationsTab
+                ? "Chat & thông báo đơn hàng"
+                : showInboxCategoryTabs
+                  ? "Chat với tài xế & người mua/bán"
+                  : "Chat theo đơn hàng"}
+            </p>
           </div>
           <motion.button
             type="button"
@@ -699,6 +735,38 @@ export function OrderChatWorkspace({
           </div>
         )}
 
+        {showInboxCategoryTabs && sidebarTab === "messages" && (
+          <div className="relative mx-3 mb-2 mt-1 flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1">
+            {([
+              { key: "chuyen-tro" as const, label: "Chuyển trọ", Icon: Truck },
+              { key: "pass-do" as const, label: "Pass đồ", Icon: ShoppingBag },
+            ]).map(({ key, label, Icon }) => {
+              const active = inboxCategory === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleInboxCategoryChange(key)}
+                  className={cn(
+                    "relative z-10 flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-semibold transition-colors",
+                    active ? "text-gray-900" : "text-gray-400 hover:text-gray-600",
+                  )}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="chat-inbox-category-tab"
+                      className="absolute inset-0 rounded-lg bg-white shadow-sm"
+                      transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                    />
+                  )}
+                  <Icon size={13} className="relative" />
+                  <span className="relative">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             {sidebarTab === "messages" ? (
@@ -715,22 +783,36 @@ export function OrderChatWorkspace({
                       <Skeleton key={i} className="h-[72px] rounded-xl" />
                     ))}
                   </div>
-                ) : inboxItems.length === 0 ? (
+                ) : visibleInboxItems.length === 0 ? (
                   <div className="flex flex-col items-center px-6 py-16 text-center">
                     <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-50">
-                      <MessageSquare size={28} className="text-gray-300" />
+                      {showInboxCategoryTabs && inboxCategory === "pass-do" ? (
+                        <ShoppingBag size={28} className="text-gray-300" />
+                      ) : (
+                        <MessageSquare size={28} className="text-gray-300" />
+                      )}
                     </div>
-                    <p className="text-sm font-bold text-gray-800">Chưa có tin nhắn</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {showInboxCategoryTabs && inboxCategory === "pass-do"
+                        ? "Chưa có hội thoại"
+                        : "Chưa có tin nhắn"}
+                    </p>
                     <Link
-                      href="/cho-sinh-vien"
+                      href={
+                        showInboxCategoryTabs && inboxCategory === "pass-do"
+                          ? "/cho-sinh-vien"
+                          : "/dat-chuyen"
+                      }
                       className="mt-2 text-xs font-semibold text-[#2563EB] no-underline"
                     >
-                      Khám phá Chợ sinh viên
+                      {showInboxCategoryTabs && inboxCategory === "pass-do"
+                        ? "Khám phá Chợ sinh viên"
+                        : "Đặt chuyến để bắt đầu"}
                     </Link>
                   </div>
                 ) : (
                   <div className="space-y-0.5 p-2">
-                    {inboxItems.map((item, idx) => {
+                    {visibleInboxItems.map((item, idx) => {
                       const active =
                         !!activeThread &&
                         ((item.kind === "order" &&
