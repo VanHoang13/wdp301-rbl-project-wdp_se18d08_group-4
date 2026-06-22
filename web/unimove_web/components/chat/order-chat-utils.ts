@@ -25,6 +25,12 @@ export interface MarketplaceConversation {
     images?: string[];
     status?: string;
     deal_confirmed?: boolean;
+    transport_booked?: boolean;
+    confirmed_buyer_id?: string;
+    seller_id?: string;
+    chat_enabled?: boolean;
+    deal_status_label?: string | null;
+    area?: string;
   } | null;
 }
 

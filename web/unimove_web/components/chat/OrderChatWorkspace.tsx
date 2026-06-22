@@ -204,14 +204,6 @@ export function OrderChatWorkspace({
   const isProvider = role === "provider";
   const showInboxCategoryTabs = enableInboxCategoryTabs ?? !isProvider;
 
-  const initialThread = useMemo((): ActiveChatThread | null => {
-    if (initialOrderId) return { type: "order", orderId: initialOrderId };
-    if (initialListingId && initialBuyerId) {
-      return { type: "marketplace", listingId: initialListingId, buyerId: initialBuyerId };
-    }
-    return null;
-  }, [initialOrderId, initialListingId, initialBuyerId]);
-
   const [sidebarTab, setSidebarTab] = useState<"messages" | "notifications">(
     initialTab === "notifications" && enableNotificationsTab ? "notifications" : "messages",
   );
@@ -220,11 +212,17 @@ export function OrderChatWorkspace({
   );
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
-  const [activeThread, setActiveThread] = useState<ActiveChatThread | null>(initialThread);
+  const [activeThread, setActiveThread] = useState<ActiveChatThread | null>(() =>
+    initialOrderId ? { type: "order", orderId: initialOrderId } : null,
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [order, setOrder] = useState<OrderChatContext | null>(null);
   const [mpListing, setMpListing] = useState<MarketplaceConversation["listing"]>(null);
+  const [mpChatEnabled, setMpChatEnabled] = useState(true);
+  const [mpDealStatusLabel, setMpDealStatusLabel] = useState<string | null>(null);
+  const [mpDealLoading, setMpDealLoading] = useState(false);
+  const [dealPriceInput, setDealPriceInput] = useState("");
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -310,7 +308,13 @@ export function OrderChatWorkspace({
       try {
         const res = await marketplaceApi.getMessages(listingId, buyerId);
         if (res.success && res.data) {
-          const d = res.data as { messages?: Record<string, unknown>[] };
+          const d = res.data as {
+            messages?: Record<string, unknown>[];
+            chat_enabled?: boolean;
+            deal_status_label?: string | null;
+          };
+          if (d.chat_enabled !== undefined) setMpChatEnabled(d.chat_enabled !== false);
+          if (d.deal_status_label !== undefined) setMpDealStatusLabel(d.deal_status_label);
           const raw = d.messages ?? [];
           const mapped = raw.map((m) => {
               const content = String(m.content ?? m.text ?? "");
@@ -385,10 +389,6 @@ export function OrderChatWorkspace({
     loadInbox();
     loadNotifs();
   }, [loadInbox, loadNotifs]);
-
-  useEffect(() => {
-    if (initialThread) setActiveThread(initialThread);
-  }, [initialThread]);
 
   useEffect(() => {
     if (deepLinkedRef.current || loadingList) return;
@@ -479,24 +479,26 @@ export function OrderChatWorkspace({
       if (!cachedListing) {
         marketplaceApi.get(activeThread.listingId).then((r) => {
           if (r.success && r.data) {
-            const l = r.data as {
-              id: string;
-              title?: string;
-              price?: number;
-              images?: string[];
-              status?: string;
-              deal_confirmed?: boolean;
-            };
-            const listing = {
-              id: l.id,
-              title: l.title,
-              price: l.price,
-              images: l.images,
-              status: l.status,
-              deal_confirmed: l.deal_confirmed,
+            const l = r.data as Record<string, unknown>;
+            const profiles = l.profiles as { id?: string } | undefined;
+            const listing: NonNullable<MarketplaceConversation["listing"]> = {
+              id: String(l.id),
+              title: l.title as string | undefined,
+              price: l.price as number | undefined,
+              images: l.images as string[] | undefined,
+              status: l.status as string | undefined,
+              deal_confirmed: l.deal_confirmed as boolean | undefined,
+              transport_booked: l.transport_booked as boolean | undefined,
+              confirmed_buyer_id: l.confirmed_buyer_id as string | undefined,
+              seller_id: (l.seller_id ?? profiles?.id) as string | undefined,
+              chat_enabled: l.chat_enabled as boolean | undefined,
+              deal_status_label: l.deal_status_label as string | null | undefined,
+              area: l.area as string | undefined,
             };
             mpListingCacheRef.current.set(key, listing);
             setMpListing(listing);
+            if (listing.chat_enabled !== undefined) setMpChatEnabled(listing.chat_enabled !== false);
+            if (listing.deal_status_label !== undefined) setMpDealStatusLabel(listing.deal_status_label ?? null);
           }
         });
       }
@@ -560,11 +562,16 @@ export function OrderChatWorkspace({
   }, [isProvider, order, activeInboxItem]);
 
   const canSendOrder = orderAllowsChat(order);
-  const canSendMarketplace = !!activeMarketplace && mpListing?.status !== "closed";
+  const isMpBuyerInThread = !!activeMarketplace && userId === activeMarketplace.buyerId;
+  const isMpSellerInThread = !!activeMarketplace && !isMpBuyerInThread;
+  const isMpConfirmedBuyer =
+    isMpBuyerInThread && mpListing?.confirmed_buyer_id === userId;
+  const canSendMarketplace =
+    !!activeMarketplace && mpChatEnabled !== false && mpListing?.status !== "closed";
   const canSend = activeMarketplace ? canSendMarketplace : canSendOrder;
   const blockReason = activeMarketplace
-    ? mpListing?.status === "closed"
-      ? "Tin đã đóng — không thể gửi tin nhắn mới."
+    ? !canSendMarketplace
+      ? (mpDealStatusLabel ?? "Đã chốt — không nhận thêm tin nhắn.")
       : null
     : chatBlockReason(order);
   const dropoff = order?.dropoff_address ?? order?.delivery_address ?? "";
@@ -578,6 +585,102 @@ export function OrderChatWorkspace({
     const q = encodeURIComponent(`${order.pickup_address} to ${dropoff}`);
     return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
   }, [order?.pickup_address, dropoff]);
+
+  const refreshMpListing = useCallback(
+    async (listingId: string, buyerId: string) => {
+      const key = threadCacheKey({ type: "marketplace", listingId, buyerId });
+      const r = await marketplaceApi.get(listingId);
+      if (r.success && r.data) {
+        const l = r.data as Record<string, unknown>;
+        const profiles = l.profiles as { id?: string } | undefined;
+        const listing: NonNullable<MarketplaceConversation["listing"]> = {
+          id: String(l.id),
+          title: l.title as string | undefined,
+          price: l.price as number | undefined,
+          images: l.images as string[] | undefined,
+          status: l.status as string | undefined,
+          deal_confirmed: l.deal_confirmed as boolean | undefined,
+          transport_booked: l.transport_booked as boolean | undefined,
+          confirmed_buyer_id: l.confirmed_buyer_id as string | undefined,
+          seller_id: (l.seller_id ?? profiles?.id) as string | undefined,
+          chat_enabled: l.chat_enabled as boolean | undefined,
+          deal_status_label: l.deal_status_label as string | null | undefined,
+          area: l.area as string | undefined,
+        };
+        mpListingCacheRef.current.set(key, listing);
+        setMpListing(listing);
+        if (listing.chat_enabled !== undefined) setMpChatEnabled(listing.chat_enabled !== false);
+        if (listing.deal_status_label !== undefined) setMpDealStatusLabel(listing.deal_status_label ?? null);
+      }
+    },
+    [],
+  );
+
+  const handleConfirmDeal = async () => {
+    if (!activeMarketplace || mpDealLoading) return;
+    const raw = dealPriceInput.replace(/\D/g, "");
+    const agreedPrice = raw ? Number(raw) : undefined;
+    if (!confirm("Chốt đơn với người mua này? Tin sẽ ẩn khỏi chợ và không nhận thêm người quan tâm mới.")) return;
+    setMpDealLoading(true);
+    try {
+      await marketplaceApi.confirmDeal(activeMarketplace.listingId, activeMarketplace.buyerId, agreedPrice);
+      setDealPriceInput("");
+      await refreshMpListing(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadMarketplaceMessages(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadInbox();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Không chốt được đơn");
+    } finally {
+      setMpDealLoading(false);
+    }
+  };
+
+  const handleCancelDeal = async () => {
+    if (!activeMarketplace || mpDealLoading) return;
+    if (!confirm("Huỷ chốt đơn? Tin sẽ hiện lại trên chợ.")) return;
+    setMpDealLoading(true);
+    try {
+      await marketplaceApi.cancelDeal(activeMarketplace.listingId);
+      await refreshMpListing(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadMarketplaceMessages(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadInbox();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Không huỷ được chốt");
+    } finally {
+      setMpDealLoading(false);
+    }
+  };
+
+  const handleMarkTransport = async () => {
+    if (!activeMarketplace || mpDealLoading) return;
+    setMpDealLoading(true);
+    try {
+      await marketplaceApi.markTransportBooked(activeMarketplace.listingId);
+      await refreshMpListing(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadMarketplaceMessages(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadInbox();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Không đặt xe được");
+    } finally {
+      setMpDealLoading(false);
+    }
+  };
+
+  const handleConfirmReceived = async () => {
+    if (!activeMarketplace || mpDealLoading) return;
+    if (!confirm("Xác nhận đã nhận đồ? Giao dịch sẽ hoàn tất.")) return;
+    setMpDealLoading(true);
+    try {
+      await marketplaceApi.confirmReceived(activeMarketplace.listingId);
+      await refreshMpListing(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadMarketplaceMessages(activeMarketplace.listingId, activeMarketplace.buyerId);
+      await loadInbox();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Không xác nhận được");
+    } finally {
+      setMpDealLoading(false);
+    }
+  };
 
   const send = async () => {
     const body = text.trim();
@@ -1132,6 +1235,96 @@ export function OrderChatWorkspace({
                 )}
               </div>
 
+              {activeMarketplace && mpListing && (
+                <div className="shrink-0 space-y-2 border-t border-gray-100 bg-white px-4 py-3">
+                  {mpDealStatusLabel && (
+                    <p
+                      className={cn(
+                        "rounded-lg px-3 py-2 text-center text-xs font-semibold",
+                        mpChatEnabled === false
+                          ? "border border-amber-200 bg-amber-50 text-amber-900"
+                          : "border border-emerald-200 bg-emerald-50 text-emerald-800",
+                      )}
+                    >
+                      {mpDealStatusLabel}
+                    </p>
+                  )}
+
+                  {isMpSellerInThread &&
+                    !mpListing.deal_confirmed &&
+                    mpListing.status !== "closed" && (
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={dealPriceInput}
+                          onChange={(e) => setDealPriceInput(e.target.value)}
+                          placeholder={
+                            mpListing.price
+                              ? `Giá chốt (mặc định ${formatVND(mpListing.price)})`
+                              : "Giá chốt (tuỳ chọn)"
+                          }
+                          className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#2563EB]"
+                        />
+                        <Button
+                          type="button"
+                          disabled={mpDealLoading}
+                          onClick={handleConfirmDeal}
+                          className="shrink-0 rounded-xl bg-emerald-600 font-semibold hover:bg-emerald-700"
+                        >
+                          <CheckCircle size={16} className="mr-1.5" />
+                          Chốt đơn
+                        </Button>
+                      </div>
+                    )}
+
+                  {isMpSellerInThread &&
+                    mpListing.deal_confirmed &&
+                    !mpListing.transport_booked &&
+                    mpListing.status !== "closed" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={mpDealLoading}
+                        onClick={handleCancelDeal}
+                        className="w-full rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50"
+                      >
+                        Huỷ chốt đơn
+                      </Button>
+                    )}
+
+                  {isMpConfirmedBuyer &&
+                    mpListing.deal_confirmed &&
+                    !mpListing.transport_booked &&
+                    mpListing.status !== "closed" && (
+                      <Button
+                        type="button"
+                        disabled={mpDealLoading}
+                        onClick={handleMarkTransport}
+                        className="w-full rounded-xl bg-[#2563EB] font-semibold hover:bg-[#1D4ED8]"
+                      >
+                        <Truck size={16} className="mr-1.5" />
+                        Đặt xe lấy đồ
+                      </Button>
+                    )}
+
+                  {isMpConfirmedBuyer &&
+                    mpListing.deal_confirmed &&
+                    mpListing.transport_booked &&
+                    mpListing.status === "reserved" && (
+                      <Button
+                        type="button"
+                        disabled={mpDealLoading}
+                        onClick={handleConfirmReceived}
+                        className="w-full rounded-xl bg-[#2563EB] font-semibold hover:bg-[#1D4ED8]"
+                      >
+                        <CheckCircle size={16} className="mr-1.5" />
+                        Xác nhận đã nhận hàng
+                      </Button>
+                    )}
+                </div>
+              )}
+
               {!canSend && blockReason && (
                 <div className="border-t border-amber-100 bg-amber-50 px-4 py-2.5 text-center text-xs text-amber-800">
                   {blockReason}
@@ -1216,9 +1409,11 @@ export function OrderChatWorkspace({
                     ? "Miễn phí"
                     : formatVND(mpListing.price)}
                 </p>
-                {mpListing?.deal_confirmed && (
+                {mpListing?.deal_status_label ? (
+                  <p className="mt-2 text-xs font-semibold text-amber-800">{mpListing.deal_status_label}</p>
+                ) : mpListing?.deal_confirmed ? (
                   <p className="mt-2 text-xs font-semibold text-emerald-700">Đã chốt đơn</p>
-                )}
+                ) : null}
               </div>
               <Link
                 href={`/cho-sinh-vien/${activeMarketplace.listingId}`}

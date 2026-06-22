@@ -8,8 +8,68 @@ const env = require('../config/env');
 const VALID_CATEGORIES = ['furniture', 'electronics', 'appliances', 'clothes', 'books', 'other'];
 const VALID_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 const VALID_STATUSES   = ['active', 'reserved', 'hidden', 'closed'];
+const TERMINAL_STATUSES = ['closed'];
 
 const MARKETPLACE_IMAGES_BUCKET = 'marketplace-images';
+
+function isTerminalListingStatus(status) {
+  return TERMINAL_STATUSES.includes(status);
+}
+
+/** Nhãn & quyền chat cho UI (web/mobile). */
+function buildDealUiMeta(listing, userId) {
+  const ownerId = listing.owner_id ?? listing.profiles?.id;
+  const isOwner = !!(userId && ownerId && userId === ownerId);
+  const isConfirmedBuyer = !!(userId && listing.confirmed_buyer_id && userId === listing.confirmed_buyer_id);
+  const isParticipant = isOwner || isConfirmedBuyer;
+
+  if (isTerminalListingStatus(listing.status)) {
+    return {
+      chat_enabled: false,
+      deal_status_label: 'Đã chốt — không nhận thêm tin nhắn',
+      deal_phase: 'completed',
+      is_public: false,
+    };
+  }
+
+  if (listing.deal_confirmed && listing.status === 'reserved') {
+    return {
+      chat_enabled: isParticipant,
+      deal_status_label: isParticipant
+        ? (listing.transport_booked
+          ? 'Đã chốt — xác nhận khi nhận đồ để hoàn tất'
+          : 'Đã chốt đơn — có thể đặt xe lấy đồ')
+        : 'Đã chốt — không nhận thêm tin nhắn',
+      deal_phase: 'reserved',
+      is_public: false,
+    };
+  }
+
+  return {
+    chat_enabled: true,
+    deal_status_label: null,
+    deal_phase: 'open',
+    is_public: listing.status === 'active',
+  };
+}
+
+function assertListingReadable(listing, userId) {
+  const ownerId = listing.owner_id ?? listing.profiles?.id;
+  const isOwner = userId && ownerId && userId === ownerId;
+  const isConfirmedBuyer = userId && listing.confirmed_buyer_id && userId === listing.confirmed_buyer_id;
+
+  if (listing.status === 'hidden' && !isOwner) {
+    throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  }
+
+  if (isTerminalListingStatus(listing.status) && !isOwner && !isConfirmedBuyer) {
+    throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  }
+
+  if (listing.deal_confirmed && listing.status === 'reserved' && !isOwner && !isConfirmedBuyer) {
+    throw httpError(404, 'Không tìm thấy tin', 'not_found');
+  }
+}
 
 function computeListingFee(price) {
   const p = Number(price);
@@ -494,6 +554,9 @@ async function getListing(listingId, userId) {
 
   if (error || !data) throw httpError(404, 'Không tìm thấy tin', 'not_found');
 
+  const listingRow = { ...data, owner_id: data.profiles?.id ?? data.owner_id };
+  assertListingReadable(listingRow, userId);
+
   const { count: interestCount } = await supabaseAdmin
     .from('marketplace_interests')
     .select('id', { count: 'exact', head: true })
@@ -516,6 +579,7 @@ async function getListing(listingId, userId) {
     is_interested:  isInterested,
     is_rated:       isRated,
     is_mine:        data.profiles?.id === userId,
+    ...buildDealUiMeta(listingRow, userId),
   };
 }
 
@@ -555,6 +619,16 @@ async function expressInterest(listingId, userId, body) {
 
   if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
   if (listing.status !== 'active') throw httpError(400, 'Tin không còn nhận quan tâm', 'listing_unavailable');
+
+  const { data: dealRow } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('deal_confirmed')
+    .eq('id', listingId)
+    .single();
+  if (dealRow?.deal_confirmed) {
+    throw httpError(400, 'Đã chốt — không nhận thêm tin nhắn', 'deal_confirmed');
+  }
+
   if (listing.owner_id === userId) throw httpError(400, 'Không thể quan tâm tin của chính mình', 'validation_error');
 
   const { error } = await supabaseAdmin
@@ -729,7 +803,7 @@ async function getOrCreateConversation(listingId, buyerId, sellerId) {
 async function getMessages(listingId, buyerId, userId) {
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
-    .select('id, owner_id')
+    .select('id, owner_id, status, deal_confirmed, confirmed_buyer_id, transport_booked')
     .eq('id', listingId)
     .single();
 
@@ -738,6 +812,9 @@ async function getMessages(listingId, buyerId, userId) {
   const isSeller = listing.owner_id === userId;
   const isBuyer  = userId === buyerId;
   if (!isSeller && !isBuyer) throw httpError(403, 'Không có quyền xem chat này', 'forbidden');
+
+  assertListingReadable(listing, userId);
+  const dealUi = buildDealUiMeta(listing, userId);
 
   const conv = await getOrCreateConversation(listingId, buyerId, listing.owner_id);
 
@@ -761,6 +838,9 @@ async function getMessages(listingId, buyerId, userId) {
 
   return {
     conversation_id: conv.id,
+    chat_enabled: dealUi.chat_enabled,
+    deal_status_label: dealUi.deal_status_label,
+    deal_phase: dealUi.deal_phase,
     messages: (messages || []).map((m) => {
       const senderProfile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
       const senderId = senderProfile?.id ?? m.sender_id;
@@ -782,32 +862,56 @@ async function getMessages(listingId, buyerId, userId) {
 
 /** API-068 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
 async function sendMessage(listingId, buyerId, userId, body) {
-  const { text, is_offer = false, offer_amount } = body || {};
+  const rawText = body?.text ?? body?.content;
+  const { is_offer = false, offer_amount } = body || {};
 
-  if (!text || !String(text).trim()) {
+  if (!rawText || !String(rawText).trim()) {
     throw httpError(400, 'text không được để trống', 'validation_error');
   }
 
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
-    .select('id, owner_id')
+    .select('id, owner_id, status, deal_confirmed, confirmed_buyer_id')
     .eq('id', listingId)
     .single();
 
   if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
 
+  if (isTerminalListingStatus(listing.status)) {
+    throw httpError(403, 'Đã chốt — không nhận thêm tin nhắn', 'chat_closed');
+  }
+
   const isSeller = listing.owner_id === userId;
   const isBuyer  = userId === buyerId;
   if (!isSeller && !isBuyer) throw httpError(403, 'Không có quyền chat này', 'forbidden');
 
+  if (listing.deal_confirmed) {
+    const isConfirmedBuyer = userId === listing.confirmed_buyer_id;
+    if (!isSeller && !isConfirmedBuyer) {
+      throw httpError(403, 'Đã chốt — không nhận thêm tin nhắn', 'deal_confirmed');
+    }
+    if (isBuyer && buyerId !== listing.confirmed_buyer_id) {
+      throw httpError(403, 'Đã chốt — không nhận thêm tin nhắn', 'deal_confirmed');
+    }
+  }
+
   const conv = await getOrCreateConversation(listingId, buyerId, listing.owner_id);
+
+  if (isBuyer && !listing.deal_confirmed && listing.status === 'active') {
+    await supabaseAdmin
+      .from('marketplace_interests')
+      .upsert(
+        { listing_id: listingId, buyer_id: buyerId },
+        { onConflict: 'listing_id,buyer_id', ignoreDuplicates: true },
+      );
+  }
 
   const { data: msg, error } = await supabaseAdmin
     .from('marketplace_messages')
     .insert([{
       conversation_id: conv.id,
       sender_id:       userId,
-      text:            String(text).trim(),
+      text:            String(rawText).trim(),
       is_offer:        is_offer && !!offer_amount,
       offer_amount:    is_offer && offer_amount ? Number(offer_amount) : null,
     }])
@@ -858,8 +962,36 @@ async function confirmDeal(listingId, sellerId, buyerId, body) {
     .select('id')
     .eq('listing_id', listingId)
     .eq('buyer_id', buyerId)
-    .single();
-  if (!interest) throw httpError(400, 'Người mua chưa quan tâm tin này', 'buyer_not_interested');
+    .maybeSingle();
+
+  if (!interest) {
+    const { data: conv } = await supabaseAdmin
+      .from('marketplace_conversations')
+      .select('id')
+      .eq('listing_id', listingId)
+      .eq('buyer_id', buyerId)
+      .maybeSingle();
+
+    if (!conv) {
+      throw httpError(400, 'Người mua chưa quan tâm tin này', 'buyer_not_interested');
+    }
+
+    const { count: messageCount } = await supabaseAdmin
+      .from('marketplace_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', conv.id);
+
+    if (!messageCount) {
+      throw httpError(400, 'Người mua chưa quan tâm tin này', 'buyer_not_interested');
+    }
+
+    await supabaseAdmin
+      .from('marketplace_interests')
+      .upsert(
+        { listing_id: listingId, buyer_id: buyerId },
+        { onConflict: 'listing_id,buyer_id', ignoreDuplicates: true },
+      );
+  }
 
   const confirmedPrice = agreed_price != null && !isNaN(Number(agreed_price)) && Number(agreed_price) > 0
     ? Number(agreed_price)
@@ -898,7 +1030,10 @@ async function confirmDeal(listingId, sellerId, buyerId, body) {
     { listingId, actionData: { listing_id: listingId, buyer_id: buyerId }, priority: 'high' },
   );
 
-  return updated;
+  return {
+    ...updated,
+    ...buildDealUiMeta({ ...updated, owner_id: sellerId }, sellerId),
+  };
 }
 
 /** API-070 — DELETE /api/marketplace/listings/:listingId/deal */
@@ -992,7 +1127,7 @@ async function getMyInterests(userId) {
       id, created_at,
       listing:listing_id (
         id, title, description, category, condition, area,
-        price, images, status, created_at,
+        price, images, status, deal_confirmed, confirmed_buyer_id, created_at,
         profiles:owner_id ( id, full_name, avatar_url )
       )
     `)
@@ -1002,8 +1137,14 @@ async function getMyInterests(userId) {
   if (error) throw httpError(500, error.message, 'db_error');
 
   const listings = (data || [])
-    .filter(row => row.listing)
-    .map(row => ({ ...row.listing, interest_count: 0, interested_at: row.created_at }));
+    .filter((row) => row.listing)
+    .map((row) => ({ ...row.listing, interest_count: 0, interested_at: row.created_at }))
+    .filter((l) => {
+      if (l.status === 'active') return true;
+      if (l.status === 'reserved' && l.confirmed_buyer_id === userId) return true;
+      if (l.status === 'closed' && l.confirmed_buyer_id === userId) return true;
+      return false;
+    });
 
   return { listings };
 }
@@ -1033,7 +1174,7 @@ async function browseByOwner(sellerId) {
       profiles:owner_id ( id, full_name, avatar_url )
     `)
       .eq('owner_id', sellerId)
-      .in('status', ['active', 'reserved']);
+      .eq('status', 'active');
 
     return orderListingsByRecency(q, useBumpSort);
   };
@@ -1112,10 +1253,20 @@ async function confirmReceived(listingId, buyerId) {
     .from('marketplace_listings')
     .update({ status: 'closed' })
     .eq('id', listingId)
-    .select('id, status')
+    .select('id, status, deal_confirmed, confirmed_buyer_id, transport_booked')
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');
+
+  const conv = await getOrCreateConversation(listingId, buyerId, listing.owner_id);
+  await supabaseAdmin
+    .from('marketplace_messages')
+    .insert([{
+      conversation_id: conv.id,
+      sender_id:       buyerId,
+      text:            'Đã chốt — không nhận thêm tin nhắn. Giao dịch hoàn tất.',
+      is_deal_confirm: false,
+    }]);
 
   createNotification(listing.owner_id, 'marketplace_item_received',
     '✅ Người mua đã xác nhận nhận đồ!',
@@ -1123,7 +1274,10 @@ async function confirmReceived(listingId, buyerId) {
     { listingId, actionData: { listing_id: listingId, buyer_id: buyerId }, priority: 'high' },
   );
 
-  return updated;
+  return {
+    ...updated,
+    ...buildDealUiMeta({ ...updated, owner_id: listing.owner_id }, buyerId),
+  };
 }
 
 /** POST /api/marketplace/listings/:id/rating */

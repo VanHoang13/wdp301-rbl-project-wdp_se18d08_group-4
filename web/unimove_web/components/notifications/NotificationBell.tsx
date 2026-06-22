@@ -127,9 +127,9 @@ export function NotificationBell({
         const next = prev.map((x) =>
           x.id === n.id ? { ...x, read: true, is_read: true } : x,
         );
-        setUnreadCount(next.filter(isNotificationUnread).length);
         return next;
       });
+      setUnreadCount(Math.max(0, unreadCount - 1));
     }
 
     const href = getNotificationNavigateHref(n, { isProvider });
