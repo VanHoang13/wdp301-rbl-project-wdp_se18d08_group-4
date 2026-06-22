@@ -1,166 +1,183 @@
-﻿'use client'
+'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Tag, ShoppingBag, EyeOff } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  Armchair,
+  Smartphone,
+  BookOpen,
+  Shirt,
+  ChefHat,
+  Package,
+  Store,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ListingCard, type ListingCardData, type ListingStatus } from '@/components/cards/ListingCard'
+import {
+  MyListingGridCard,
+  type ListingCardData,
+  type ListingStatus,
+} from '@/components/cards/ListingCard'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { ConfirmationDialog } from '@/components/shared/ConfirmationDialog'
-import { useMarketplaceStore, type MyListingsSubtab } from '@/lib/stores/useMarketplaceStore'
+import { MarketplacePageShell } from '@/components/marketplace/MarketplacePageShell'
+import { MarketplacePageHeader } from '@/components/marketplace/MarketplacePageHeader'
+import { MarketplaceEmptyState } from '@/components/marketplace/MarketplaceEmptyState'
+import { MarketplacePromoCards } from '@/components/marketplace/MarketplacePromoCards'
+import { MobileSubtabPills } from '@/components/marketplace/MyMarketplaceSidebar'
+import {
+  useMarketplaceStore,
+  CATEGORY_LABELS,
+  type MyListingsSubtab,
+  type ListingCategory,
+} from '@/lib/stores/useMarketplaceStore'
+import { CATEGORY_FROM_API } from '@/lib/marketplace/categories'
 import { useUIStore } from '@/lib/stores/useUIStore'
 import { marketplaceApi } from '@/lib/api'
 import type { AsyncState } from '@/lib/types/states'
 
-const PRIMARY = '#1E40AF'
-const ACCENT  = '#FACC15'
+const FILTER_CATEGORIES: ListingCategory[] = [
+  'noi-that',
+  'dien-tu',
+  'sach-tai-lieu',
+  'quan-ao',
+  'do-bep',
+  'khac',
+]
+
+const CATEGORY_CHIP_ICONS: Record<ListingCategory, React.ElementType> = {
+  'noi-that': Armchair,
+  'dien-tu': Smartphone,
+  'sach-tai-lieu': BookOpen,
+  'quan-ao': Shirt,
+  'do-bep': ChefHat,
+  khac: Package,
+}
 
 interface ApiListing {
-  id: string; title: string; price?: number; status: string; condition?: string
-  images?: string[]; view_count?: number; interest_count?: number
-  created_at?: string; expires_at?: string
+  id: string
+  title: string
+  price?: number
+  status: string
+  condition?: string
+  category?: string
+  images?: string[]
+  view_count?: number
+  interest_count?: number
+  created_at?: string
+  expires_at?: string
 }
 
 function apiStatusToListingStatus(s: string): ListingStatus {
   if (s === 'sold' || s === 'completed') return 'da-ban'
-  if (s === 'hidden')                    return 'da-an'
-  if (s === 'expired')                   return 'het-han'
+  if (s === 'hidden') return 'da-an'
+  if (s === 'expired') return 'het-han'
   return 'dang-ban'
 }
 
-function toListing(l: ApiListing): ListingCardData {
+function toListing(l: ApiListing): ListingCardData & { category?: ListingCategory } {
+  const cat = l.category ? CATEGORY_FROM_API[l.category] : undefined
   return {
-    id:        l.id,
-    title:     l.title,
-    price:     l.price ?? 0,
-    status:    apiStatusToListingStatus(l.status),
+    id: l.id,
+    title: l.title,
+    price: l.price ?? 0,
+    status: apiStatusToListingStatus(l.status),
     condition: l.condition as ListingCardData['condition'],
-    imageUrl:  l.images?.[0],
-    views:     l.view_count,
-    saves:     l.interest_count,
-    postedAt:  l.created_at,
+    imageUrl: l.images?.[0],
+    views: l.view_count,
+    saves: l.interest_count,
+    postedAt: l.created_at,
     expiresAt: l.expires_at,
+    category: cat,
   }
 }
 
-/* ── Subtab bar ─────────────────────────────────────────────── */
-
-const SUBTABS: { key: MyListingsSubtab; label: string }[] = [
-  { key: 'dang-ban', label: 'Đang bán' },
-  { key: 'da-ban',   label: 'Đã bán' },
-  { key: 'da-an',    label: 'Đã ẩn' },
-]
-
-function SubtabBar({
-  active,
+function CategoryChips({
+  selected,
   onChange,
 }: {
-  active:   MyListingsSubtab
-  onChange: (t: MyListingsSubtab) => void
+  selected: ListingCategory | null
+  onChange: (c: ListingCategory | null) => void
 }) {
   return (
-    <div className="flex gap-1.5 px-4 py-3 border-b border-gray-100 bg-white" role="tablist">
-      {SUBTABS.map(({ key, label }) => (
-        <button
-          key={key}
-          role="tab"
-          aria-selected={active === key}
-          onClick={() => onChange(key)}
-          className="flex-1 py-2 text-center text-[13px] font-semibold rounded-lg transition-all"
-          style={
-            active === key
-              ? { backgroundColor: PRIMARY, color: '#FFFFFF' }
-              : { backgroundColor: '#F1F5F9', color: '#64748B' }
-          }
-        >
-          {label}
-        </button>
-      ))}
+    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={cn(
+          'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
+          selected === null
+            ? 'bg-gray-900 text-white'
+            : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+        )}
+      >
+        Tất cả
+      </button>
+      {FILTER_CATEGORIES.map((cat) => {
+        const Icon = CATEGORY_CHIP_ICONS[cat]
+        return (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => onChange(cat)}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
+              selected === cat
+                ? 'bg-gray-900 text-white'
+                : 'border border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+            )}
+          >
+            <Icon size={12} />
+            {CATEGORY_LABELS[cat]}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-/* ── Skeleton ───────────────────────────────────────────────── */
-
-function SkeletonListingCard() {
+function SkeletonGridCard() {
   return (
-    <div className="flex gap-3 bg-white rounded-xl border border-gray-100 p-3">
-      <div className="w-20 h-20 rounded-xl bg-gray-100 animate-pulse shrink-0" />
-      <div className="flex-1 space-y-2 pt-1">
-        <div className="h-3.5 bg-gray-100 rounded animate-pulse w-4/5" />
-        <div className="h-3.5 bg-gray-100 rounded animate-pulse w-3/5" />
-        <div className="h-4 bg-gray-100 rounded animate-pulse w-2/5 mt-1" />
-        <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <div className="aspect-[4/3] animate-pulse bg-gray-100" />
+      <div className="space-y-2 p-3.5">
+        <div className="h-4 w-5/6 animate-pulse rounded bg-gray-100" />
+        <div className="h-5 w-2/5 animate-pulse rounded bg-gray-100" />
+        <div className="h-3 w-3/5 animate-pulse rounded bg-gray-100" />
       </div>
     </div>
   )
 }
 
-/* ── Empty states ───────────────────────────────────────────── */
-
-const EMPTY_CONFIG: Record<MyListingsSubtab, {
-  icon:  React.ElementType
-  bg:    string
-  color: string
-  title: string
-  desc:  string
-  cta?:  { label: string; href: string }
-}> = {
+const EMPTY_CONFIG: Record<
+  MyListingsSubtab,
+  { title: string; desc: string; cta?: { label: string; href: string } }
+> = {
   'dang-ban': {
-    icon: Tag, bg: '#EFF6FF', color: PRIMARY,
     title: 'Chưa có tin đang bán',
-    desc:  'Đăng tin ngay để bán đồ dùng sinh viên của bạn!',
-    cta:   { label: 'Đăng tin ngay', href: '/cho-sinh-vien/dang-tin' },
+    desc: 'Đăng tin ngay để bán đồ dùng sinh viên của bạn!',
+    cta: { label: 'Đăng tin ngay', href: '/cho-sinh-vien/dang-tin' },
   },
   'da-ban': {
-    icon: ShoppingBag, bg: '#F0FDF4', color: '#16A34A',
     title: 'Chưa có tin đã bán',
-    desc:  'Các tin bạn đánh dấu đã bán sẽ hiện ở đây.',
+    desc: 'Các tin bạn đánh dấu đã bán sẽ hiện ở đây.',
   },
   'da-an': {
-    icon: EyeOff, bg: '#F8FAFC', color: '#64748B',
     title: 'Chưa có tin đã ẩn',
-    desc:  'Các tin bạn ẩn khỏi chợ sẽ hiện ở đây.',
+    desc: 'Các tin bạn ẩn khỏi chợ sẽ hiện ở đây.',
   },
 }
 
-function EmptyListings({ subtab }: { subtab: MyListingsSubtab }) {
-  const cfg  = EMPTY_CONFIG[subtab]
-  const Icon = cfg.icon
-  return (
-    <div className="mx-4 mt-4 py-14 text-center bg-white rounded-xl border border-gray-100">
-      <div
-        className="w-20 h-20 rounded-2xl mx-auto mb-5 flex items-center justify-center"
-        style={{ backgroundColor: cfg.bg }}
-      >
-        <Icon size={40} style={{ color: cfg.color }} />
-      </div>
-      <p className="text-lg font-extrabold text-gray-900 mb-2">{cfg.title}</p>
-      <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto leading-relaxed">{cfg.desc}</p>
-      {cfg.cta && (
-        <a href={cfg.cta.href}>
-          <button
-            className="px-6 py-2.5 rounded-lg font-bold text-sm text-gray-900 shadow-sm transition-all hover:brightness-95 active:scale-[0.97]"
-            style={{ backgroundColor: ACCENT }}
-          >
-            {cfg.cta.label}
-          </button>
-        </a>
-      )}
-    </div>
-  )
-}
-
-/* ── Page ───────────────────────────────────────────────────── */
-
 export default function TinCuaToiPage() {
-  const subtab      = useMarketplaceStore((s) => s.myListingsSubtab)
-  const setSubtab   = useMarketplaceStore((s) => s.setMyListingsSubtab)
+  const subtab = useMarketplaceStore((s) => s.myListingsSubtab)
+  const setSubtab = useMarketplaceStore((s) => s.setMyListingsSubtab)
   const showSuccess = useUIStore((s) => s.showSuccess)
-  const showError   = useUIStore((s) => s.showError)
+  const showError = useUIStore((s) => s.showError)
 
-  const [state,      setState]      = useState<AsyncState<ListingCardData[]>>({ status: 'loading' })
-  const [deleteId,   setDeleteId]   = useState<string | null>(null)
+  const [state, setState] = useState<AsyncState<(ListingCardData & { category?: ListingCategory })[]>>({
+    status: 'loading',
+  })
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState<ListingCategory | null>(null)
 
   const load = useCallback(async () => {
     setState({ status: 'loading' })
@@ -179,30 +196,63 @@ export default function TinCuaToiPage() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    void load()
+  }, [load])
 
-  const filtered = state.status === 'success'
-    ? state.data.filter((l) => {
-        if (subtab === 'dang-ban') return l.status === 'dang-ban' || l.status === 'het-han'
-        if (subtab === 'da-ban')   return l.status === 'da-ban'
-        if (subtab === 'da-an')    return l.status === 'da-an'
-        return true
-      })
-    : []
+  const counts = useMemo(() => {
+    if (state.status !== 'success') {
+      return { 'dang-ban': 0, 'da-ban': 0, 'da-an': 0 }
+    }
+    return {
+      'dang-ban': state.data.filter(
+        (l) => l.status === 'dang-ban' || l.status === 'het-han'
+      ).length,
+      'da-ban': state.data.filter((l) => l.status === 'da-ban').length,
+      'da-an': state.data.filter((l) => l.status === 'da-an').length,
+    }
+  }, [state])
+
+  const filtered = useMemo(() => {
+    if (state.status !== 'success') return []
+    return state.data.filter((l) => {
+      let matchTab = true
+      if (subtab === 'dang-ban') matchTab = l.status === 'dang-ban' || l.status === 'het-han'
+      if (subtab === 'da-ban') matchTab = l.status === 'da-ban'
+      if (subtab === 'da-an') matchTab = l.status === 'da-an'
+      const matchCat = !categoryFilter || l.category === categoryFilter
+      return matchTab && matchCat
+    })
+  }, [state, subtab, categoryFilter])
 
   const handleMarkSold = async (id: string) => {
-    try { await marketplaceApi.updateStatus(id, 'sold'); showSuccess('Đã đánh dấu đã bán'); load() }
-    catch { showError('Không thể cập nhật trạng thái') }
+    try {
+      await marketplaceApi.updateStatus(id, 'sold')
+      showSuccess('Đã đánh dấu đã bán')
+      load()
+    } catch {
+      showError('Không thể cập nhật trạng thái')
+    }
   }
 
   const handleHide = async (id: string) => {
-    try { await marketplaceApi.updateStatus(id, 'hidden'); showSuccess('Đã ẩn tin'); load() }
-    catch { showError('Không thể ẩn tin') }
+    try {
+      await marketplaceApi.updateStatus(id, 'hidden')
+      showSuccess('Đã ẩn tin')
+      load()
+    } catch {
+      showError('Không thể ẩn tin')
+    }
   }
 
   const handleUnhide = async (id: string) => {
-    try { await marketplaceApi.updateStatus(id, 'active'); showSuccess('Đã hiện tin lại'); load() }
-    catch { showError('Không thể hiện tin') }
+    try {
+      await marketplaceApi.updateStatus(id, 'active')
+      showSuccess('Đã hiện tin lại')
+      load()
+    } catch {
+      showError('Không thể hiện tin')
+    }
   }
 
   const handleDelete = async () => {
@@ -220,43 +270,79 @@ export default function TinCuaToiPage() {
     }
   }
 
+  const emptyCfg = EMPTY_CONFIG[subtab]
+
   return (
-    <div className="min-h-full" style={{ backgroundColor: '#FAFAFA' }}>
-      <SubtabBar active={subtab} onChange={setSubtab} />
+    <MarketplacePageShell
+      sidebarActiveSubtab={subtab}
+      sidebarCounts={counts}
+      onSubtabChange={setSubtab}
+    >
+      <MarketplacePageHeader subtitle="Quản lý tin đăng, theo dõi khách quan tâm và chốt giao dịch." />
 
-      <div className="pb-6 pt-3">
-        {state.status === 'loading' && (
-          <div className="flex flex-col gap-3 px-4">
-            {Array.from({ length: 4 }).map((_, i) => <SkeletonListingCard key={i} />)}
-          </div>
-        )}
+      <MobileSubtabPills active={subtab} onChange={setSubtab} counts={counts} />
 
-        {state.status === 'error' && (
-          <ErrorState type="network" message={state.error as string} onRetry={load} className="mt-8" />
-        )}
+      <div className="mt-5">
+        <CategoryChips selected={categoryFilter} onChange={setCategoryFilter} />
+      </div>
 
-        {state.status === 'success' && filtered.length === 0 && (
-          <EmptyListings subtab={subtab} />
-        )}
-
-        {state.status === 'success' && filtered.length > 0 && (
-          <div className="flex flex-col gap-3 px-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">{filtered.length} tin</span>
-            </div>
-            {filtered.map((l) => (
-              <ListingCard
-                key={l.id}
-                data={l}
-                onMarkSold={handleMarkSold}
-                onHide={handleHide}
-                onUnhide={handleUnhide}
-                onDelete={(id) => setDeleteId(id)}
-              />
-            ))}
-          </div>
+      <div className="mt-5 flex items-center justify-between">
+        <h2 className="text-base font-bold text-gray-900">
+          {subtab === 'dang-ban' && 'Tin đang bán'}
+          {subtab === 'da-ban' && 'Tin đã bán'}
+          {subtab === 'da-an' && 'Tin đã ẩn'}
+        </h2>
+        {state.status === 'success' && (
+          <span className="text-xs text-gray-400">{filtered.length} tin</span>
         )}
       </div>
+
+      {state.status === 'loading' && (
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonGridCard key={i} />
+          ))}
+        </div>
+      )}
+
+      {state.status === 'error' && (
+        <ErrorState
+          type="network"
+          message={state.error as string}
+          onRetry={load}
+          className="mt-8"
+        />
+      )}
+
+      {state.status === 'success' && filtered.length === 0 && (
+        <MarketplaceEmptyState
+          icon={
+            <div className="flex h-full w-full items-center justify-center rounded-2xl bg-[#EEF2FF]">
+              <Store size={32} className="text-[#0047FF]" />
+            </div>
+          }
+          title={emptyCfg.title}
+          description={emptyCfg.desc}
+          cta={emptyCfg.cta}
+        />
+      )}
+
+      {state.status === 'success' && filtered.length > 0 && (
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((l) => (
+            <MyListingGridCard
+              key={l.id}
+              data={l}
+              onMarkSold={handleMarkSold}
+              onHide={handleHide}
+              onUnhide={handleUnhide}
+              onDelete={(id) => setDeleteId(id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <MarketplacePromoCards />
 
       <ConfirmationDialog
         isOpen={!!deleteId}
@@ -269,6 +355,6 @@ export default function TinCuaToiPage() {
         variant="danger"
         isLoading={isDeleting}
       />
-    </div>
+    </MarketplacePageShell>
   )
 }

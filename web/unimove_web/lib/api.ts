@@ -347,6 +347,7 @@ export const marketplaceApi = {
   addInterest: (id: string, note?: string) => post(`/marketplace/listings/${id}/interest`, note ? { note } : {}),
   removeInterest: (id: string) => del(`/marketplace/listings/${id}/interest`),
   myInterests: async () => normalizeListingsResponse(await get("/marketplace/my-interests")),
+  listConversations: () => get("/marketplace/conversations"),
   getMessages: async (listingId: string, buyerId: string) => {
     const res = await get(`/marketplace/listings/${listingId}/conversations/${buyerId}/messages`);
     if (res.success && res.data) {
@@ -356,8 +357,14 @@ export const marketplaceApi = {
     }
     return res;
   },
-  sendMessage: (listingId: string, buyerId: string, content: string) =>
-    post(`/marketplace/listings/${listingId}/conversations/${buyerId}/messages`, { text: content }),
+  sendMessage: (
+    listingId: string,
+    buyerId: string,
+    payload: string | { text: string; is_offer?: boolean; offer_amount?: number }
+  ) => {
+    const body = typeof payload === "string" ? { text: payload } : payload;
+    return post(`/marketplace/listings/${listingId}/conversations/${buyerId}/messages`, body);
+  },
   sellerStats: (sellerId: string) => get(`/marketplace/seller/${sellerId}/stats`),
   rate: (id: string, rating: number, comment?: string) => post(`/marketplace/listings/${id}/rating`, { rating, comment }),
   bump: (id: string) => post(`/marketplace/listings/${id}/bump`, {}),

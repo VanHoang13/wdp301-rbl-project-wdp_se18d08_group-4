@@ -10,7 +10,7 @@ export function Container({ children, className, as: Tag = 'div' }: ContainerPro
   return (
     <Tag
       className={cn(
-        'mx-auto w-full max-w-[var(--width-container)] px-5 md:px-6 lg:px-8',
+        'mx-auto w-full max-w-[var(--width-container)] px-4 sm:px-6 lg:px-8',
         className
       )}
     >

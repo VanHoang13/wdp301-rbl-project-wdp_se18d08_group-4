@@ -20,6 +20,25 @@ function computeListingFee(price) {
   return raw;
 }
 
+const BUMPED_AT_MISSING = /bumped_at/i;
+
+function orderListingsByRecency(q, useBumpSort = true) {
+  if (useBumpSort) {
+    return q
+      .order('bumped_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+  }
+  return q.order('created_at', { ascending: false });
+}
+
+async function runWithBumpSortFallback(runQuery) {
+  let result = await runQuery(true);
+  if (result.error && BUMPED_AT_MISSING.test(result.error.message || '')) {
+    result = await runQuery(false);
+  }
+  return result;
+}
+
 // ── Batch 1 ──────────────────────────────────────────────────────────────────
 
 /** API-062 — POST /api/marketplace/listings */
@@ -40,7 +59,6 @@ async function createListing(userId, body) {
   }
 
   const listingFee = computeListingFee(price);
-  const requiresPayment = listingFee > 0;
 
   const { data, error } = await supabaseAdmin
     .from('marketplace_listings')
@@ -54,8 +72,8 @@ async function createListing(userId, body) {
       price:          Number(price),
       images:         Array.isArray(images) ? images : [],
       usage_duration: usage_duration ? String(usage_duration).trim() : null,
-      status:      requiresPayment ? 'hidden' : 'active',
-      fee_paid:    !requiresPayment,
+      status:      'active',
+      fee_paid:    true,
     }])
     .select(`
       id, title, description, category, condition, area,
@@ -69,7 +87,7 @@ async function createListing(userId, body) {
     listing: data,
     listing_fee: {
       amount: listingFee,
-      requires_payment: requiresPayment,
+      requires_payment: false,
     },
   };
 }
@@ -351,35 +369,40 @@ async function browseListings(query, userId) {
 
   const uid = String(userId || '').trim();
 
-  let q = supabaseAdmin
-    .from('marketplace_listings')
-    .select(
-      `id, title, description, category, condition, area,
-       price, images, status, created_at,
-       profiles:owner_id ( id, full_name, avatar_url )`,
-      { count: 'exact' }
-    )
-    .order('created_at', { ascending: false })
-    .range(from, to);
+  const buildQuery = (useBumpSort) => {
+    let q = supabaseAdmin
+      .from('marketplace_listings')
+      .select(
+        `id, title, description, category, condition, area,
+         price, images, status, created_at,
+         profiles:owner_id ( id, full_name, avatar_url )`,
+        { count: 'exact' }
+      )
+      .range(from, to);
 
-  // active: mọi user; reserved: chỉ người đăng hoặc người mua đã được chốt
-  if (uid) {
-    q = q.or(
-      `status.eq.active,and(status.eq.reserved,or(owner_id.eq.${uid},confirmed_buyer_id.eq.${uid}))`,
-    );
-  } else {
-    q = q.eq('status', 'active');
-  }
+    q = orderListingsByRecency(q, useBumpSort);
 
-  if (keyword) q = q.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`);
-  if (category && VALID_CATEGORIES.includes(category)) q = q.eq('category', category);
-  if (condition && VALID_CONDITIONS.includes(condition)) q = q.eq('condition', condition);
-  if (area) q = q.ilike('area', `%${area}%`);
-  if (min_price !== undefined && !isNaN(Number(min_price))) q = q.gte('price', Number(min_price));
-  if (max_price !== undefined && !isNaN(Number(max_price))) q = q.lte('price', Number(max_price));
-  if (seller_id) q = q.eq('owner_id', seller_id);
+    // active: mọi user; reserved: chỉ người đăng hoặc người mua đã được chốt
+    if (uid) {
+      q = q.or(
+        `status.eq.active,and(status.eq.reserved,or(owner_id.eq.${uid},confirmed_buyer_id.eq.${uid}))`,
+      );
+    } else {
+      q = q.eq('status', 'active');
+    }
 
-  const { data, error, count } = await q;
+    if (keyword) q = q.or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`);
+    if (category && VALID_CATEGORIES.includes(category)) q = q.eq('category', category);
+    if (condition && VALID_CONDITIONS.includes(condition)) q = q.eq('condition', condition);
+    if (area) q = q.ilike('area', `%${area}%`);
+    if (min_price !== undefined && !isNaN(Number(min_price))) q = q.gte('price', Number(min_price));
+    if (max_price !== undefined && !isNaN(Number(max_price))) q = q.lte('price', Number(max_price));
+    if (seller_id) q = q.eq('owner_id', seller_id);
+
+    return q;
+  };
+
+  const { data, error, count } = await runWithBumpSortFallback(buildQuery);
   if (error) throw httpError(500, error.message, 'db_error');
 
   return {
@@ -397,16 +420,20 @@ async function getMyListings(userId, query) {
   const from = (pageNum - 1) * limitNum;
   const to   = from + limitNum - 1;
 
-  let q = supabaseAdmin
-    .from('marketplace_listings')
-    .select('id, title, description, category, condition, area, price, images, status, fee_paid, created_at, updated_at', { count: 'exact' })
-    .eq('owner_id', userId)
-    .order('created_at', { ascending: false })
-    .range(from, to);
+  const buildQuery = (useBumpSort) => {
+    let q = supabaseAdmin
+      .from('marketplace_listings')
+      .select('id, title, description, category, condition, area, price, images, status, fee_paid, created_at, updated_at', { count: 'exact' })
+      .eq('owner_id', userId)
+      .range(from, to);
 
-  if (status && VALID_STATUSES.includes(status)) q = q.eq('status', status);
+    q = orderListingsByRecency(q, useBumpSort);
 
-  const { data, error, count } = await q;
+    if (status && VALID_STATUSES.includes(status)) q = q.eq('status', status);
+    return q;
+  };
+
+  const { data, error, count } = await runWithBumpSortFallback(buildQuery);
   if (error) throw httpError(500, error.message, 'db_error');
 
   const listings = data || [];
@@ -430,16 +457,26 @@ async function getMyListings(userId, query) {
 
 /** API-061 — GET /api/marketplace/listings/:id */
 async function getListing(listingId, userId) {
-  const { data, error } = await supabaseAdmin
-    .from('marketplace_listings')
-    .select(`
+  const listingSelect = (includeBump) => `
       id, title, description, category, condition, area,
-      price, images, status, fee_paid, usage_duration, created_at, updated_at,
+      price, images, status, fee_paid, usage_duration, created_at, updated_at${includeBump ? ', bumped_at' : ''},
       deal_confirmed, confirmed_price, confirmed_buyer_id, transport_booked,
       profiles:owner_id ( id, full_name, avatar_url, phone )
-    `)
+    `;
+
+  let { data, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select(listingSelect(true))
     .eq('id', listingId)
     .single();
+
+  if (error && BUMPED_AT_MISSING.test(error.message || '')) {
+    ({ data, error } = await supabaseAdmin
+      .from('marketplace_listings')
+      .select(listingSelect(false))
+      .eq('id', listingId)
+      .single());
+  }
 
   if (error || !data) throw httpError(404, 'Không tìm thấy tin', 'not_found');
 
@@ -541,6 +578,66 @@ async function expressInterest(listingId, userId, body) {
 }
 
 // ── Batch 3 ──────────────────────────────────────────────────────────────────
+
+/** Danh sách hội thoại Chợ SV của user (buyer hoặc seller) — dùng cho inbox thống nhất */
+async function listUserConversations(userId) {
+  const { data: convs, error } = await supabaseAdmin
+    .from('marketplace_conversations')
+    .select(`
+      id, listing_id, seller_id, buyer_id,
+      last_message_at, last_message_text,
+      seller_unread, buyer_unread, created_at,
+      listing:marketplace_listings ( id, title, price, images, status, deal_confirmed )
+    `)
+    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+    .order('last_message_at', { ascending: false, nullsFirst: false });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+
+  const profileIds = [...new Set((convs || []).flatMap((c) => [c.seller_id, c.buyer_id]))];
+  let profileMap = {};
+  if (profileIds.length) {
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, avatar_url, phone')
+      .in('id', profileIds);
+    profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+  }
+
+  return (convs || []).map((conv) => {
+    const isBuyer = conv.buyer_id === userId;
+    const counterpartId = isBuyer ? conv.seller_id : conv.buyer_id;
+    const listing = Array.isArray(conv.listing) ? conv.listing[0] : conv.listing;
+    const counterpart = profileMap[counterpartId];
+    return {
+      id: conv.id,
+      kind: 'marketplace',
+      listing_id: conv.listing_id,
+      buyer_id: conv.buyer_id,
+      last_message_preview: conv.last_message_text || 'Bắt đầu trò chuyện',
+      last_message_at: conv.last_message_at,
+      unread_count: isBuyer ? (conv.buyer_unread || 0) : (conv.seller_unread || 0),
+      created_at: conv.created_at,
+      listing: listing
+        ? {
+            id: listing.id,
+            title: listing.title,
+            price: listing.price,
+            images: listing.images,
+            status: listing.status,
+            deal_confirmed: listing.deal_confirmed,
+          }
+        : null,
+      counterpart: counterpart
+        ? {
+            full_name: counterpart.full_name,
+            avatar_url: counterpart.avatar_url,
+            phone: counterpart.phone,
+          }
+        : null,
+    };
+  });
+}
 
 /** API-066 — GET /api/marketplace/listings/:id/interests */
 async function getInterestedBuyers(listingId, userId) {
@@ -905,17 +1002,21 @@ async function removeInterest(listingId, userId) {
 
 /** Xem tin của 1 seller cụ thể (seller profile page) */
 async function browseByOwner(sellerId) {
-  const { data, error } = await supabaseAdmin
-    .from('marketplace_listings')
-    .select(`
+  const buildQuery = (useBumpSort) => {
+    let q = supabaseAdmin
+      .from('marketplace_listings')
+      .select(`
       id, title, description, category, condition, area,
       price, images, status, created_at,
       profiles:owner_id ( id, full_name, avatar_url )
     `)
-    .eq('owner_id', sellerId)
-    .in('status', ['active', 'reserved'])
-    .order('created_at', { ascending: false });
+      .eq('owner_id', sellerId)
+      .in('status', ['active', 'reserved']);
 
+    return orderListingsByRecency(q, useBumpSort);
+  };
+
+  const { data, error } = await runWithBumpSortFallback(buildQuery);
   if (error) throw httpError(500, error.message, 'db_error');
   return data || [];
 }
@@ -924,17 +1025,25 @@ async function browseByOwner(sellerId) {
 async function bumpListing(listingId, userId) {
   const { data: listing } = await supabaseAdmin
     .from('marketplace_listings')
-    .select('id, owner_id, status, bumped_at')
+    .select('id, owner_id, status')
     .eq('id', listingId)
     .single();
 
   if (!listing) throw httpError(404, 'Không tìm thấy tin', 'not_found');
   if (listing.owner_id !== userId) throw httpError(403, 'Chỉ người đăng mới đẩy được tin', 'forbidden');
-  if (!['active', 'reserved'].includes(listing.status)) throw httpError(400, 'Chỉ đẩy được tin đang mở hoặc đang giữ', 'invalid_status');
+  if (!['active', 'reserved'].includes(listing.status)) {
+    throw httpError(400, 'Chỉ đẩy được tin đang mở hoặc đang giữ', 'invalid_status');
+  }
 
-  // Giới hạn 1 lần bump / 24h
-  if (listing.bumped_at) {
-    const hoursSince = (Date.now() - new Date(listing.bumped_at).getTime()) / 3_600_000;
+  const { data: bumpMeta } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('bumped_at')
+    .eq('id', listingId)
+    .maybeSingle();
+
+  const lastBumpedAt = bumpMeta?.bumped_at ?? null;
+  if (lastBumpedAt) {
+    const hoursSince = (Date.now() - new Date(lastBumpedAt).getTime()) / 3_600_000;
     if (hoursSince < 24) {
       const hoursLeft = Math.ceil(24 - hoursSince);
       throw httpError(429, `Bạn chỉ được đẩy tin 1 lần / 24h. Còn ${hoursLeft} giờ nữa.`, 'too_many_requests');
@@ -944,10 +1053,21 @@ async function bumpListing(listingId, userId) {
   const now = new Date().toISOString();
   const { error } = await supabaseAdmin
     .from('marketplace_listings')
-    .update({ created_at: now, bumped_at: now })
+    .update({ bumped_at: now })
     .eq('id', listingId);
 
-  if (error) throw httpError(500, error.message, 'db_error');
+  if (error) {
+    // Cột bumped_at chưa migrate — fallback cập nhật created_at
+    if (/bumped_at/i.test(error.message || '')) {
+      const { error: fallbackError } = await supabaseAdmin
+        .from('marketplace_listings')
+        .update({ created_at: now })
+        .eq('id', listingId);
+      if (fallbackError) throw httpError(500, fallbackError.message, 'db_error');
+      return { listing_id: listingId, bumped_at: now, fallback: true };
+    }
+    throw httpError(500, error.message, 'db_error');
+  }
   return { listing_id: listingId, bumped_at: now };
 }
 
@@ -1088,7 +1208,7 @@ async function uploadListingImage(userId, file) {
 module.exports = {
   createListing, payListingFee, finalizeListingFeePayment, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
-  getInterestedBuyers, getMessages, sendMessage,
+  listUserConversations, getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, browseByOwner, bumpListing,
   confirmReceived, createRating, getSellerStats,
