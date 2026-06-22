@@ -604,7 +604,9 @@ async function listUserConversations(userId) {
     profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
   }
 
-  return (convs || []).map((conv) => {
+  return (convs || [])
+    .filter((conv) => conv.last_message_text && String(conv.last_message_text).trim())
+    .map((conv) => {
     const isBuyer = conv.buyer_id === userId;
     const counterpartId = isBuyer ? conv.seller_id : conv.buyer_id;
     const listing = Array.isArray(conv.listing) ? conv.listing[0] : conv.listing;
@@ -614,7 +616,7 @@ async function listUserConversations(userId) {
       kind: 'marketplace',
       listing_id: conv.listing_id,
       buyer_id: conv.buyer_id,
-      last_message_preview: conv.last_message_text || 'Bắt đầu trò chuyện',
+      last_message_preview: String(conv.last_message_text).trim(),
       last_message_at: conv.last_message_at,
       unread_count: isBuyer ? (conv.buyer_unread || 0) : (conv.seller_unread || 0),
       created_at: conv.created_at,
@@ -734,7 +736,7 @@ async function getMessages(listingId, buyerId, userId) {
   const { data: messages, error } = await supabaseAdmin
     .from('marketplace_messages')
     .select(`
-      id, text, is_offer, offer_amount,
+      id, text, sender_id, is_offer, offer_amount,
       is_deal_confirm, is_deal_cancel, created_at,
       profiles:sender_id ( id, full_name )
     `)
@@ -745,16 +747,22 @@ async function getMessages(listingId, buyerId, userId) {
 
   return {
     conversation_id: conv.id,
-    messages: (messages || []).map((m) => ({
-      id:              m.id,
-      text:            m.text,
-      from_buyer:      m.profiles?.id === buyerId,
-      is_offer:        m.is_offer,
-      offer_amount:    m.offer_amount,
-      is_deal_confirm: m.is_deal_confirm,
-      is_deal_cancel:  m.is_deal_cancel,
-      created_at:      m.created_at,
-    })),
+    messages: (messages || []).map((m) => {
+      const senderProfile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+      const senderId = senderProfile?.id ?? m.sender_id;
+      return {
+        id: m.id,
+        text: m.text,
+        content: m.text,
+        sender_id: senderId,
+        from_buyer: senderId === buyerId,
+        is_offer: m.is_offer,
+        offer_amount: m.offer_amount,
+        is_deal_confirm: m.is_deal_confirm,
+        is_deal_cancel: m.is_deal_cancel,
+        created_at: m.created_at,
+      };
+    }),
   };
 }
 

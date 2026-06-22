@@ -79,34 +79,6 @@ type NotifTarget =
   | { kind: "marketplace_thread"; listingId: string; buyerId: string }
   | { kind: "detail" };
 
-function normalizeMarketplaceMessage(
-  raw: Record<string, unknown>,
-  userId: string,
-  buyerId: string,
-): ChatMessage {
-  const fromBuyer = raw.from_buyer as boolean | undefined;
-  const isBuyerUser = userId === buyerId;
-  const isMine =
-    fromBuyer !== undefined
-      ? isBuyerUser
-        ? fromBuyer === true
-        : fromBuyer === false
-      : String(raw.sender_id) === userId;
-  return {
-    id: String(raw.id),
-    content: String(raw.content ?? raw.text ?? ""),
-    is_mine: isMine,
-    created_at: String(raw.created_at ?? new Date().toISOString()),
-    message_type: raw.is_deal_confirm
-      ? "deal_confirm"
-      : raw.is_deal_cancel
-        ? "deal_cancel"
-        : raw.is_offer
-          ? "offer"
-          : undefined,
-  };
-}
-
 function notifTypeOf(n: NotificationRow) {
   return String(n.type ?? n.notification_type ?? "");
 }
@@ -187,6 +159,13 @@ function inboxListIcon(item: InboxItem) {
   return { Icon: MessageCircle, bg: "#F3F4F6", color: "#6B7280" };
 }
 
+function marketplaceListPreview(item: MarketplaceConversation): string {
+  const msg = item.last_message_preview?.trim();
+  if (msg && msg !== "Bắt đầu trò chuyện") return msg;
+  if (item.listing?.title) return `Tin: ${item.listing.title}`;
+  return "Chợ sinh viên";
+}
+
 function partnerInitials(name: string) {
   return name
     .split(" ")
@@ -195,6 +174,12 @@ function partnerInitials(name: string) {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+function threadCacheKey(thread: ActiveChatThread): string {
+  return thread.type === "order"
+    ? `order:${thread.orderId}`
+    : `mp:${thread.listingId}:${thread.buyerId}`;
 }
 
 export function OrderChatWorkspace({
@@ -238,14 +223,21 @@ export function OrderChatWorkspace({
   const [selectedNotifId, setSelectedNotifId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const deepLinkedRef = useRef(false);
+  const messagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  const orderCacheRef = useRef<Map<string, OrderChatContext>>(new Map());
+  const mpListingCacheRef = useRef<Map<string, NonNullable<MarketplaceConversation["listing"]>>>(
+    new Map(),
+  );
+  const inboxItemsRef = useRef(inboxItems);
+  inboxItemsRef.current = inboxItems;
 
   const activeOrderId = activeThread?.type === "order" ? activeThread.orderId : null;
   const activeMarketplace =
     activeThread?.type === "marketplace" ? activeThread : null;
   const hasActiveChat = !!activeThread;
 
-  const loadInbox = useCallback(async () => {
-    setLoadingList(true);
+  const loadInbox = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoadingList(true);
     try {
       const [orderRes, mpRes] = await Promise.all([
         conversationsApi.list(),
@@ -266,7 +258,7 @@ export function OrderChatWorkspace({
     } catch {
       setInboxItems([]);
     } finally {
-      setLoadingList(false);
+      if (!opts?.silent) setLoadingList(false);
     }
   }, [initialOrderId, initialWithName]);
 
@@ -290,8 +282,11 @@ export function OrderChatWorkspace({
     if (!opts?.silent) setLoadingOrder(true);
     try {
       const res = await ordersApi.get(orderId);
-      if (res.success && res.data) setOrder(res.data as OrderChatContext);
-      else if (!opts?.silent) setOrder(null);
+      if (res.success && res.data) {
+        const data = res.data as OrderChatContext;
+        orderCacheRef.current.set(orderId, data);
+        setOrder(data);
+      } else if (!opts?.silent) setOrder(null);
     } catch {
       if (!opts?.silent) setOrder(null);
     } finally {
@@ -307,7 +302,32 @@ export function OrderChatWorkspace({
         if (res.success && res.data) {
           const d = res.data as { messages?: Record<string, unknown>[] };
           const raw = d.messages ?? [];
-          setMessages(raw.map((m) => normalizeMarketplaceMessage(m, userId, buyerId)));
+          const mapped = raw.map((m) => {
+              const content = String(m.content ?? m.text ?? "");
+              const fromBuyer = m.from_buyer as boolean | undefined;
+              const isBuyerUser = userId === buyerId;
+              const isMine =
+                fromBuyer !== undefined
+                  ? isBuyerUser
+                    ? fromBuyer === true
+                    : fromBuyer === false
+                  : String(m.sender_id) === userId;
+              return {
+                id: String(m.id),
+                content,
+                is_mine: isMine,
+                created_at: String(m.created_at ?? new Date().toISOString()),
+                message_type: m.is_deal_confirm
+                  ? "deal_confirm"
+                  : m.is_deal_cancel
+                    ? "deal_cancel"
+                    : m.is_offer
+                      ? "offer"
+                      : undefined,
+              } satisfies ChatMessage;
+            });
+          messagesCacheRef.current.set(`mp:${listingId}:${buyerId}`, mapped);
+          setMessages(mapped);
           setInboxItems((prev) =>
             prev.map((item) =>
               item.kind === "marketplace" &&
@@ -317,6 +337,8 @@ export function OrderChatWorkspace({
                 : item,
             ),
           );
+        } else if (!opts?.silent) {
+          setMessages([]);
         }
       } catch {
         if (!opts?.silent) setMessages([]);
@@ -332,7 +354,9 @@ export function OrderChatWorkspace({
     try {
       const res = await conversationsApi.getMessages(orderId);
       const d = res.data as { messages?: ChatMessage[] };
-      setMessages(d?.messages ?? []);
+      const list = d?.messages ?? [];
+      messagesCacheRef.current.set(`order:${orderId}`, list);
+      setMessages(list);
       setInboxItems((prev) =>
         prev.map((item) =>
           item.kind === "order" && item.order_id === orderId
@@ -376,42 +400,86 @@ export function OrderChatWorkspace({
   }, [initialOrderId, initialListingId, initialBuyerId, loadingList]);
 
   useEffect(() => {
-    if (!activeThread) return;
-    if (activeThread.type === "order") {
-      loadOrder(activeThread.orderId);
-      loadMessages(activeThread.orderId);
-      const t = setInterval(() => {
-        loadMessages(activeThread.orderId, { silent: true });
-        loadOrder(activeThread.orderId, { silent: true });
-      }, 8000);
-      return () => clearInterval(t);
+    if (!activeThread) {
+      setMessages([]);
+      return;
     }
-    loadMarketplaceMessages(activeThread.listingId, activeThread.buyerId);
-    marketplaceApi.get(activeThread.listingId).then((r) => {
-      if (r.success && r.data) {
-        const l = r.data as {
-          id: string;
-          title?: string;
-          price?: number;
-          images?: string[];
-          status?: string;
-          deal_confirmed?: boolean;
-        };
-        setMpListing({
-          id: l.id,
-          title: l.title,
-          price: l.price,
-          images: l.images,
-          status: l.status,
-          deal_confirmed: l.deal_confirmed,
+
+    const key = threadCacheKey(activeThread);
+    const cachedMessages = messagesCacheRef.current.get(key);
+    if (cachedMessages) {
+      setMessages(cachedMessages);
+      setLoadingMessages(false);
+    }
+
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+    if (activeThread.type === "order") {
+      const cachedOrder = orderCacheRef.current.get(activeThread.orderId);
+      if (cachedOrder) {
+        setOrder(cachedOrder);
+        setLoadingOrder(false);
+      }
+      void loadOrder(activeThread.orderId, { silent: !!cachedOrder });
+      void loadMessages(activeThread.orderId, { silent: !!cachedMessages });
+      pollTimer = setInterval(() => {
+        void loadMessages(activeThread.orderId, { silent: true });
+        void loadOrder(activeThread.orderId, { silent: true });
+      }, 8000);
+    } else {
+      const cachedListing = mpListingCacheRef.current.get(key);
+      if (cachedListing) {
+        setMpListing(cachedListing);
+      } else {
+        const mpItem = inboxItemsRef.current.find(
+          (item) =>
+            item.kind === "marketplace" &&
+            item.listing_id === activeThread.listingId &&
+            item.buyer_id === activeThread.buyerId,
+        );
+        if (mpItem?.kind === "marketplace" && mpItem.listing) {
+          setMpListing(mpItem.listing);
+          mpListingCacheRef.current.set(key, mpItem.listing);
+        }
+      }
+      setOrder(null);
+      void loadMarketplaceMessages(activeThread.listingId, activeThread.buyerId, {
+        silent: !!cachedMessages,
+      });
+      if (!cachedListing) {
+        marketplaceApi.get(activeThread.listingId).then((r) => {
+          if (r.success && r.data) {
+            const l = r.data as {
+              id: string;
+              title?: string;
+              price?: number;
+              images?: string[];
+              status?: string;
+              deal_confirmed?: boolean;
+            };
+            const listing = {
+              id: l.id,
+              title: l.title,
+              price: l.price,
+              images: l.images,
+              status: l.status,
+              deal_confirmed: l.deal_confirmed,
+            };
+            mpListingCacheRef.current.set(key, listing);
+            setMpListing(listing);
+          }
         });
       }
-    });
-    setOrder(null);
-    const t = setInterval(() => {
-      loadMarketplaceMessages(activeThread.listingId, activeThread.buyerId, { silent: true });
-    }, 8000);
-    return () => clearInterval(t);
+      pollTimer = setInterval(() => {
+        void loadMarketplaceMessages(activeThread.listingId, activeThread.buyerId, {
+          silent: true,
+        });
+      }, 8000);
+    }
+
+    return () => {
+      if (pollTimer) clearInterval(pollTimer);
+    };
   }, [activeThread, loadOrder, loadMessages, loadMarketplaceMessages]);
 
   useEffect(() => {
@@ -676,8 +744,8 @@ export function OrderChatWorkspace({
                         item.counterpart?.full_name ??
                         (item.kind === "marketplace" ? "Chợ SV" : isProvider ? "Khách hàng" : "Nhà xe");
                       const preview =
-                        item.kind === "marketplace" && item.listing?.title
-                          ? `${item.listing.title} · ${item.last_message_preview ?? ""}`
+                        item.kind === "marketplace"
+                          ? marketplaceListPreview(item)
                           : item.last_message_preview || "Bắt đầu trò chuyện";
                       const { Icon, bg, color } = inboxListIcon(item);
                       const rowKey =
@@ -895,20 +963,7 @@ export function OrderChatWorkspace({
               </p>
             </motion.div>
           ) : (
-            <motion.div
-              key={
-                activeThread?.type === "order"
-                  ? `order-${activeThread.orderId}`
-                  : activeThread?.type === "marketplace"
-                    ? `mp-${activeThread.listingId}-${activeThread.buyerId}`
-                    : "chat"
-              }
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.25 }}
-              className="flex min-h-0 flex-1 flex-col"
-            >
+            <div className="flex min-h-0 flex-1 flex-col">
               <header className="flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
                 <button
                   type="button"
@@ -957,7 +1012,7 @@ export function OrderChatWorkspace({
               </header>
 
               <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
-                {loadingMessages ? (
+                {loadingMessages && messages.length === 0 ? (
                   <div className="space-y-3">
                     <Skeleton className="h-12 w-2/3 rounded-2xl" />
                     <Skeleton className="h-12 w-1/2 rounded-2xl ml-auto" />
@@ -985,15 +1040,10 @@ export function OrderChatWorkspace({
                           {group.label}
                         </span>
                       </div>
-                      {group.items.map((m, i) => (
-                        <motion.div
-                          key={m.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.03, duration: 0.2 }}
-                        >
+                      {group.items.map((m) => (
+                        <div key={m.id}>
                           <MessageBubble message={m} partnerName={partnerName} />
-                        </motion.div>
+                        </div>
                       ))}
                     </div>
                   ))
@@ -1059,7 +1109,7 @@ export function OrderChatWorkspace({
                   </div>
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </section>
@@ -1073,13 +1123,7 @@ export function OrderChatWorkspace({
       >
         <AnimatePresence mode="wait">
           {hasActiveChat && activeMarketplace && (
-            <motion.div
-              key={`mp-${activeMarketplace.listingId}`}
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 16 }}
-              className="flex h-full flex-col overflow-y-auto p-4"
-            >
+            <div className="flex h-full flex-col overflow-y-auto p-4">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                 Chi tiết tin đăng
               </h3>
@@ -1100,24 +1144,17 @@ export function OrderChatWorkspace({
               >
                 Xem tin đăng
               </Link>
-            </motion.div>
+            </div>
           )}
           {hasActiveChat && activeOrderId && !activeMarketplace && (
-            <motion.div
-              key={activeOrderId}
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 16 }}
-              transition={{ duration: 0.28 }}
-              className="flex h-full flex-col overflow-y-auto"
-            >
+            <div className="flex h-full flex-col overflow-y-auto">
               <div className="border-b border-gray-100 p-4">
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                   Chi tiết đơn hàng
                 </h3>
               </div>
 
-              {loadingOrder ? (
+              {loadingOrder && !order ? (
                 <div className="space-y-3 p-4">
                   <Skeleton className="h-20 rounded-xl" />
                   <Skeleton className="h-32 rounded-xl" />
@@ -1218,7 +1255,7 @@ export function OrderChatWorkspace({
               ) : (
                 <p className="p-4 text-sm text-gray-400">Không tải được thông tin đơn.</p>
               )}
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </aside>
