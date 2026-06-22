@@ -500,6 +500,8 @@ export function OrderChatWorkspace({
             if (listing.chat_enabled !== undefined) setMpChatEnabled(listing.chat_enabled !== false);
             if (listing.deal_status_label !== undefined) setMpDealStatusLabel(listing.deal_status_label ?? null);
           }
+        }).catch(() => {
+          /* tin có thể đã bị xóa */
         });
       }
       pollTimer = setInterval(() => {

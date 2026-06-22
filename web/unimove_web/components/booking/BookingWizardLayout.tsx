@@ -9,6 +9,7 @@ interface BookingWizardLayoutProps {
   currentStep: number;
   title: string;
   subtitle?: string;
+  intro?: React.ReactNode;
   segmentProgress?: { current: number; total: number };
   compact?: boolean;
   hideSidebar?: boolean;
@@ -28,6 +29,7 @@ export function BookingWizardLayout({
   currentStep,
   title,
   subtitle,
+  intro,
   segmentProgress,
   compact,
   hideSidebar,
@@ -83,9 +85,10 @@ export function BookingWizardLayout({
           >
             {title}
           </h1>
-          {subtitle && (
+          {subtitle && !intro && (
             <p className="mx-auto mt-1.5 max-w-xl text-sm text-gray-500">{subtitle}</p>
           )}
+          {intro && <div className="mt-4">{intro}</div>}
           {segmentProgress && (
             <div className="mx-auto mt-3 flex max-w-md gap-2">
               {Array.from({ length: segmentProgress.total }, (_, i) => (

@@ -11,6 +11,7 @@ import {
   COMBO_WIZARD_STEPS,
 } from "@/components/booking/BookingWizardLayout";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import { ordersApi, customerApi } from "@/lib/api";
 import { buildOrderPayload, defaultPickupSuggestion, isValidPickupTime } from "@/lib/booking/order-payload";
 import { uploadDormPhotos } from "@/lib/booking/upload-dorm-photos";
@@ -27,6 +28,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export default function LichHenPage() {
   const router = useRouter();
+  useBookingModeGuard();
   const store = useBookingFlowStore();
   const { isComboBooking, pickup, destination, scheduledPickupAt, setScheduledPickupAt } = store;
 

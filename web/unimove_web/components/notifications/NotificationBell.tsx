@@ -123,13 +123,11 @@ export function NotificationBell({
   const handleClick = async (n: NotificationItem) => {
     if (isNotificationUnread(n)) {
       await notificationsApi.markRead(n.id);
-      setNotifs((prev) => {
-        const next = prev.map((x) =>
-          x.id === n.id ? { ...x, read: true, is_read: true } : x,
-        );
-        return next;
-      });
-      setUnreadCount(Math.max(0, unreadCount - 1));
+      const next = notifs.map((x) =>
+        x.id === n.id ? { ...x, read: true, is_read: true } : x,
+      );
+      setNotifs(next);
+      setUnreadCount(next.filter(isNotificationUnread).length);
     }
 
     const href = getNotificationNavigateHref(n, { isProvider });
@@ -224,7 +222,7 @@ export function NotificationBell({
             ) : (
               <div className="divide-y divide-gray-50">
                 {notifs.map((n) => {
-                  const kind = mapNotificationKind(n.type);
+                  const kind = mapNotificationKind(String(n.type ?? n.notification_type ?? ""));
                   const meta = NOTIFICATION_TYPE_META[kind];
                   const Icon = meta.icon;
                   const unread = isNotificationUnread(n);

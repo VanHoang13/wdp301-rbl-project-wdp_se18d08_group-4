@@ -85,6 +85,9 @@ export async function serverPatch<T>(
   });
 }
 
-export async function serverDelete<T>(endpoint: string): Promise<T> {
-  return serverFetch<T>(endpoint, { method: "DELETE" });
+export async function serverDelete<T>(endpoint: string, body?: any): Promise<T> {
+  return serverFetch<T>(endpoint, {
+    method: "DELETE",
+    body: body ? JSON.stringify(body) : undefined,
+  });
 }

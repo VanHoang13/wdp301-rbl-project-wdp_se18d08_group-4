@@ -122,6 +122,7 @@ export function normalizeNotification(raw: Record<string, unknown>) {
   return {
     ...raw,
     type: raw.type ?? raw.notification_type,
+    action_url: raw.action_url ?? null,
   };
 }
 
@@ -341,11 +342,16 @@ export const marketplaceApi = {
     return { success: true, data: urls };
   },
   get: async (id: string) => {
-    const res = await get(`/marketplace/listings/${id}`);
-    if (res.success && res.data) {
-      return { ...res, data: normalizeListing(res.data as Record<string, unknown>) };
+    try {
+      const res = await get(`/marketplace/listings/${id}`);
+      if (res.success && res.data) {
+        return { ...res, data: normalizeListing(res.data as Record<string, unknown>) };
+      }
+      return res;
+    } catch (e) {
+      const err = e as ApiError;
+      return { success: false, message: err.message || "Không tìm thấy tin" };
     }
-    return res;
   },
   updateStatus: (id: string, status: string) => patch(`/marketplace/listings/${id}/status`, { status }),
   addInterest: (id: string, note?: string) => post(`/marketplace/listings/${id}/interest`, note ? { note } : {}),

@@ -23,6 +23,7 @@ export interface DormPhotoItem {
 interface BookingFlowState {
   serviceKind: BookingServiceKind;
   isComboBooking: boolean;
+  bookingModeChosen: boolean;
 
   pickup: string;
   pickupLat: number | null;
@@ -60,6 +61,7 @@ interface BookingFlowState {
 
   setServiceKind: (k: BookingServiceKind) => void;
   setIsComboBooking: (v: boolean) => void;
+  setBookingMode: (mode: "combo" | "quote") => void;
   setPickup: (address: string, lat?: number | null, lng?: number | null) => void;
   setDestination: (address: string, lat?: number | null, lng?: number | null) => void;
   setDormDetails: (p: Partial<Pick<BookingFlowState,
@@ -94,6 +96,7 @@ interface BookingFlowState {
 const INITIAL = {
   serviceKind: "fullMove" as BookingServiceKind,
   isComboBooking: false,
+  bookingModeChosen: false,
   pickup: "",
   pickupLat: null as number | null,
   pickupLng: null as number | null,
@@ -132,6 +135,13 @@ export const useBookingFlowStore = create<BookingFlowState>((set, get) => ({
     isComboBooking: k === "combo",
   }),
   setIsComboBooking: (v) => set({ isComboBooking: v, serviceKind: v ? "combo" : "fullMove" }),
+
+  setBookingMode: (mode) =>
+    set({
+      bookingModeChosen: true,
+      isComboBooking: mode === "combo",
+      serviceKind: mode === "combo" ? "combo" : "fullMove",
+    }),
 
   setPickup: (address, lat = null, lng = null) => set({ pickup: address, pickupLat: lat ?? null, pickupLng: lng ?? null }),
   setDestination: (address, lat = null, lng = null) => set({

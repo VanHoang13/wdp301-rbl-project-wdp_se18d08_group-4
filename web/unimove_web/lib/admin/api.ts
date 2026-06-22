@@ -133,8 +133,11 @@ class ApiClient {
   }
 
   // DELETE request
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'DELETE',
+      body: body ? JSON.stringify(body) : undefined,
+    });
   }
 
   // Multipart upload (avatar, etc.)
@@ -238,6 +241,25 @@ export const adminApi = {
   unhideReview: (id: string) => apiClient.put(`/admin/reviews/${id}/unhide`),
   flagReview: (id: string, reason: string) =>
     apiClient.put(`/admin/reviews/${id}/flag`, { reason }),
+
+  // Marketplace (Pass đồ)
+  getMarketplaceListings: (params?: {
+    status?: string;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  }) => apiClient.get('/admin/marketplace/listings', params),
+
+  updateMarketplaceListingStatus: (
+    id: string,
+    data: { status: string; reason?: string },
+  ) => apiClient.put(`/admin/marketplace/listings/${id}/status`, data),
+
+  approveMarketplaceListingFee: (id: string, reason?: string) =>
+    apiClient.post(`/admin/marketplace/listings/${id}/approve-fee`, { reason }),
+
+  deleteMarketplaceListing: (id: string, reason?: string) =>
+    apiClient.delete(`/admin/marketplace/listings/${id}`, { reason }),
 
   // Refunds Management
   getRefunds: (params?: { status?: string; page?: number; pageSize?: number }) =>
