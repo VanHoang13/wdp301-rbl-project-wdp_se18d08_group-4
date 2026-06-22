@@ -19,6 +19,7 @@ export interface AuthUser {
   vehicle_type?: string;
   rating?: number;
   is_verified?: boolean;
+  verification_status?: string | null;
   total_orders?: number;
   total_reviews?: number;
   compliance_score?: number;
@@ -70,7 +71,7 @@ export function isAuthenticated(): boolean {
 /** Trả về route trang chủ tương ứng với role */
 export function getRoleHome(role: UserRole): string {
   if (role === "admin") return "/admin/dashboard";
-  if (role === "provider") return "/dashboard";
+  if (role === "provider") return "/tai-xe/tong-quan";
   return "/trang-chu";
 }
 

@@ -180,6 +180,14 @@ async function uploadListingImage(req, res, next) {
   } catch (error) { next(error); }
 }
 
+/** GET /api/marketplace/my-conversations */
+async function getMyConversations(req, res, next) {
+  try {
+    const data = await marketplaceService.getMyConversations(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
 /** Inbox Chợ SV — tất cả hội thoại của user */
 async function listConversations(req, res, next) {
   try {
@@ -194,5 +202,5 @@ module.exports = {
   listConversations, getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, bumpListing, createRating, getSellerStats,
-  confirmReceived, uploadListingImage,
+  confirmReceived, uploadListingImage, getMyConversations,
 };

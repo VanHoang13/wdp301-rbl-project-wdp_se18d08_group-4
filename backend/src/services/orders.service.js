@@ -4,7 +4,17 @@ const { createNotification } = require('./notification.service');
 const paymentsService = require('./payments.service');
 const { isDaNangCity, isDaNangDistrict, isDaNangOrder, textMentionsDaNang } = require('../utils/da_nang');
 
-const CANCELLABLE_STATUSES = ['pending', 'matched', 'accepted'];
+const CANCELLABLE_STATUSES = ['pending', 'matched', 'accepted', 'scheduled'];
+
+function calcOrderExpiresAt(scheduledPickupTime) {
+  const now = Date.now();
+  if (!scheduledPickupTime) return new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  const pickup = new Date(scheduledPickupTime).getTime();
+  const hoursUntilPickup = (pickup - now) / (1000 * 60 * 60);
+  if (hoursUntilPickup <= 3)  return new Date(now + 30 * 60 * 1000).toISOString();
+  if (hoursUntilPickup <= 24) return new Date(pickup - 2 * 60 * 60 * 1000).toISOString();
+  return new Date(pickup - 24 * 60 * 60 * 1000).toISOString();
+}
 const PROVIDER_CANCELLABLE_STATUSES = ['accepted', 'picking_up', 'in_progress'];
 const POINTS_PER_VIOLATION = 2;
 
@@ -276,6 +286,7 @@ async function createOrder(customerId, payload) {
     requires_helpers: p.requires_helpers ?? false,
     number_of_helpers: p.number_of_helpers ?? 0,
     status: 'pending',
+    order_expires_at: calcOrderExpiresAt(p.scheduled_pickup_time),
   };
 
   let insertRow = { ...baseRow, quote_request: p.quote_request === true };
@@ -358,7 +369,28 @@ async function providerRespond(orderId, providerId, response, declineReason) {
 async function getOrderById(orderId) {
   const { data, error } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single();
   if (error) throw Object.assign(new Error(error.message), { status: 404 });
-  return enrichOrderWithProvider(data);
+
+  const enriched = await enrichOrderWithProvider(data);
+
+  if (data.customer_id) {
+    const { data: cp } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, phone')
+      .eq('id', data.customer_id)
+      .maybeSingle();
+    if (cp) enriched.customer = { id: cp.id, full_name: cp.full_name, phone: cp.phone };
+  }
+
+  if (data.status === 'completed') {
+    const { data: rev } = await supabaseAdmin
+      .from('reviews')
+      .select('id, rating, comment, tags, created_at')
+      .eq('order_id', orderId)
+      .maybeSingle();
+    if (rev) enriched.my_review = rev;
+  }
+
+  return enriched;
 }
 
 // ── PATCH /api/orders/:id/accept ──────────────────────────────────────────────
@@ -496,6 +528,7 @@ async function completeOrder(orderId, providerId) {
       completed_at: now,
       payment_released: true,
       payment_released_at: now,
+      slot_locked_until: null, // xóa lock khung giờ khi đơn hoàn thành
     })
     .eq('id', orderId)
     .select('*')
@@ -562,6 +595,7 @@ async function cancelOrder(orderId, userId, reason) {
       cancellation_reason: trimmedReason || null,
       cancelled_by: userId,
       cancelled_at: new Date().toISOString(),
+      slot_locked_until: null, // xóa lock khung giờ khi đơn bị hủy
     })
     .eq('id', orderId)
     .select('*')
@@ -825,6 +859,118 @@ async function checkProviderBan(providerId) {
   }
 }
 
+/**
+ * Lấy lịch giao hàng của provider theo khoảng ngày.
+ * Trả về các đơn accepted/scheduled/picking_up/in_progress để hiển thị calendar.
+ */
+async function getProviderSchedule(providerId, fromDate, toDate) {
+  const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const to   = toDate   || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from('orders')
+    .select(`
+      id, order_number, status,
+      pickup_address, delivery_address,
+      scheduled_pickup_time, estimated_duration,
+      total_price, deposit_amount,
+      customer:customer_id ( id, full_name, phone, avatar_url )
+    `)
+    .eq('provider_id', providerId)
+    .in('status', ['accepted', 'scheduled', 'picking_up', 'picked_up', 'in_progress', 'delivering', 'completed'])
+    .gte('scheduled_pickup_time', from)
+    .lte('scheduled_pickup_time', to)
+    .order('scheduled_pickup_time', { ascending: true });
+
+  if (error) throw httpError(500, error.message, 'db_error');
+  return data || [];
+}
+
+/**
+ * Customer hủy đơn khi provider chưa bắt đầu sau giờ hẹn.
+ * - accepted + scheduled_pickup_time + 30 phút đã qua → hoàn 100%
+ * - scheduled → áp dụng chính sách hủy theo mốc ngày
+ */
+async function cancelByCustomerTimeout(orderId, customerId) {
+  const { data: order, error } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, customer_id, provider_id, pickup_address, delivery_address, provider_accepted_at, scheduled_pickup_time, deposit_paid, deposit_amount')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (error || !order) throw httpError(404, 'Không tìm thấy đơn hàng', 'not_found');
+  if (order.customer_id !== customerId) throw httpError(403, 'Không có quyền hủy đơn này', 'forbidden');
+
+  const now = Date.now();
+
+  if (order.status === 'accepted') {
+    // Cho phép hủy khi còn ≤15 phút đến giờ hẹn mà provider chưa bắt đầu
+    const pickupTime = order.scheduled_pickup_time
+      ? new Date(order.scheduled_pickup_time).getTime()
+      : null;
+    if (!pickupTime || now < pickupTime - 15 * 60 * 1000) {
+      const minutesLeft = pickupTime
+        ? Math.ceil((pickupTime - 15 * 60 * 1000 - now) / 60000)
+        : null;
+      const msg = minutesLeft
+        ? `Còn ${minutesLeft} phút nữa mới được hủy (nhà xe chưa đến giờ)`
+        : 'Không thể hủy đơn này theo kịch bản nhà xe im lặng';
+      throw httpError(400, msg, 'too_early');
+    }
+  } else if (order.status === 'scheduled') {
+    // Cho phép hủy bất kể thời gian (chính sách hoàn tiền tính sau)
+  } else {
+    throw httpError(400, `Không thể hủy đơn ở trạng thái "${order.status}"`, 'cannot_cancel');
+  }
+
+  const nowIso = new Date().toISOString();
+  await supabaseAdmin
+    .from('orders')
+    .update({
+      status: 'cancelled',
+      cancellation_reason: 'Khách hủy — nhà xe không phản hồi',
+      cancelled_by: customerId,
+      cancelled_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', orderId);
+
+  // Tạo refund request nếu đã đặt cọc
+  if (order.deposit_paid && order.deposit_amount > 0) {
+    const { data: payment } = await supabaseAdmin
+      .from('payments')
+      .select('id')
+      .eq('order_id', orderId)
+      .eq('payment_purpose', 'deposit')
+      .eq('status', 'completed')
+      .maybeSingle();
+
+    if (payment) {
+      await supabaseAdmin.from('refunds').insert({
+        order_id: orderId,
+        payment_id: payment.id,
+        requested_by: customerId,
+        refund_amount: order.deposit_amount,
+        refund_reason: 'Nhà xe không bắt đầu chuyến sau 6 giờ xác nhận',
+        status: 'pending',
+      });
+    }
+  }
+
+  const { createNotification } = require('./notification.service');
+  if (order.provider_id) {
+    await createNotification(
+      order.provider_id,
+      'order_cancelled',
+      'Khách đã hủy đơn',
+      `Đơn ${order.pickup_address || ''} → ${order.delivery_address || ''} đã bị hủy do không phản hồi.`,
+      { priority: 'high', actionData: { order_id: orderId } },
+    ).catch(() => {});
+  }
+
+  return { cancelled: true, refund_requested: order.deposit_paid };
+}
+
 module.exports = {
   listOrdersForUser,
   createOrder,
@@ -836,7 +982,10 @@ module.exports = {
   declineOrder,
   completeOrder,
   cancelOrder,
+  cancelByCustomerTimeout,
+  getProviderSchedule,
   uploadDeliveryPhoto,
   checkProviderBan,
   estimateCancelRefund,
+  calcOrderExpiresAt,
 };

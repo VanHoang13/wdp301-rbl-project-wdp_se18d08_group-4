@@ -451,6 +451,64 @@ async function uploadProviderDocuments(providerId, filesMap) {
   return { uploaded: uploaded.length, documents: uploaded };
 }
 
+async function getMyDocuments(providerId) {
+  const { supabaseAdmin } = require('./supabase.service');
+  const { data, error } = await supabaseAdmin
+    .from('provider_documents')
+    .select('id, document_type, document_url, document_number, issue_date, expiry_date, is_verified, notes, created_at')
+    .eq('provider_id', providerId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function getQuotedOrders(providerId) {
+  const { supabaseAdmin } = require('./supabase.service');
+
+  // Lấy tất cả quotes đã gửi của provider này
+  const { data: quotes, error: qErr } = await supabaseAdmin
+    .from('order_quotes')
+    .select('order_id, total_price, status, created_at, note')
+    .eq('provider_id', providerId)
+    .order('created_at', { ascending: false });
+
+  if (qErr) throw qErr;
+  if (!quotes || quotes.length === 0) return { orders: [] };
+
+  const orderIds = [...new Set(quotes.map((q) => q.order_id))];
+
+  // Lấy thông tin order (không join trực tiếp với users)
+  const { data: orders, error: oErr } = await supabaseAdmin
+    .from('orders')
+    .select('id, status, deposit_paid, pickup_address, delivery_address, base_price, total_price, created_at, customer_id')
+    .in('id', orderIds)
+    .order('created_at', { ascending: false });
+
+  if (oErr) throw oErr;
+
+  // Lấy thông tin profiles của từng customer
+  const customerIds = [...new Set((orders || []).map((o) => o.customer_id).filter(Boolean))];
+  let profileMap = {};
+  if (customerIds.length > 0) {
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, phone')
+      .in('id', customerIds);
+    profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+  }
+
+  // Gắn thêm quote info và customer vào mỗi order
+  const quoteByOrder = Object.fromEntries(quotes.map((q) => [q.order_id, q]));
+  const result = (orders || []).map((o) => ({
+    ...o,
+    customer: profileMap[o.customer_id] ?? null,
+    my_quote: quoteByOrder[o.id] ?? null,
+  }));
+
+  return { orders: result };
+}
+
 module.exports = {
   browseProviders,
   getProviderById,
@@ -458,4 +516,6 @@ module.exports = {
   getSchedule,
   updateSchedule,
   uploadProviderDocuments,
+  getMyDocuments,
+  getQuotedOrders,
 };

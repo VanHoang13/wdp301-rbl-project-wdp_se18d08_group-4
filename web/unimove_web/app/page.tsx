@@ -8,7 +8,7 @@ import {
   Truck, ShoppingBag, Shield, CheckCircle, MapPin, Clock,
   DollarSign, Users, ArrowRight, ChevronRight, Star, Menu, X, Zap,
 } from "lucide-react";
-import { isAuthenticated, getStoredUser, getRoleHome } from "@/lib/auth";
+import { isAuthenticated, getStoredUser, getRoleHome, clearAuth } from "@/lib/auth";
 import { fadeInUp, stagger, viewport } from "@/components/landing/motion";
 import { cn } from "@/lib/utils";
 
@@ -142,6 +142,8 @@ export default function LandingPage() {
     if (isAuthenticated()) {
       const u = getStoredUser();
       if (u) { router.replace(getRoleHome(u.role)); return; }
+    } else {
+      clearAuth(); // xóa cookie cũ để middleware không chặn /dang-nhap, /dang-ky
     }
     setReady(true);
   }, [router]);

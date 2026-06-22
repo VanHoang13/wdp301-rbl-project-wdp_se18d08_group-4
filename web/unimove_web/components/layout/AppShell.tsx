@@ -4,6 +4,7 @@ import { CustomerFooter } from "./CustomerFooter";
 import { ChatQuickAccess } from "./ChatQuickAccess";
 import { MeshBackground } from "./mesh-background";
 import { ToastRenderer } from "@/components/shared/ToastRenderer";
+import { ActiveOrderBanner } from "@/components/shared/active-order-banner";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export function AppShell({ children }: AppShellProps) {
       <MobileBottomNav />
       <ChatQuickAccess />
       <ToastRenderer />
+      <ActiveOrderBanner />
     </div>
   );
 }

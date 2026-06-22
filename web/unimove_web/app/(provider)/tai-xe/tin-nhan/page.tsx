@@ -2,33 +2,24 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
-  MessageSquare, Send, ArrowLeft, Package, Clock, User,
+  MessageSquare, Send, ArrowLeft, Package, User,
   RefreshCw, ChevronRight,
 } from "lucide-react";
 import { conversationsApi } from "@/lib/api";
 import { getStoredUser, type AuthUser } from "@/lib/auth";
 import { timeAgo } from "@/lib/utils";
 
-const BRAND = "#1A56DB";  // provider primary
+const BRAND = "#1A56DB";
 
 interface Counterpart { id: string; full_name: string; avatar_url?: string; phone?: string; }
 interface Order       { id: string; status: string; service_type?: string; }
-
 interface Conversation {
-  id: string;
-  order_id: string;
-  last_message_preview?: string;
-  last_message_at?: string;
-  unread_count: number;
-  order?: Order;
-  counterpart?: Counterpart;
+  id: string; order_id: string;
+  last_message_preview?: string; last_message_at?: string;
+  unread_count: number; order?: Order; counterpart?: Counterpart;
 }
-
 interface Message {
-  id: string;
-  content: string;
-  is_mine: boolean;
-  created_at: string;
+  id: string; content: string; is_mine: boolean; created_at: string;
   sender?: { id: string; full_name: string };
 }
 
@@ -69,9 +60,7 @@ export default function ProviderMessagesPage() {
   const loadConvos = useCallback(() => {
     setLoadingList(true);
     conversationsApi.list().then(r => {
-      if (r.success && r.data) {
-        setConvos(r.data as Conversation[]);
-      }
+      if (r.success && r.data) setConvos(r.data as Conversation[]);
     }).finally(() => setLoadingList(false));
   }, []);
 
@@ -85,7 +74,6 @@ export default function ProviderMessagesPage() {
       if (r.success && r.data) {
         const d = r.data as { messages?: Message[] };
         setMessages(d.messages ?? []);
-        // mark as read locally
         setConvos(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
       }
     }).finally(() => setLoadingMsgs(false));
@@ -100,11 +88,8 @@ export default function ProviderMessagesPage() {
     const text = input.trim();
     setInput("");
     setSending(true);
-    // optimistic
     const optimistic: Message = {
-      id: `opt-${Date.now()}`,
-      content: text,
-      is_mine: true,
+      id: `opt-${Date.now()}`, content: text, is_mine: true,
       created_at: new Date().toISOString(),
       sender: me ? { id: me.id, full_name: me.full_name } : undefined,
     };
@@ -115,52 +100,22 @@ export default function ProviderMessagesPage() {
         const real = r.data as Message;
         setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...optimistic, ...real } : m));
         setConvos(prev => prev.map(c =>
-          c.id === active.id
-            ? { ...c, last_message_preview: text, last_message_at: real.created_at }
-            : c
+          c.id === active.id ? { ...c, last_message_preview: text, last_message_at: real.created_at } : c
         ));
       }
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  /* ─── Empty state ─── */
-  const EmptyConvos = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center py-16 px-6">
-      <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
-        <MessageSquare size={32} className="text-gray-300" />
-      </div>
-      <p className="font-bold text-gray-800 mb-1">Chưa có tin nhắn</p>
-      <p className="text-sm text-gray-400 leading-relaxed">
-        Khi khách hàng nhắn tin về đơn hàng,<br />cuộc trò chuyện sẽ xuất hiện ở đây.
-      </p>
-    </div>
-  );
-
-  const NoChatSelected = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center py-16 px-8">
-      <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5"
-        style={{ background: "linear-gradient(135deg, #EFF4FE, #DBEAFE)" }}>
-        <MessageSquare size={32} style={{ color: BRAND }} />
-      </div>
-      <p className="font-bold text-gray-800 mb-1.5">Chọn cuộc trò chuyện</p>
-      <p className="text-sm text-gray-400">Chọn một cuộc trò chuyện từ danh sách bên trái để bắt đầu chat</p>
-    </div>
-  );
-
   return (
     <div className="h-full -m-6 flex overflow-hidden rounded-xl bg-white border border-gray-100 shadow-sm">
 
-      {/* ── Left panel: conversation list ── */}
+      {/* Left: conversation list */}
       <div className={`flex flex-col border-r border-gray-100 ${active ? "hidden lg:flex" : "flex"}`}
         style={{ width: 320, minWidth: 320 }}>
-
-        {/* Header */}
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div>
             <h2 className="text-base font-bold text-gray-900">Tin nhắn</h2>
@@ -172,7 +127,6 @@ export default function ProviderMessagesPage() {
           </button>
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loadingList ? (
             <div className="p-4 space-y-3">
@@ -187,18 +141,23 @@ export default function ProviderMessagesPage() {
               ))}
             </div>
           ) : convos.length === 0 ? (
-            <EmptyConvos />
+            <div className="flex flex-col items-center justify-center h-full text-center py-16 px-6">
+              <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center mb-5">
+                <MessageSquare size={32} className="text-gray-300" />
+              </div>
+              <p className="font-bold text-gray-800 mb-1">Chưa có tin nhắn</p>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                Khi khách hàng nhắn tin về đơn hàng,<br />cuộc trò chuyện sẽ xuất hiện ở đây.
+              </p>
+            </div>
           ) : (
             <div className="divide-y divide-gray-50">
               {convos.map(conv => {
                 const isActive = active?.id === conv.id;
                 return (
-                  <button
-                    key={conv.id}
-                    onClick={() => openConvo(conv)}
+                  <button key={conv.id} onClick={() => openConvo(conv)}
                     className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50/80"
-                    style={{ backgroundColor: isActive ? "#EFF4FE" : undefined }}
-                  >
+                    style={{ backgroundColor: isActive ? "#EFF4FE" : undefined }}>
                     <Avatar name={conv.counterpart?.full_name} url={conv.counterpart?.avatar_url} size={44} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -222,7 +181,7 @@ export default function ProviderMessagesPage() {
                           )}
                         </div>
                         {conv.unread_count > 0 && (
-                          <span className="flex items-center justify-center w-4.5 h-4.5 rounded-full text-white text-[10px] font-bold shrink-0"
+                          <span className="flex items-center justify-center rounded-full text-white text-[10px] font-bold shrink-0"
                             style={{ width: 18, height: 18, backgroundColor: BRAND }}>
                             {conv.unread_count > 9 ? "9+" : conv.unread_count}
                           </span>
@@ -238,16 +197,22 @@ export default function ProviderMessagesPage() {
         </div>
       </div>
 
-      {/* ── Right panel: chat ── */}
+      {/* Right: chat window */}
       <div className={`flex-1 flex flex-col min-w-0 ${active ? "flex" : "hidden lg:flex"}`}>
         {!active ? (
-          <NoChatSelected />
+          <div className="flex flex-col items-center justify-center h-full text-center py-16 px-8">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5"
+              style={{ background: "linear-gradient(135deg, #EFF4FE, #DBEAFE)" }}>
+              <MessageSquare size={32} style={{ color: BRAND }} />
+            </div>
+            <p className="font-bold text-gray-800 mb-1.5">Chọn cuộc trò chuyện</p>
+            <p className="text-sm text-gray-400">Chọn một cuộc trò chuyện từ danh sách bên trái để bắt đầu chat</p>
+          </div>
         ) : (
           <>
             {/* Chat header */}
             <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 shrink-0 bg-white">
-              <button
-                onClick={() => setActive(null)}
+              <button onClick={() => setActive(null)}
                 className="lg:hidden w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                 <ArrowLeft size={18} />
               </button>
@@ -267,8 +232,7 @@ export default function ProviderMessagesPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3"
-              style={{ backgroundColor: "#FAFAFA" }}>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3" style={{ backgroundColor: "#FAFAFA" }}>
               {loadingMsgs ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -292,15 +256,11 @@ export default function ProviderMessagesPage() {
                       <Avatar name={active.counterpart?.full_name} url={active.counterpart?.avatar_url} size={28} />
                     )}
                     <div className={`max-w-[72%] ${!msg.is_mine ? "ml-2" : "mr-0"}`}>
-                      <div
-                        className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
+                      <div className="px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
                         style={msg.is_mine
-                          ? { backgroundColor: BRAND, color: "#fff",
-                              borderBottomRightRadius: 4 }
-                          : { backgroundColor: "#fff", color: "#1F2937", border: "1px solid #F3F4F6",
-                              borderBottomLeftRadius: 4 }
-                        }
-                      >
+                          ? { backgroundColor: BRAND, color: "#fff", borderBottomRightRadius: 4 }
+                          : { backgroundColor: "#fff", color: "#1F2937", border: "1px solid #F3F4F6", borderBottomLeftRadius: 4 }
+                        }>
                         {msg.content}
                       </div>
                       <p className={`text-[10px] text-gray-400 mt-1 ${msg.is_mine ? "text-right" : "text-left"}`}>
@@ -322,25 +282,16 @@ export default function ProviderMessagesPage() {
             {/* Input */}
             <div className="px-4 py-3 border-t border-gray-100 bg-white shrink-0">
               <div className="flex items-end gap-2 bg-gray-50 rounded-2xl px-4 py-2 border border-gray-200 focus-within:border-[#1A56DB] focus-within:ring-1 focus-within:ring-[#1A56DB] transition-all">
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKey}
-                  placeholder="Nhập tin nhắn... (Enter để gửi)"
-                  rows={1}
+                <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKey}
+                  placeholder="Nhập tin nhắn... (Enter để gửi)" rows={1}
                   className="flex-1 bg-transparent resize-none text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none py-1 max-h-32"
-                  style={{ lineHeight: "1.5" }}
-                />
-                <button
-                  onClick={send}
-                  disabled={!input.trim() || sending}
+                  style={{ lineHeight: "1.5" }} />
+                <button onClick={send} disabled={!input.trim() || sending}
                   className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 shrink-0"
-                  style={{ backgroundColor: BRAND }}
-                >
+                  style={{ backgroundColor: BRAND }}>
                   {sending
                     ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    : <Send size={15} />
-                  }
+                    : <Send size={15} />}
                 </button>
               </div>
               <p className="text-[10px] text-gray-400 text-center mt-1.5">Shift+Enter để xuống dòng</p>

@@ -1,6 +1,6 @@
-﻿import { redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
-/** Thông báo gộp vào tab Tin nhắn — khớp mobile MessagesTabPage */
+/** Thông báo hiển thị qua pop-up chuông trên header — không còn trang riêng */
 export default function ThongBaoRedirect() {
-  redirect("/tin-nhan?tab=thong-bao");
+  redirect("/trang-chu");
 }

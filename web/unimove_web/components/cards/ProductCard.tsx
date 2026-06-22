@@ -82,8 +82,10 @@ function GridCard({ data, href = '#' }: { data: ProductCardData; href?: string }
         return 'bg-emerald-500 text-white'
       case 'con-tot':
         return 'bg-amber-500 text-white'
+      case 'da-dung-nhieu':
+        return 'bg-gray-500 text-white'
       default:
-        return 'bg-gray-600/80 text-white'
+        return 'bg-gray-500/80 text-white'
     }
   })()
 

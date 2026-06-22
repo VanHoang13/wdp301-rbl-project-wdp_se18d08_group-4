@@ -1,8 +1,10 @@
+process.env.TZ = 'Asia/Ho_Chi_Minh';
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const os = require('os');
 const app = require('./app');
 const env = require('./config/env');
+const { startOrderTimeoutJob } = require('./jobs/orderTimeout.job');
 
 function lanAddresses() {
   const nets = os.networkInterfaces();
@@ -14,6 +16,8 @@ function lanAddresses() {
   }
   return ips;
 }
+
+startOrderTimeoutJob();
 
 app.listen(env.PORT, '0.0.0.0', () => {
   const payosOk = Boolean(env.PAYOS_CLIENT_ID && env.PAYOS_API_KEY && env.PAYOS_CHECKSUM_KEY);

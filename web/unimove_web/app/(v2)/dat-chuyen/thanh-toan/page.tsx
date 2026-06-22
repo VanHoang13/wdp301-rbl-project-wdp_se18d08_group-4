@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { BookingShell, RouteSummary } from "@/components/booking/BookingShell";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
@@ -11,6 +11,9 @@ import { INSURANCE_PLANS } from "@/lib/booking/constants";
 import { formatVND } from "@/lib/utils";
 import { getStoredUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { TermsModal } from "@/components/modals/TermsModal";
+
+const TOS_KEY = "unimove_customer_tos_agreed";
 
 export default function ThanhToanPage() {
   const router = useRouter();
@@ -34,9 +37,29 @@ export default function ThanhToanPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showTerms, setShowTerms] = useState(false);
+  const [tosAgreed, setTosAgreed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setTosAgreed(localStorage.getItem(TOS_KEY) === "1");
+    }
+  }, []);
 
   const orderTotal = total();
   const deposit = Math.round(orderTotal * 0.3);
+
+  const handleCheckoutClick = () => {
+    if (!tosAgreed) { setShowTerms(true); return; }
+    handleCheckout();
+  };
+
+  const handleTermsAgree = () => {
+    localStorage.setItem(TOS_KEY, "1");
+    setTosAgreed(true);
+    setShowTerms(false);
+    handleCheckout();
+  };
 
   const handleCheckout = async () => {
     const user = getStoredUser();
@@ -101,6 +124,7 @@ export default function ThanhToanPage() {
   }
 
   return (
+    <>
     <BookingShell
       title="Thanh toán & đặt cọc"
       subtitle="Cọc 30% giữ an toàn qua PayOS — chuyển cho nhà xe khi bạn xác nhận hoàn tất."
@@ -111,7 +135,7 @@ export default function ThanhToanPage() {
         <button
           type="button"
           disabled={loading || orderTotal <= 0}
-          onClick={handleCheckout}
+          onClick={handleCheckoutClick}
           className="w-full rounded-full bg-[#FFC107] py-3.5 text-sm font-bold text-gray-900 disabled:opacity-50"
         >
           {loading ? "Đang xử lý..." : `Đặt cọc ${formatVND(deposit)}`}
@@ -174,5 +198,14 @@ export default function ThanhToanPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </BookingShell>
+
+    {showTerms && (
+      <TermsModal
+        type="customer"
+        onAgree={handleTermsAgree}
+        onClose={() => setShowTerms(false)}
+      />
+    )}
+    </>
   );
 }

@@ -5,28 +5,30 @@ import Link from "next/link";
 import {
   RefreshCw, Search, MapPin, Package, Clock,
 } from "lucide-react";
-import { ordersApi } from "@/lib/api";
+import { ordersApi, providersApi } from "@/lib/api";
 import { timeAgo, formatVND } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { getStoredUser } from "@/lib/auth";
 
 interface Order {
   id: string; status: string; deposit_paid?: boolean;
-  pickup_address: string; dropoff_address: string;
-  estimated_price?: number; final_price?: number;
+  pickup_address: string; delivery_address: string;
+  base_price?: number; total_price?: number;
   created_at: string;
   customer?: { full_name: string; phone: string };
+  my_quote?: { total_price: number; status: string; note?: string };
 }
 
 const BRAND   = "#1A56DB";
 const SUCCESS = "#16A34A";
 
 const TABS = [
-  { key: "",                            label: "Tất cả" },
-  { key: "pending",                     label: "Chờ xác nhận" },
-  { key: "accepted,picking_up,in_progress", label: "Đang thực hiện" },
-  { key: "completed",                   label: "Hoàn thành" },
-  { key: "cancelled",                   label: "Đã hủy" },
+  { key: "",                                label: "Tất cả",       quoted: false },
+  { key: "pending",                         label: "Chờ xác nhận", quoted: false },
+  { key: "__quoted__",                      label: "Đã báo giá",   quoted: true  },
+  { key: "accepted,picking_up,in_progress", label: "Đang thực hiện", quoted: false },
+  { key: "completed",                       label: "Hoàn thành",   quoted: false },
+  { key: "cancelled",                       label: "Đã hủy",       quoted: false },
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
@@ -69,7 +71,21 @@ export default function ProviderOrdersPage() {
 
   const load = useCallback(async (status: string, ward?: string) => {
     setLoading(true);
+    setOrders([]);
     try {
+      if (status === "__quoted__") {
+        try {
+          const r = await providersApi.getQuotedOrders();
+          if (r.success && r.data) {
+            const d = r.data as { orders?: Order[] };
+            setOrders(d?.orders ?? []);
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Không tải được danh sách báo giá";
+          toast(msg, "error");
+        }
+        return;
+      }
       const params: Record<string, string> = {};
       if (status) params.status = status;
       if (ward)   params.ward   = ward;
@@ -82,12 +98,13 @@ export default function ProviderOrdersPage() {
   }, []);
 
   useEffect(() => {
-    load(TABS[tab].key, nearbyOnly && providerWard ? providerWard : undefined);
+    const isQuoted = TABS[tab].quoted;
+    load(TABS[tab].key, !isQuoted && nearbyOnly && providerWard ? providerWard : undefined);
   }, [tab, nearbyOnly, load, providerWard]);
 
   const filtered = orders.filter(o =>
     !search ||
-    o.dropoff_address?.toLowerCase().includes(search.toLowerCase()) ||
+    o.delivery_address?.toLowerCase().includes(search.toLowerCase()) ||
     o.pickup_address?.toLowerCase().includes(search.toLowerCase()) ||
     (o.customer?.full_name?.toLowerCase().includes(search.toLowerCase()) ?? false)
   );
@@ -189,8 +206,11 @@ export default function ProviderOrdersPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map(o => {
+                  const isQuotedTab = TABS[tab].quoted;
                   const needsProviderAction = o.status === "pending" || (o.status === "matched" && o.deposit_paid);
-                  const price = o.final_price ?? o.estimated_price;
+                  const price = isQuotedTab && o.my_quote
+                    ? o.my_quote.total_price
+                    : (o.total_price ?? o.base_price);
                   return (
                     <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
 
@@ -215,7 +235,7 @@ export default function ProviderOrdersPage() {
                           </div>
                           <div className="flex items-start gap-1.5">
                             <MapPin size={9} className="shrink-0 mt-0.5 text-blue-400" />
-                            <p className="text-sm font-semibold text-gray-800 truncate">{o.dropoff_address || "—"}</p>
+                            <p className="text-sm font-semibold text-gray-800 truncate">{o.delivery_address || "—"}</p>
                           </div>
                         </div>
                       </td>
@@ -235,9 +255,14 @@ export default function ProviderOrdersPage() {
                       {/* Giá */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         {price ? (
-                          <span className="text-sm font-bold" style={{ color: SUCCESS }}>
-                            {formatVND(price)}
-                          </span>
+                          <div>
+                            <span className="text-sm font-bold" style={{ color: SUCCESS }}>
+                              {formatVND(price)}
+                            </span>
+                            {isQuotedTab && o.my_quote && (
+                              <p className="text-[10px] text-blue-500 font-semibold mt-0.5">Báo giá của bạn</p>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-sm text-gray-300">—</span>
                         )}

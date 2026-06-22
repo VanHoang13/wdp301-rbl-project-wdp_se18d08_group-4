@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, MapPin, Phone, CheckCircle, XCircle, DollarSign,
   Truck, Camera, AlertTriangle, Clock, Wallet, Layers, Users,
-  Image as ImageIcon, Home, X, ArrowRight, Send,
+  Image as ImageIcon, Home, X, ArrowRight, Send, MessageSquare,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -366,24 +367,19 @@ export default function ProviderOrderDetailPage() {
               <div>
                 <p className="font-bold text-gray-900 text-sm">Khách đã chọn báo giá của bạn</p>
                 <p className="text-sm text-amber-600 mt-0.5">Đang chờ khách thanh toán đặt cọc…</p>
-                <p className="text-xs text-gray-400 mt-1.5">Sau khi đặt cọc thành công, nút Nhận đơn sẽ xuất hiện.</p>
+                <p className="text-xs text-gray-400 mt-1.5">Sau khi đặt cọc thành công, đơn sẽ tự động chuyển sang trạng thái sẵn sàng.</p>
               </div>
             </div>
           )}
 
-          {/* Đã đặt cọc — provider nhận đơn */}
+          {/* Đã đặt cọc — tự động chuyển accepted, hiển thị thông báo */}
           {order.status === "matched" && order.deposit_paid && (
-            <div className="space-y-3">
-              <div className="bg-green-50 border border-green-100 rounded-2xl px-5 py-3.5 flex items-center gap-3">
-                <Wallet size={18} className="text-green-600 shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-green-800">Khách đã đặt cọc thành công</p>
-                  <p className="text-xs text-green-600">Bấm nhận đơn để xác nhận tham gia chuyến</p>
-                </div>
+            <div className="bg-green-50 border border-green-100 rounded-2xl px-5 py-3.5 flex items-center gap-3">
+              <Wallet size={18} className="text-green-600 shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-green-800">Đặt cọc thành công — đơn đang được xử lý</p>
+                <p className="text-xs text-green-600">Trang sẽ tự cập nhật trong giây lát…</p>
               </div>
-              <Button className="w-full gap-2" loading={acting} onClick={() => respond("accept")}>
-                <CheckCircle size={15} /> Nhận đơn
-              </Button>
             </div>
           )}
 
@@ -391,8 +387,13 @@ export default function ProviderOrderDetailPage() {
           {order.status === "accepted" && (
             <div className="space-y-3">
               <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
-                <Truck size={15} /> Bắt đầu chuyến
+                <Truck size={15} /> Đang đến lấy hàng
               </Button>
+              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
+                <Button variant="outline" className="w-full gap-2">
+                  <MessageSquare size={15} /> Chat với khách hàng
+                </Button>
+              </Link>
               <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
                 <XCircle size={15} /> Hủy đơn
               </Button>
@@ -403,8 +404,13 @@ export default function ProviderOrderDetailPage() {
           {order.status === "picking_up" && (
             <div className="space-y-3">
               <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
-                <Truck size={15} /> Bắt đầu vận chuyển
+                <Truck size={15} /> Đang vận chuyển
               </Button>
+              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
+                <Button variant="outline" className="w-full gap-2">
+                  <MessageSquare size={15} /> Chat với khách hàng
+                </Button>
+              </Link>
               <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
                 <XCircle size={15} /> Hủy đơn
               </Button>
@@ -420,8 +426,13 @@ export default function ProviderOrderDetailPage() {
                 <Camera size={15} /> Ảnh giao hàng
               </Button>
               <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("complete")}>
-                <CheckCircle size={15} /> Hoàn thành chuyến
+                <CheckCircle size={15} /> Hoàn thành đơn
               </Button>
+              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
+                <Button variant="outline" className="w-full gap-2">
+                  <MessageSquare size={15} /> Chat với khách hàng
+                </Button>
+              </Link>
               <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
                 <XCircle size={15} /> Hủy đơn
               </Button>

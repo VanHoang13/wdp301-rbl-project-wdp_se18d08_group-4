@@ -45,6 +45,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/dat-chuyen/:path*',
+    '/cho-sinh-vien/dang-ban',
     '/cho-sinh-vien/dang-ban/:path*',
     '/cho-sinh-vien/yeu-thich/:path*',
     '/cho-sinh-vien/tin-cua-toi/:path*',

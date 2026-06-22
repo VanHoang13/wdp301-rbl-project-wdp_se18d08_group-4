@@ -18,6 +18,8 @@ function ProviderChatContent() {
       <OrderChatWorkspace
         initialOrderId={orderId}
         orderDetailPath={(id) => `/orders/${id}`}
+        enableInboxCategoryTabs={false}
+        enableNotificationsTab={false}
       />
     </div>
   );

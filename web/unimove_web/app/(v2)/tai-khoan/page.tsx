@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Phone, Mail, MapPin, Edit3, ChevronRight, Package, CreditCard, HelpCircle, Shield, Bell, LogOut, Star } from "lucide-react";
+import { User, Phone, Mail, MapPin, Edit3, ChevronRight, Package, CreditCard, HelpCircle, Shield, LogOut, Star } from "lucide-react";
 import { getStoredUser, clearAuth, type AuthUser } from "@/lib/auth";
 import { authApi } from "@/lib/api";
 import Link from "next/link";
@@ -13,7 +13,6 @@ const MENU_ITEMS = [
     items: [
       { icon: Package,    label: "Đơn hàng của tôi",      sub: "Xem lịch sử đơn hàng",  href: "/don-hang",  color: "#2563EB", bg: "#EFF6FF" },
       { icon: CreditCard, label: "Phương thức thanh toán", sub: "Quản lý ví và thẻ",     href: "/tai-khoan/thanh-toan", color: "#16A34A", bg: "#F0FDF4" },
-      { icon: Bell,       label: "Thông báo",              sub: "Cài đặt nhận thông báo", href: "/thong-bao", color: "#D97706", bg: "#FFFBEB" },
     ],
   },
   {

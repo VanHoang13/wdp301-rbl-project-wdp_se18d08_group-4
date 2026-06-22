@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi" suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning data-scroll-behavior="smooth">
       <body
         className={`${plusJakartaSans.variable} ${jetbrainsMono.variable} antialiased`}
       >

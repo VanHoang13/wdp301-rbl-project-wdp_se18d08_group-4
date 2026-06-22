@@ -130,6 +130,25 @@ async function cancelOrder(req, res, next) {
   }
 }
 
+async function getProviderSchedule(req, res, next) {
+  try {
+    const { from, to } = req.query;
+    const data = await ordersService.getProviderSchedule(req.user.id, from, to);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function cancelByCustomerTimeout(req, res, next) {
+  try {
+    const data = await ordersService.cancelByCustomerTimeout(req.params.id, req.user.id);
+    res.json({ success: true, message: 'Đã hủy đơn. Yêu cầu hoàn tiền đang chờ xử lý.', data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function uploadDeliveryPhoto(req, res, next) {
   try {
     const file = req.file;
@@ -151,6 +170,8 @@ module.exports = {
   declineOrder,
   completeOrder,
   cancelOrder,
+  cancelByCustomerTimeout,
+  getProviderSchedule,
   cancelEstimate,
   uploadDeliveryPhoto,
 };

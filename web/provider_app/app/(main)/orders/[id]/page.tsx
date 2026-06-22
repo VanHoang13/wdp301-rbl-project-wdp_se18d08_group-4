@@ -34,6 +34,10 @@ interface OrderDetail {
   customer?: { id: string; full_name: string; phone: string; avatar_url?: string };
 }
 
+// Trạng thái cần polling vì customer có thể cọc bất kỳ lúc nào
+const POLLING_STATUSES = ["pending", "matched"];
+const POLL_INTERVAL_MS = 10_000; // 10 giây
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
@@ -49,6 +53,24 @@ export default function OrderDetailPage() {
   useEffect(() => {
     loadOrder().finally(() => setLoading(false));
   }, [id]);
+
+  // Polling khi đơn đang pending/matched — chờ customer cọc
+  useEffect(() => {
+    if (!order || !POLLING_STATUSES.includes(order.status)) return;
+
+    const interval = setInterval(async () => {
+      const res = await providerOrdersApi.getOrder(id);
+      if (res.success && res.data) {
+        const fresh = res.data as OrderDetail;
+        // Nếu status thay đổi → update và dừng polling
+        if (fresh.status !== order.status) {
+          setOrder(fresh);
+        }
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [id, order?.status]);
 
   const respond = async (response: "accepted" | "declined") => {
     setResponding(true);

@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { createNotification } = require('./notification.service');
 const { isDaNangOrder } = require('../utils/da_nang');
+const { calcOrderExpiresAt } = require('./orders.service');
 
 async function getOrderOrThrow(orderId) {
   const { data, error } = await supabaseAdmin.from('orders').select('*').eq('id', orderId).single();
@@ -186,6 +187,14 @@ async function selectQuote(orderId, quoteId, customerId) {
       ? quote.proposed_pickup_at
       : order.scheduled_pickup_time;
 
+  const now = Date.now();
+
+  // Lock tạm 15 phút chờ customer cọc — áp dụng cho mọi đơn (cả đặt trước)
+  // Nếu 15 phút không cọc → background job xóa lock, provider tự do nhận đơn khác
+  const lockExpiresAt = new Date(now + 15 * 60 * 1000).toISOString();
+
+  const orderExpiresAt = calcOrderExpiresAt(pickupTime);
+
   const { data: updatedOrder, error: oErr } = await supabaseAdmin
     .from('orders')
     .update({
@@ -194,6 +203,8 @@ async function selectQuote(orderId, quoteId, customerId) {
       total_price: quote.total_price,
       scheduled_pickup_time: pickupTime,
       status: 'matched',
+      lock_expires_at: lockExpiresAt,
+      order_expires_at: orderExpiresAt,
       updated_at: new Date().toISOString(),
     })
     .eq('id', orderId)

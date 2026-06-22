@@ -4,15 +4,16 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Truck, Package, Search, ChevronRight, MapPin, Route, Users, Store, Receipt,
-  Sparkles, User, Bell, MessageCircle, ArrowRight, ExternalLink, X, CheckCircle2, Lightbulb,
+  Sparkles, User, MessageCircle, ArrowRight, ExternalLink, X, CheckCircle2, Lightbulb,
 } from "lucide-react";
 import { FadeSlideIn, StaggerContainer, StaggerItem } from "@/components/motion/fade-slide-in";
 import { PressableScale } from "@/components/motion/pressable-scale";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { customerApi, ordersApi, notificationsApi } from "@/lib/api";
+import { customerApi, ordersApi } from "@/lib/api";
 import { getStoredUser, type AuthUser } from "@/lib/auth";
 import { cn, formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/lib/utils";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 const BLUE = "#0047FF";
 const YELLOW = "#FFC107";
@@ -122,7 +123,6 @@ export default function TrangChuPage() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -133,18 +133,13 @@ export default function TrangChuPage() {
     Promise.allSettled([
       customerApi.getMe(),
       ordersApi.list({ page: 1 }),
-      notificationsApi.unreadCount(),
-    ]).then(([profileRes, ordersRes, notifRes]) => {
+    ]).then(([profileRes, ordersRes]) => {
       if (profileRes.status === "fulfilled" && profileRes.value.success) {
         setUser(profileRes.value.data as AuthUser);
       }
       if (ordersRes.status === "fulfilled" && ordersRes.value.success) {
         const d = ordersRes.value.data as { orders?: Order[] } | Order[];
         setOrders((Array.isArray(d) ? d : (d?.orders ?? [])).slice(0, 5));
-      }
-      if (notifRes.status === "fulfilled" && notifRes.value.success) {
-        const c = notifRes.value.data as { count?: number };
-        setUnread(c.count ?? 0);
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -191,18 +186,12 @@ export default function TrangChuPage() {
             >
               <MessageCircle size={20} className="text-[#0047FF]" />
             </Link>
-            <Link
-              href="/tin-nhan?tab=thong-bao"
-              aria-label="Thông báo"
-              className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm"
-            >
-              <Bell size={20} className="text-[#0047FF]" />
-              {mounted && unread > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              )}
-            </Link>
+            <NotificationBell
+              showCountBadge
+              buttonClassName="rounded-full border border-gray-100 bg-white p-2.5 shadow-sm"
+              iconClassName="text-[#0047FF]"
+              iconSize={20}
+            />
           </div>
         </div>
       </header>

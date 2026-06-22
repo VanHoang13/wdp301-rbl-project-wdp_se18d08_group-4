@@ -53,7 +53,7 @@ export function ChatQuickAccess() {
     return () => clearInterval(timer);
   }, [loadUnread, pathname]);
 
-  if (!loggedIn || pathname.startsWith("/tin-nhan")) return null;
+  if (!loggedIn || pathname.startsWith("/tin-nhan") || pathname.startsWith("/thong-bao")) return null;
 
   const bottomNavHidden = HIDE_BOTTOM_NAV_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p)

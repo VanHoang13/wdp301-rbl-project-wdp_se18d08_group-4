@@ -154,12 +154,12 @@ export function buildOrderPayload(
 }
 
 export function isValidPickupTime(d: Date) {
-  return d.getTime() - Date.now() >= 2 * 60 * 60 * 1000;
+  return d.getTime() - Date.now() >= 1 * 60 * 60 * 1000;
 }
 
 export function defaultPickupSuggestion() {
   const d = new Date();
-  d.setHours(d.getHours() + 3, 0, 0, 0);
+  d.setHours(d.getHours() + 2, 0, 0, 0);
   if (d.getHours() < 7) d.setHours(9, 0, 0, 0);
   if (d.getHours() > 16) {
     d.setDate(d.getDate() + 1);
