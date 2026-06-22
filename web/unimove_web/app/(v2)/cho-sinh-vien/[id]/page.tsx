@@ -48,6 +48,8 @@ interface ListingDetail {
   deal_confirmed?: boolean;
   transport_booked?: boolean;
   confirmed_buyer_id?: string;
+  chat_enabled?: boolean;
+  deal_status_label?: string | null;
   seller_id: string;
   seller?: {
     id: string;
@@ -184,6 +186,7 @@ function SellerSidebar({
   listing,
   isOwner,
   sold,
+  canConfirmReceived,
   onBump,
   onHide,
   onConfirmReceived,
@@ -193,6 +196,7 @@ function SellerSidebar({
   listing: ListingDetail;
   isOwner: boolean;
   sold: boolean;
+  canConfirmReceived?: boolean;
   onBump: () => void;
   onHide: () => void;
   onConfirmReceived: () => void;
@@ -265,7 +269,12 @@ function SellerSidebar({
                 </span>
               )}
             </Link>
-            {listing.deal_confirmed && (
+            {listing.deal_status_label && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-center text-xs font-semibold text-amber-900">
+                {listing.deal_status_label}
+              </p>
+            )}
+            {listing.deal_confirmed && !listing.deal_status_label && (
               <p className="rounded-xl border border-emerald-200 bg-emerald-50 py-2.5 text-center text-xs font-semibold text-emerald-800">
                 {listing.transport_booked ? "Đã chốt & đã đặt xe" : "Đã chốt đơn — chờ khách đặt xe"}
               </p>
@@ -322,10 +331,10 @@ function SellerSidebar({
           </Link>
         )}
 
-        {!isOwner && listing.is_interested && listing.status === "reserved" && (
+        {!isOwner && canConfirmReceived && (
           <button
             type="button"
-            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-800"
+            className="w-full rounded-xl border border-[#0047FF] bg-[#0047FF]/5 py-2.5 text-sm font-semibold text-[#0047FF]"
             onClick={onConfirmReceived}
           >
             Xác nhận đã nhận hàng
@@ -353,6 +362,12 @@ export default function ListingDetailPage() {
   const [imgIdx, setImgIdx] = useState(0);
   const currentUser = getStoredUser();
   const isOwner = currentUser?.id === listing?.seller_id;
+  const canConfirmReceived = !!(
+    currentUser?.id === listing?.confirmed_buyer_id &&
+    listing?.status === "reserved" &&
+    listing?.transport_booked &&
+    listing?.deal_confirmed
+  );
 
   const loadListing = useCallback(async () => {
     const r = await marketplaceApi.get(id);
@@ -419,11 +434,13 @@ export default function ListingDetailPage() {
 
   const handleConfirmReceived = async () => {
     if (!listing) return;
+    if (!confirm("Xác nhận đã nhận đồ? Giao dịch sẽ hoàn tất.")) return;
     try {
       await marketplaceApi.confirmReceived(listing.id);
-      toast("Đã xác nhận nhận hàng", "success");
-    } catch {
-      toast("Thử lại", "error");
+      toast("Giao dịch hoàn tất!", "success");
+      await loadListing();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Thử lại", "error");
     }
   };
 
@@ -469,7 +486,7 @@ export default function ListingDetailPage() {
     );
   }
 
-  const sold = listing.status === "sold" || listing.status === "completed";
+  const sold = listing.status === "sold" || listing.status === "completed" || listing.status === "closed";
   const isFree = !listing.price || listing.price === 0;
   const priceLabel = isFree ? "Miễn phí" : formatVND(listing.price!);
   const condLabel = conditionLabel(listing.condition);
@@ -608,7 +625,12 @@ export default function ListingDetailPage() {
                     Thương lượng
                   </span>
                 )}
-                {listing.deal_confirmed && !sold && (
+                {listing.deal_status_label && !sold && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                    {listing.deal_status_label}
+                  </span>
+                )}
+                {listing.deal_confirmed && !sold && !listing.deal_status_label && (
                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                     Đã chốt đơn
                   </span>
@@ -649,6 +671,12 @@ export default function ListingDetailPage() {
               <div className="mt-4">
                 <ListingInfoGrid listing={listing} />
               </div>
+
+              {listing.deal_status_label && (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-900">
+                  {listing.deal_status_label}
+                </p>
+              )}
             </Card>
 
             {/* Description — full text */}
@@ -673,6 +701,7 @@ export default function ListingDetailPage() {
               listing={listing}
               isOwner={!!isOwner}
               sold={sold}
+              canConfirmReceived={canConfirmReceived}
               onBump={handleBump}
               onHide={handleHide}
               onConfirmReceived={handleConfirmReceived}
@@ -688,6 +717,7 @@ export default function ListingDetailPage() {
             listing={listing}
             isOwner={!!isOwner}
             sold={sold}
+            canConfirmReceived={canConfirmReceived}
             onBump={handleBump}
             onHide={handleHide}
             onConfirmReceived={handleConfirmReceived}

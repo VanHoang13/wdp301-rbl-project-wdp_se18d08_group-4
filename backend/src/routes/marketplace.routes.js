@@ -16,6 +16,8 @@ router.get('/my-conversations', requireAuth, marketplaceController.getMyConversa
 router.post('/listings', requireAuth, marketplaceController.createListing);
 // PASS-03 — Thanh toán phí đăng tin
 router.post('/listings/:id/listing-fee/pay', requireAuth, marketplaceController.payListingFee);
+// Quota miễn phí & ước tính phí đăng tin
+router.get('/listing-fee/quota', requireAuth, marketplaceController.getListingFeeQuota);
 // API-073 — Upload ảnh tin (đặt trước /listings/:id)
 router.post(
   '/listings/images',

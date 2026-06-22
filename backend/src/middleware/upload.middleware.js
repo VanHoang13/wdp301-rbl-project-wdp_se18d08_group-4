@@ -75,4 +75,26 @@ const handleProviderDocsUpload = wrapUpload(providerDocsUpload, 'Ảnh vượt q
 const deliveryPhotoUpload = makeImageUpload('photo', MARKETPLACE_IMAGE_MAX_BYTES, 'Ảnh vượt quá 5MB.');
 const handleDeliveryPhotoUpload = wrapUpload(deliveryPhotoUpload, 'Ảnh vượt quá 5MB.');
 
-module.exports = { handleAvatarUpload, handleMarketplaceImageUpload, handleProviderDocsUpload, handleDeliveryPhotoUpload };
+const { CHAT_FILE_MIME_TYPES, MAX_BYTES: CHAT_ATTACHMENT_MAX_BYTES } = require('../services/chat-attachments.service');
+
+function isChatAttachmentMime(mimetype) {
+  return CHAT_FILE_MIME_TYPES.includes(String(mimetype || '').toLowerCase());
+}
+
+const chatAttachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: CHAT_ATTACHMENT_MAX_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!isChatAttachmentMime(file.mimetype)) {
+      const err = new Error('Loại file không được hỗ trợ. Chấp nhận ảnh, PDF, Word, Excel, TXT, ZIP.');
+      err.status = 400;
+      err.code = 'invalid_file_type';
+      return cb(err);
+    }
+    cb(null, true);
+  },
+}).single('file');
+
+const handleChatAttachmentUpload = wrapUpload(chatAttachmentUpload, 'File vượt quá 10MB.');
+
+module.exports = { handleAvatarUpload, handleMarketplaceImageUpload, handleProviderDocsUpload, handleDeliveryPhotoUpload, handleChatAttachmentUpload };

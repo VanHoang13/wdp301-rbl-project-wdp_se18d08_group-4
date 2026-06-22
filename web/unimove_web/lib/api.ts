@@ -286,12 +286,40 @@ export const providerApi = {
   },
 };
 
+/* ── Chat attachments ── */
+export type ChatAttachmentPayload = {
+  url: string;
+  media_type: string;
+  media_size: number;
+  media_name: string;
+  is_image: boolean;
+};
+
+export type ChatSendPayload = {
+  content?: string;
+  text?: string;
+  media_url?: string;
+  media_type?: string;
+  media_size?: number;
+  media_name?: string;
+};
+
+export const chatApi = {
+  uploadAttachment: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return upload<ChatAttachmentPayload>("/chat/attachments", fd);
+  },
+};
+
 /* ── Conversations (order chat) ── */
 export const conversationsApi = {
   list: () => get("/conversations"),
   getMessages: (orderId: string) => get(`/conversations/${orderId}/messages`),
-  sendMessage: (orderId: string, content: string) =>
-    post(`/conversations/${orderId}/messages`, { content }),
+  sendMessage: (orderId: string, payload: string | ChatSendPayload) => {
+    const body = typeof payload === "string" ? { content: payload } : payload;
+    return post(`/conversations/${orderId}/messages`, body);
+  },
 };
 
 /* ── Notifications ── */
@@ -370,7 +398,7 @@ export const marketplaceApi = {
   sendMessage: (
     listingId: string,
     buyerId: string,
-    payload: string | { text: string; is_offer?: boolean; offer_amount?: number }
+    payload: string | (ChatSendPayload & { is_offer?: boolean; offer_amount?: number }),
   ) => {
     const body = typeof payload === "string" ? { text: payload } : payload;
     return post(`/marketplace/listings/${listingId}/conversations/${buyerId}/messages`, body);
@@ -380,6 +408,8 @@ export const marketplaceApi = {
   bump: (id: string) => post(`/marketplace/listings/${id}/bump`, {}),
   payListingFee: (id: string, body: Record<string, unknown>) =>
     post(`/marketplace/listings/${id}/listing-fee/pay`, body),
+  getListingFeeQuota: (price?: number) =>
+    get("/marketplace/listing-fee/quota", price !== undefined ? { price } : undefined),
   getInterests: (id: string) => get(`/marketplace/listings/${id}/interests`),
   confirmDeal: (listingId: string, buyerId: string, agreedPrice?: number) =>
     post(`/marketplace/listings/${listingId}/conversations/${buyerId}/deal`, { agreed_price: agreedPrice }),
