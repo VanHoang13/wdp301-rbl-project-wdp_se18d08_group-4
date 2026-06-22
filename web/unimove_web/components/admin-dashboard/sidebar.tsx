@@ -10,6 +10,7 @@ import {
   Package,
   AlertTriangle,
   Star,
+  ShoppingBag,
   BarChart3,
   Bell,
   History,
@@ -91,6 +92,11 @@ function buildNavItems(pendingVerifications?: number): NavItem[] {
       label: "Đánh giá",
       href: "/admin/reviews",
       icon: Star,
+    },
+    {
+      label: "Pass đồ",
+      href: "/admin/pass-do",
+      icon: ShoppingBag,
     },
     {
       label: "Thống kê",

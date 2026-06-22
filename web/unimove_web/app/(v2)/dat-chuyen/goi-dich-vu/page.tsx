@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Package, SlidersHorizontal, Truck } from "lucide-react";
+import { Check, Package, Truck } from "lucide-react";
 import {
   BookingWizardLayout,
   BookingInsuranceBanner,
@@ -10,6 +9,7 @@ import {
   COMBO_WIZARD_STEPS,
 } from "@/components/booking/BookingWizardLayout";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import { SERVICE_PACKAGES, packagePriceAtLabor, type ServicePackage } from "@/lib/booking/constants";
 import { formatVND, cn } from "@/lib/utils";
 
@@ -17,12 +17,10 @@ function ComboEstimateSidebar({
   pkg,
   laborCount,
   total,
-  onSkip,
 }: {
   pkg: ServicePackage;
   laborCount: number;
   total: number;
-  onSkip: () => void;
 }) {
   const laborFee = laborCount * pkg.extraLaborComboPrice;
 
@@ -56,21 +54,6 @@ function ComboEstimateSidebar({
           </p>
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onSkip}
-        className="flex w-full items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-left transition hover:bg-blue-50"
-      >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#0047FF] shadow-sm">
-          <SlidersHorizontal size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-gray-900">Chuyến xa / nhiều điểm?</p>
-          <p className="text-xs text-gray-500">Đặt chuyến linh hoạt — so sánh báo giá</p>
-        </div>
-        <span className="shrink-0 text-sm font-bold text-[#0047FF]">Bỏ qua</span>
-      </button>
 
       <div className="flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50">
         <div className="flex flex-col items-center gap-2 text-gray-400">
@@ -201,7 +184,7 @@ function PackageOptionCard({
 
 export default function GoiDichVuPage() {
   const router = useRouter();
-  const isComboBooking = useBookingFlowStore((s) => s.isComboBooking);
+  useBookingModeGuard({ requireCombo: true });
   const pickup = useBookingFlowStore((s) => s.pickup);
   const destination = useBookingFlowStore((s) => s.destination);
   const {
@@ -209,20 +192,10 @@ export default function GoiDichVuPage() {
     selectedComboLaborCount,
     setSelectedTier,
     setComboLaborCount,
-    setIsComboBooking,
   } = useBookingFlowStore();
-
-  useEffect(() => {
-    if (!isComboBooking) router.replace("/dat-chuyen/dia-diem");
-  }, [isComboBooking, router]);
 
   const pkg = SERVICE_PACKAGES.find((p) => p.tier === selectedTier)!;
   const estimateTotal = packagePriceAtLabor(pkg, selectedComboLaborCount);
-
-  const handleSkip = () => {
-    setIsComboBooking(false);
-    router.push("/dat-chuyen/doi-tac");
-  };
 
   return (
     <BookingWizardLayout
@@ -235,14 +208,11 @@ export default function GoiDichVuPage() {
       cancelHref="/dat-chuyen/lich-hen"
       onContinue={() => router.push("/dat-chuyen/doi-tac")}
       continueLabel="Chọn nhà xe"
-      onSkip={handleSkip}
-      skipLabel="Bỏ qua"
       sidebar={
         <ComboEstimateSidebar
           pkg={pkg}
           laborCount={selectedComboLaborCount}
           total={estimateTotal}
-          onSkip={handleSkip}
         />
       }
     >

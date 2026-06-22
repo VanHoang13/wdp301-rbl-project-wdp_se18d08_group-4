@@ -85,21 +85,23 @@ export function buildOrderPayload(
   const vehicleSize = tierVehicleSize(tier);
   const serviceType = tier === "premium" ? "premium" : "standard";
 
-  const helpers =
-    state.wantsTransportLabor && !state.isComboBooking
-      ? state.transportLaborHelpers
-      : state.isComboBooking
-        ? state.selectedComboLaborCount
-        : 0;
+  const helpers = state.isComboBooking ? state.selectedComboLaborCount : 0;
 
   const alleyLabel = (v: string) => (ALLEY_LABELS as Record<string, string>)[v] ?? v;
   const cargoLabel = (v?: string) => (v ? (CARGO_LABELS as Record<string, string>)[v] ?? v : undefined);
 
   const imageCount = state.dormImageCount();
 
+  const porterHintNote =
+    state.wantsTransportLabor && state.transportLaborHelpers > 0
+      ? `Nhu cầu khuân vác (tham khảo cho nhà xe): ~${state.transportLaborHelpers} người`
+      : undefined;
+
+  const noteExtra = [state.dormNote.trim(), porterHintNote].filter(Boolean).join(" · ") || undefined;
+
   let pickupNotes = formatNotes({
     alley: alleyLabel(state.pickupAlleyAccess),
-    extra: state.dormNote,
+    extra: noteExtra,
     imageCount,
     isPickup: true,
   });
@@ -110,7 +112,7 @@ export function buildOrderPayload(
   const deliveryNotes = formatNotes({
     alley: alleyLabel(state.destinationAlleyAccess),
     cargo: cargoLabel(state.cargoVolume),
-    extra: state.dormNote,
+    extra: noteExtra,
     imageCount,
     isPickup: false,
   });

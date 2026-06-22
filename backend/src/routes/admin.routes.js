@@ -54,6 +54,12 @@ router.put('/reviews/:id/hide', adminController.hideReview);
 router.put('/reviews/:id/unhide', adminController.unhideReview);
 router.put('/reviews/:id/flag', adminController.flagReview);
 
+// Marketplace — Pass đồ
+router.get('/marketplace/listings', adminController.getMarketplaceListings);
+router.put('/marketplace/listings/:id/status', adminController.updateMarketplaceListingStatus);
+router.post('/marketplace/listings/:id/approve-fee', adminController.approveMarketplaceListingFee);
+router.delete('/marketplace/listings/:id', adminController.deleteMarketplaceListing);
+
 // Refunds Management
 router.get('/refunds', adminController.getRefunds);
 router.put('/refunds/:id/approve', adminController.approveRefund);

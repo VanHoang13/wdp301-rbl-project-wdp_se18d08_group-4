@@ -15,3 +15,5 @@ export {
   DialogClose,
 } from "./dialog";
 export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
+export { Separator } from "./separator";
+export { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "./table";

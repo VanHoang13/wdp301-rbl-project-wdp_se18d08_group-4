@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Star, Truck } from "lucide-react";
 import { BookingShell } from "@/components/booking/BookingShell";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import { MOCK_PARTNERS } from "@/lib/booking/constants";
 import { providersApi } from "@/lib/api";
 import { formatVND } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 export default function DoiTacPage() {
   const router = useRouter();
+  useBookingModeGuard({ requireCombo: true });
   const { isComboBooking, selectedTier, selectedPartnerId, setSelectedPartnerId } = useBookingFlowStore();
   const [partners, setPartners] = useState(MOCK_PARTNERS);
 

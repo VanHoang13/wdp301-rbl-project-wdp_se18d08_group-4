@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, MapPin, Truck } from "lucide-react";
+import { ChevronDown, MapPin, Truck, Users } from "lucide-react";
 import { DormPhotoUpload } from "@/components/booking/DormPhotoUpload";
 import {
   BookingWizardLayout,
@@ -12,6 +12,7 @@ import {
   COMBO_WIZARD_STEPS,
 } from "@/components/booking/BookingWizardLayout";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import {
   ALLEY_LABELS,
   CARGO_LABELS,
@@ -149,8 +150,79 @@ function PhotoIfVisible({
   return <DormPhotoUpload section={section} />;
 }
 
+function PorterVisibilitySection({
+  isComboBooking,
+  wantsTransportLabor,
+  transportLaborHelpers,
+  onToggle,
+  onCountChange,
+}: {
+  isComboBooking: boolean;
+  wantsTransportLabor: boolean;
+  transportLaborHelpers: number;
+  onToggle: (v: boolean) => void;
+  onCountChange: (n: number) => void;
+}) {
+  const countOptions = [1, 2, 3, 4];
+
+  return (
+    <div className="space-y-3 border-t border-gray-100 bg-white p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50">
+          <Users size={18} className="text-violet-600" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-bold text-gray-900 sm:text-base">Nhu cầu khuân vác</h2>
+          <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
+            {isComboBooking
+              ? "Chỉ để nhà xe tham khảo khi chuẩn bị. Gói combo & giá khuân vác bạn chọn ở bước sau — khác với thuê khuân vác riêng."
+              : "Ghi nhận nhu cầu để nhà xe xem khi báo giá — khác với đặt dịch vụ khuân vác riêng."}
+          </p>
+        </div>
+      </div>
+
+      <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 text-sm text-gray-900">
+        <input
+          type="checkbox"
+          checked={wantsTransportLabor}
+          onChange={(e) => onToggle(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-[#0047FF]"
+        />
+        Cần hỗ trợ khuân vác
+      </label>
+
+      {wantsTransportLabor && (
+        <div>
+          <FieldLabel>
+            Ước tính số người
+            <span className="ml-1 font-normal text-gray-400">(nhà xe xem tham khảo)</span>
+          </FieldLabel>
+          <div className="flex flex-wrap gap-2">
+            {countOptions.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onCountChange(n)}
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold transition-all",
+                  transportLaborHelpers === n
+                    ? "border-[#0047FF] bg-[#0047FF] text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-[#0047FF]/40",
+                )}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PhongTroPage() {
   const router = useRouter();
+  useBookingModeGuard();
   const [showExtras, setShowExtras] = useState(false);
   const {
     isComboBooking,
@@ -282,6 +354,21 @@ export default function PhongTroPage() {
             </div>
           )}
         </div>
+
+        <PorterVisibilitySection
+          isComboBooking={isComboBooking}
+          wantsTransportLabor={wantsTransportLabor}
+          transportLaborHelpers={transportLaborHelpers}
+          onToggle={(v) =>
+            setDormDetails({
+              wantsTransportLabor: v,
+              ...(v && transportLaborHelpers < 1
+                ? { transportLaborHelpers: 2 }
+                : {}),
+            })
+          }
+          onCountChange={(n) => setDormDetails({ transportLaborHelpers: n })}
+        />
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
@@ -290,38 +377,14 @@ export default function PhongTroPage() {
           onClick={() => setShowExtras((v) => !v)}
           className="flex w-full items-center justify-between px-4 py-3.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 sm:px-5"
         >
-          Tùy chọn thêm (ghi chú, khuân vác)
+          Ghi chú thêm
           <ChevronDown size={18} className={cn("shrink-0 transition-transform", showExtras && "rotate-180")} />
         </button>
 
         {showExtras && (
-          <div className="space-y-4 border-t border-gray-100 px-4 py-4 sm:px-5">
-            {!isComboBooking && (
-              <label className="flex cursor-pointer items-center gap-2.5 text-sm text-gray-900">
-                <input
-                  type="checkbox"
-                  checked={wantsTransportLabor}
-                  onChange={(e) => setDormDetails({ wantsTransportLabor: e.target.checked })}
-                  className="h-4 w-4 rounded border-gray-300 text-[#0047FF]"
-                />
-                Thêm khuân vác cùng nhà xe
-              </label>
-            )}
-            {wantsTransportLabor && !isComboBooking && (
-              <div className="w-28">
-                <FieldLabel>Số người khuân</FieldLabel>
-                <input
-                  type="number"
-                  min={1}
-                  max={6}
-                  value={transportLaborHelpers}
-                  onChange={(e) => setDormDetails({ transportLaborHelpers: Number(e.target.value) })}
-                  className={inputClass}
-                />
-              </div>
-            )}
+          <div className="border-t border-gray-100 px-4 py-4 sm:px-5">
             <div>
-              <FieldLabel>Ghi chú thêm</FieldLabel>
+              <FieldLabel>Ghi chú cho nhà xe</FieldLabel>
               <textarea
                 rows={2}
                 value={dormNote}

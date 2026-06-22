@@ -357,6 +357,7 @@ export default function ListingDetailPage() {
   const loadListing = useCallback(async () => {
     const r = await marketplaceApi.get(id);
     if (r.success && r.data) setListing(r.data as ListingDetail);
+    else setListing(null);
   }, [id]);
 
   useEffect(() => {
@@ -364,7 +365,9 @@ export default function ListingDetailPage() {
       .get(id)
       .then((r) => {
         if (r.success && r.data) setListing(r.data as ListingDetail);
+        else setListing(null);
       })
+      .catch(() => setListing(null))
       .finally(() => setLoading(false));
   }, [id]);
 

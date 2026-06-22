@@ -11,12 +11,15 @@ export interface NotificationItem {
   is_read?: boolean;
   created_at: string;
   listing_id?: string | null;
+  action_url?: string | null;
   href?: string;
   action_data?: {
     order_id?: string;
     quote_id?: string;
     listing_id?: string;
     buyer_id?: string;
+    delete_reason?: string;
+    listing_title?: string;
   } | null;
 }
 
@@ -25,7 +28,13 @@ export type NotificationKind = "order" | "promo" | "system" | "review";
 export function mapNotificationKind(t: string): NotificationKind {
   if (t?.includes("order") || t?.includes("quote") || t?.includes("don")) return "order";
   if (t?.includes("review") || t?.includes("rating")) return "review";
-  if (t?.includes("promo") || t?.includes("market")) return "promo";
+  if (
+    t?.includes("promo") ||
+    t?.includes("market") ||
+    t?.includes("marketplace_listing_deleted")
+  ) {
+    return "promo";
+  }
   return "system";
 }
 
@@ -55,6 +64,14 @@ export function getNotificationNavigateHref(
   const buyerId = action.buyer_id;
   const chatBase = options?.isProvider ? "/tai-xe/tin-nhan" : "/tin-nhan";
 
+  if (
+    type === "marketplace_listing_deleted" ||
+    action.delete_reason ||
+    (type === "system_announcement" && n.title?.includes("bị xóa"))
+  ) {
+    return "/cho-sinh-vien/tin-cua-toi";
+  }
+
   if (type.includes("marketplace") && listingId && buyerId) {
     const params = new URLSearchParams({
       listingId: String(listingId),
@@ -69,5 +86,6 @@ export function getNotificationNavigateHref(
   if (orderId) {
     return `${chatBase}?orderId=${orderId}`;
   }
+  if (n.action_url) return n.action_url;
   return n.href ?? null;
 }

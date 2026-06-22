@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
 import { conversationsApi } from '@/lib/api'
 import { NotificationBell } from '@/components/notifications/NotificationBell'
+import { useBookingFlowStore } from '@/lib/stores/useBookingFlowStore'
 
 const NAV_LINKS = [
   { href: '/trang-chu', label: 'Trang chủ' },
@@ -92,7 +93,12 @@ export function DesktopTopNav() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    router.push(searchQ.trim() ? `/dat-chuyen/dia-diem?q=${encodeURIComponent(searchQ.trim())}` : '/dat-chuyen/dia-diem')
+    if (searchQ.trim()) {
+      useBookingFlowStore.getState().setBookingMode('quote')
+      router.push(`/dat-chuyen/dia-diem?q=${encodeURIComponent(searchQ.trim())}`)
+    } else {
+      router.push('/dat-chuyen')
+    }
   }
 
   const initials = user?.full_name?.[0]?.toUpperCase() ?? 'P'

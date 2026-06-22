@@ -9,7 +9,7 @@ async function listNotifications(req, res) {
 
   const { data, error, count } = await supabaseAdmin
     .from('notifications')
-    .select('id, notification_type, title, body, is_read, created_at, listing_id, action_data, icon, priority', { count: 'exact' })
+    .select('id, notification_type, title, body, is_read, created_at, listing_id, action_data, action_url, icon, priority', { count: 'exact' })
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
