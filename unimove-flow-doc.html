@@ -507,8 +507,8 @@
     </div>
     <div class="doc-title">Luồng Đặt Chuyến<br>— Tài liệu nghiệp vụ</div>
     <div class="doc-meta">
-      <div>Phiên bản <span>1.0</span></div>
-      <div>Ngày <span>20/06/2026</span></div>
+      <div>Phiên bản <span>1.1</span></div>
+      <div>Ngày <span>22/06/2026</span></div>
       <div>Hai vai trò <span>Customer · Provider</span></div>
     </div>
   </div>
@@ -664,7 +664,7 @@
         <div class="step-circle">03</div>
         <div>
           <div class="step-title">Customer chọn báo giá</div>
-          <div class="step-subtitle">Chốt nhà xe — lock time slot nếu đơn trong ngày</div>
+          <div class="step-subtitle">Chốt nhà xe — lock tạm 15 phút chờ cọc (mọi loại đơn)</div>
         </div>
       </div>
       <span class="status-badge s-matched">matched</span>
@@ -682,8 +682,9 @@
         <div class="step-col-title">Provider nhận gì</div>
         <ul class="action-list">
           <li>Notification: "Khách đã chọn bạn!"</li>
-          <li>Đơn trong ngày (≤24h): bị lock 15 phút không nhận đơn khác cùng khung giờ</li>
-          <li>Nếu customer không cọc → lock tự hết</li>
+          <li>Bị lock tạm 15 phút — chờ customer cọc</li>
+          <li>Nếu customer không cọc trong 15 phút → lock tự hết, provider tự do</li>
+          <li>Provider <strong>vẫn có thể báo giá</strong> đơn khác cùng giờ trong lúc chờ</li>
         </ul>
       </div>
       <div class="step-col col-system">
@@ -691,7 +692,7 @@
         <ul class="action-list">
           <li class="system">Set <code>status = 'matched'</code></li>
           <li class="system">Set <code>provider_id</code></li>
-          <li class="system">Đơn ≤24h: <code>lock_expires_at = now + 15m</code></li>
+          <li class="system"><code>lock_expires_at = now + 15m</code> (mọi đơn, kể cả đặt trước)</li>
           <li class="system">Tính lại <code>order_expires_at</code></li>
         </ul>
       </div>
@@ -738,6 +739,8 @@
           <li class="system">Pickup &gt;24h → <code>status = 'scheduled'</code></li>
           <li class="system">Xoá <code>lock_expires_at = null</code></li>
           <li class="system">Set <code>deposit_paid = true</code></li>
+          <li class="system">Set <code>slot_locked_until = pickup_time + 30 phút</code></li>
+          <li class="system"><strong>First deposit wins:</strong> cancel đơn matched khác cùng provider trùng khung giờ → notify customer bị ảnh hưởng</li>
         </ul>
       </div>
     </div>
@@ -818,6 +821,7 @@
           <li class="system">Set <code>completed_at = now</code></li>
           <li class="system">Giải phóng thanh toán cho provider</li>
           <li class="system">Cập nhật rating provider</li>
+          <li class="system">Xoá <code>slot_locked_until = null</code> → provider tự do nhận đơn</li>
         </ul>
       </div>
     </div>

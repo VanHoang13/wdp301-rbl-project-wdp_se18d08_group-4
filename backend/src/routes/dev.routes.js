@@ -1,6 +1,8 @@
 const express = require('express');
 const { supabaseAdmin } = require('../services/supabase.service');
 const { httpError } = require('../services/auth.helpers');
+const { applyOrderAfterDepositPaid } = require('../services/payments.service');
+const { runOrderTimeoutJob } = require('../jobs/orderTimeout.job');
 const env = require('../config/env');
 
 const router = express.Router();
@@ -56,27 +58,63 @@ router.post('/payments/simulate', async (req, res) => {
 
     if (payError) throw httpError(500, payError.message, 'db_error');
 
-    // Mark order deposit_paid + move to accepted if matched
-    const { data: order, error: orderFetch } = await supabaseAdmin
-      .from('orders')
-      .select('id, status')
-      .eq('id', payment.order_id)
-      .single();
-
-    if (!orderFetch && order) {
-      const orderUpdate = { deposit_paid: true };
-
-      await supabaseAdmin
-        .from('orders')
-        .update(orderUpdate)
-        .eq('id', order.id);
-    }
+    // Dùng applyOrderAfterDepositPaid để xử lý đầy đủ:
+    // - deposit_paid = true
+    // - status → accepted/scheduled
+    // - lock_expires_at = null
+    // - slot_locked_until = pickup_time + 30 phút
+    // - cancel đơn matched trùng giờ (first deposit wins)
+    const result = await applyOrderAfterDepositPaid(payment.id);
 
     res.json({
       success: true,
       message: 'Giả lập thanh toán thành công',
-      data: { payment_code: payment.payment_code, order_id: payment.order_id },
+      data: {
+        payment_code: payment.payment_code,
+        order_id: payment.order_id,
+        applied: result.applied,
+        repaired: result.repaired,
+      },
     });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/dev/jobs/run-timeout
+ * Trigger thủ công background job xử lý timeout/scheduled → accepted
+ */
+router.post('/jobs/run-timeout', async (req, res) => {
+  try {
+    await runOrderTimeoutJob();
+    res.json({ success: true, message: 'Job chạy xong' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PATCH /api/dev/orders/:id/set-pickup-now
+ * Đặt scheduled_pickup_time = now + minutes (mặc định 1 phút) để test background job
+ */
+router.patch('/orders/:id/set-pickup-now', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const minutes = Number(req.body?.minutes ?? 1);
+    const newPickup = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+
+    const { error } = await supabaseAdmin
+      .from('orders')
+      .update({
+        scheduled_pickup_time: newPickup,
+        slot_locked_until: new Date(Date.now() + (minutes + 30) * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) throw httpError(500, error.message, 'db_error');
+    res.json({ success: true, message: `Đã set pickup = now + ${minutes} phút`, pickup_time: newPickup });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, message: error.message });
   }

@@ -848,6 +848,80 @@ async function findPaymentByPayOSData(payosData) {
 }
 
 /**
+ * "First deposit wins" — khi provider được lock slot sau khi customer cọc,
+ * tìm và cancel tất cả đơn MATCHED khác của cùng provider trong cùng khung giờ.
+ * Notify customer của các đơn bị cancel để họ chọn lại nhà xe khác.
+ *
+ * @param {string} providerId   - Provider vừa được cọc
+ * @param {string} wonOrderId   - Đơn vừa cọc xong (exclude khỏi cancel)
+ * @param {string} pickupTime   - ISO string giờ pickup
+ */
+/**
+ * So sánh calendar date theo giờ Việt Nam (UTC+7).
+ * Trả về true nếu pickup là ngày hôm nay, false nếu là ngày mai trở đi.
+ * Ví dụ: 16h PM ngày 22 đặt pickup 7h AM ngày 23 → khác ngày → false (scheduled)
+ */
+function isPickupSameCalendarDay(pickupTime) {
+  if (!pickupTime) return true;
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+  const nowVN = new Date(Date.now() + VN_OFFSET_MS);
+  const pickupVN = new Date(new Date(pickupTime).getTime() + VN_OFFSET_MS);
+  return (
+    nowVN.getUTCFullYear() === pickupVN.getUTCFullYear() &&
+    nowVN.getUTCMonth() === pickupVN.getUTCMonth() &&
+    nowVN.getUTCDate() === pickupVN.getUTCDate()
+  );
+}
+
+async function cancelConflictingMatchedOrders(providerId, wonOrderId, pickupTime) {
+  const SLOT_BUFFER_MS = 30 * 60 * 1000; // 30 phút buffer khung giờ
+  const pickupMs = new Date(pickupTime).getTime();
+  const slotStart = new Date(pickupMs - SLOT_BUFFER_MS).toISOString();
+  const slotEnd = new Date(pickupMs + SLOT_BUFFER_MS).toISOString();
+
+  // Tìm đơn matched cùng provider, trùng khung giờ, chưa cọc
+  const { data: conflicts } = await supabaseAdmin
+    .from('orders')
+    .select('id, customer_id, order_number, pickup_address, delivery_address')
+    .eq('provider_id', providerId)
+    .eq('status', 'matched')
+    .eq('deposit_paid', false)
+    .neq('id', wonOrderId)
+    .gte('scheduled_pickup_time', slotStart)
+    .lte('scheduled_pickup_time', slotEnd);
+
+  if (!conflicts?.length) return;
+
+  for (const conflict of conflicts) {
+    // Cancel đơn
+    const { data: cancelledOrder } = await supabaseAdmin
+      .from('orders')
+      .update({
+        status: 'cancelled',
+        cancellation_reason: 'Nhà xe đã được chốt bởi khách khác cùng khung giờ',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: null, // system cancel — không có user cụ thể
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conflict.id)
+      .in('status', ['matched', 'pending']) // cover cả 2 trường hợp
+      .select('id')
+      .maybeSingle();
+
+    if (!cancelledOrder) continue; // đơn đã được xử lý bởi luồng khác, bỏ qua
+
+    // Notify customer đơn bị cancel
+    await createNotification(
+      conflict.customer_id,
+      'order_cancelled',
+      'Nhà xe vừa được chốt bởi khách khác',
+      `Đơn ${conflict.order_number} bị hủy vì nhà xe đã nhận chuyến cùng khung giờ. Vui lòng chọn nhà xe khác.`,
+      { priority: 'high', actionData: { order_id: conflict.id } },
+    );
+  }
+}
+
+/**
  * Sau khi payment deposit hoàn tất — cập nhật orders.deposit_paid (idempotent).
  * Trạng thái đơn vẫn là matched; nhà xe cần accept sau khi khách cọc.
  */
@@ -872,28 +946,63 @@ async function applyOrderAfterDepositPaid(paymentId) {
     .maybeSingle();
 
   if (orderErr || !order) return { applied: false };
-  if (order.deposit_paid) return { applied: false, already: true };
 
   const depositAmount = Number(payment.amount) || 0;
   const totalPrice = Number(order.total_price) || 0;
   const remainingAmount = totalPrice > 0 ? Math.max(0, totalPrice - depositAmount) : 0;
   const now = new Date().toISOString();
 
+  // slot_locked_until = pickup_time + 30 phút buffer
+  const SLOT_BUFFER_MS = 30 * 60 * 1000;
+  const slotLockedUntil = order.scheduled_pickup_time
+    ? new Date(new Date(order.scheduled_pickup_time).getTime() + SLOT_BUFFER_MS).toISOString()
+    : null;
+
+  // Nếu deposit_paid đã true nhưng slot_locked_until chưa set → repair lại
+  // (trường hợp đơn cũ tạo trước khi deploy code slot lock)
+  if (order.deposit_paid) {
+    const needsSlotRepair = !order.slot_locked_until && slotLockedUntil;
+    const needsStatusRepair = order.status === 'matched';
+
+    if (!needsSlotRepair && !needsStatusRepair) {
+      return { applied: false, already: true };
+    }
+
+    // Repair slot_locked_until và/hoặc status cho đơn cũ
+    const repairFields = {};
+    if (needsSlotRepair) repairFields.slot_locked_until = slotLockedUntil;
+    if (needsStatusRepair) {
+      repairFields.status = isPickupSameCalendarDay(order.scheduled_pickup_time) ? 'accepted' : 'scheduled';
+      repairFields.lock_expires_at = null;
+    }
+    repairFields.updated_at = now;
+
+    await supabaseAdmin.from('orders').update(repairFields).eq('id', order.id);
+
+    if (order.provider_id && order.scheduled_pickup_time) {
+      try {
+        await cancelConflictingMatchedOrders(order.provider_id, order.id, order.scheduled_pickup_time);
+      } catch (err) {
+        console.warn('[SlotLock] cancelConflictingMatchedOrders repair failed:', err.message);
+      }
+    }
+
+    return { applied: true, repaired: true, order_id: order.id };
+  }
+
   const updateFields = {
     deposit_paid: true,
     deposit_paid_at: now,
     deposit_amount: depositAmount,
     remaining_amount: remainingAmount,
-    lock_expires_at: null, // clear lock vì đã đặt cọc xong
+    lock_expires_at: null,       // clear lock tạm 15 phút chờ cọc
+    slot_locked_until: slotLockedUntil, // lock khung giờ thật sự
     updated_at: now,
   };
 
   if (order.status === 'matched') {
-    // Đơn đặt trước (> 24h) → scheduled, đơn trong ngày → accepted
-    const hoursUntilPickup = order.scheduled_pickup_time
-      ? (new Date(order.scheduled_pickup_time).getTime() - Date.now()) / (1000 * 60 * 60)
-      : 0;
-    updateFields.status = hoursUntilPickup > 24 ? 'scheduled' : 'accepted';
+    // Pickup cùng ngày hôm nay (giờ VN) → accepted, khác ngày → scheduled
+    updateFields.status = isPickupSameCalendarDay(order.scheduled_pickup_time) ? 'accepted' : 'scheduled';
   }
 
   const { error: updateErr } = await supabaseAdmin
@@ -905,6 +1014,17 @@ async function applyOrderAfterDepositPaid(paymentId) {
   if (updateErr) {
     console.warn('[PayOS] applyOrderAfterDepositPaid failed:', updateErr.message);
     return { applied: false, error: updateErr.message };
+  }
+
+  // "First deposit wins" — cancel các đơn matched trùng khung giờ của cùng provider
+  // Ví dụ: provider báo giá 2 đơn cùng slot 9h, cả 2 customer chọn → ai cọc trước thắng
+  if (order.provider_id && order.scheduled_pickup_time) {
+    try {
+      await cancelConflictingMatchedOrders(order.provider_id, order.id, order.scheduled_pickup_time);
+    } catch (err) {
+      // Không throw — đây là side effect, không ảnh hưởng đến luồng chính
+      console.warn('[SlotLock] cancelConflictingMatchedOrders failed:', err.message);
+    }
   }
 
   const isScheduled = updateFields.status === 'scheduled';

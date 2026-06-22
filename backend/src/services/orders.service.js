@@ -528,6 +528,7 @@ async function completeOrder(orderId, providerId) {
       completed_at: now,
       payment_released: true,
       payment_released_at: now,
+      slot_locked_until: null, // xóa lock khung giờ khi đơn hoàn thành
     })
     .eq('id', orderId)
     .select('*')
@@ -594,6 +595,7 @@ async function cancelOrder(orderId, userId, reason) {
       cancellation_reason: trimmedReason || null,
       cancelled_by: userId,
       cancelled_at: new Date().toISOString(),
+      slot_locked_until: null, // xóa lock khung giờ khi đơn bị hủy
     })
     .eq('id', orderId)
     .select('*')

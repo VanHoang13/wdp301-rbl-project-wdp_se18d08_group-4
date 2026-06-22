@@ -188,13 +188,10 @@ async function selectQuote(orderId, quoteId, customerId) {
       : order.scheduled_pickup_time;
 
   const now = Date.now();
-  const pickup = new Date(pickupTime).getTime();
-  const hoursUntilPickup = (pickup - now) / (1000 * 60 * 60);
 
-  // Lock provider 15 phút cho đơn trong ngày (< 24h), đơn đặt trước không lock
-  const lockExpiresAt = hoursUntilPickup <= 24
-    ? new Date(now + 15 * 60 * 1000).toISOString()
-    : null;
+  // Lock tạm 15 phút chờ customer cọc — áp dụng cho mọi đơn (cả đặt trước)
+  // Nếu 15 phút không cọc → background job xóa lock, provider tự do nhận đơn khác
+  const lockExpiresAt = new Date(now + 15 * 60 * 1000).toISOString();
 
   const orderExpiresAt = calcOrderExpiresAt(pickupTime);
 

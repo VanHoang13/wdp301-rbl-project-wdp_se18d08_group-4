@@ -12,6 +12,7 @@ import { getStoredUser, logoutToHome, storeAuth, type AuthUser } from "@/lib/aut
 import { notificationsApi, customerApi, authApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { UserMenuDropdown } from "@/components/layout/user-menu-dropdown";
+import { ActiveOrderBanner } from "@/components/shared/active-order-banner";
 
 interface NavItem {
   href:   string;
@@ -230,6 +231,7 @@ export function WebLayout({ children }: { children: React.ReactNode }) {
         <main className="relative z-0 flex-1 overflow-y-auto p-6">
           {children}
         </main>
+        <ActiveOrderBanner />
       </div>
     </div>
   );

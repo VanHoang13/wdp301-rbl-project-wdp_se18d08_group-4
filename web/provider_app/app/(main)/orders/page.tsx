@@ -31,6 +31,10 @@ const TABS = [
   { key: "cancelled", label: "Đã hủy" },
 ];
 
+// Polling khi đang xem tab "Chờ xác nhận" (pending/matched có thể thay đổi bất cứ lúc nào)
+const PENDING_TAB_INDEX = 1; // index của tab "Chờ xác nhận" trong TABS
+const POLL_INTERVAL_MS = 10_000; // 10 giây
+
 export default function ProviderOrdersPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
@@ -57,6 +61,28 @@ export default function ProviderOrdersPage() {
   useEffect(() => {
     fetchOrders(TABS[activeTab].key);
   }, [activeTab, fetchOrders]);
+
+  // Silent polling khi đang xem tab Chờ xác nhận — không show loading spinner
+  useEffect(() => {
+    if (activeTab !== PENDING_TAB_INDEX) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const status = TABS[PENDING_TAB_INDEX].key;
+        const params: { status?: string } = {};
+        if (status) params.status = status;
+        const res = await providerOrdersApi.getOrders(params);
+        if (res.success && res.data) {
+          const data = res.data as { orders?: Order[] } | Order[];
+          setOrders(Array.isArray(data) ? data : (data?.orders ?? []));
+        }
+      } catch {
+        // silent — không disturb UX nếu poll fail
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const handleAccept = async (order: Order) => {
     if (order.quote_request) return;

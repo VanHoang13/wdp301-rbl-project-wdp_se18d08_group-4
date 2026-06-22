@@ -24,16 +24,32 @@ export function timeAgo(dateStr: string): string {
 
 export function getOrderStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    pending: "Chờ xác nhận", accepted: "Đã chấp nhận", picking_up: "Đang đến",
-    in_progress: "Đang vận chuyển", completed: "Hoàn thành", cancelled: "Đã hủy", disputed: "Khiếu nại",
+    pending:     "Chờ báo giá",
+    matched:     "Chờ đặt cọc",
+    accepted:    "Đã xác nhận",
+    scheduled:   "Đã lên lịch",
+    picking_up:  "Đang đến lấy",
+    in_progress: "Đang vận chuyển",
+    delivering:  "Đang giao",
+    completed:   "Hoàn thành",
+    cancelled:   "Đã huỷ",
+    disputed:    "Khiếu nại",
   };
   return map[status] ?? status;
 }
 
 export function getOrderStatusColor(status: string): string {
   const map: Record<string, string> = {
-    pending: "var(--warning)", accepted: "var(--primary)", picking_up: "var(--primary)",
-    in_progress: "var(--primary)", completed: "var(--success)", cancelled: "var(--error)", disputed: "var(--error)",
+    pending:     "var(--warning)",
+    matched:     "#2563EB",
+    accepted:    "var(--success)",
+    scheduled:   "#0891B2",
+    picking_up:  "var(--primary)",
+    in_progress: "var(--primary)",
+    delivering:  "var(--primary)",
+    completed:   "var(--success)",
+    cancelled:   "var(--error)",
+    disputed:    "var(--error)",
   };
   return map[status] ?? "var(--muted)";
 }
