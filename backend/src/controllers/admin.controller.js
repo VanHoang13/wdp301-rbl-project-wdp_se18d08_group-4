@@ -620,15 +620,37 @@ async function resolveDispute(req, res) {
     });
 
     if (refund_amount && refund_amount > 0) {
-      await supabaseAdmin.from('refunds').insert({
-        order_id: updatedDispute.order_id,
-        refund_amount,
-        refund_reason: `Dispute resolution: ${resolution}`,
-        status: 'approved',
-        requested_by: updatedDispute.raised_by,
-        approved_by: req.user.id,
-        processed_at: new Date().toISOString(),
-      });
+      const paymentsService = require('../services/payments.service');
+
+      // Tìm payment của đơn để link refund đúng
+      const { data: payment } = await supabaseAdmin
+        .from('payments')
+        .select('id')
+        .eq('order_id', updatedDispute.order_id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (payment) {
+        // Tạo refund record rồi gọi completeRefund để cộng ví + notify
+        const { data: refundRecord } = await supabaseAdmin
+          .from('refunds')
+          .insert({
+            payment_id: payment.id,
+            order_id: updatedDispute.order_id,
+            refund_amount,
+            refund_reason: `Giải quyết khiếu nại: ${resolution}`,
+            status: 'pending',
+            requested_by: updatedDispute.raised_by,
+          })
+          .select('id')
+          .single();
+
+        if (refundRecord) {
+          await paymentsService.completeRefund(refundRecord.id, req.user.id);
+        }
+      }
     }
 
     res.json({
