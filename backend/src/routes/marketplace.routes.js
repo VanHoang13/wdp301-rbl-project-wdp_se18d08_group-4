@@ -39,6 +39,8 @@ router.delete('/listings/:id/interest', requireAuth, marketplaceController.remov
 router.get('/my-interests', requireAuth, marketplaceController.getMyInterests);
 
 // ── Batch 3 ──────────────────────────────────────────────────────────────────
+// Inbox hội thoại Chợ SV
+router.get('/conversations', requireAuth, marketplaceController.listConversations);
 // API-066 — DS khách quan tâm
 router.get('/listings/:id/interests', requireAuth, marketplaceController.getInterestedBuyers);
 // API-067 — Đọc chat

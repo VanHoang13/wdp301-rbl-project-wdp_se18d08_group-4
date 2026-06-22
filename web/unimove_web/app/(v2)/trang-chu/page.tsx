@@ -183,11 +183,19 @@ export default function TrangChuPage() {
               <span className="text-[#0047FF]">Move</span>
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Link href="/tin-nhan" className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/tin-nhan"
+              aria-label="Tin nhắn"
+              className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm"
+            >
               <MessageCircle size={20} className="text-[#0047FF]" />
             </Link>
-            <Link href="/thong-bao" className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm">
+            <Link
+              href="/thong-bao"
+              aria-label="Thông báo"
+              className="relative rounded-full border border-gray-100 bg-white p-2.5 shadow-sm"
+            >
               <Bell size={20} className="text-[#0047FF]" />
               {mounted && unread > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">

@@ -8,6 +8,61 @@ export interface ChatConversation {
   order?: { id: string; status: string; service_type?: string };
 }
 
+export interface MarketplaceConversation {
+  id: string;
+  kind: "marketplace";
+  listing_id: string;
+  buyer_id: string;
+  last_message_preview?: string;
+  last_message_at?: string;
+  unread_count: number;
+  created_at?: string;
+  counterpart?: { full_name?: string; avatar_url?: string; phone?: string };
+  listing?: {
+    id: string;
+    title?: string;
+    price?: number;
+    images?: string[];
+    status?: string;
+    deal_confirmed?: boolean;
+  } | null;
+}
+
+export type InboxItem =
+  | (ChatConversation & { kind: "order" })
+  | MarketplaceConversation;
+
+export type ActiveChatThread =
+  | { type: "order"; orderId: string }
+  | { type: "marketplace"; listingId: string; buyerId: string };
+
+export function inboxSortTime(item: InboxItem): number {
+  const t = item.last_message_at ?? ("created_at" in item ? item.created_at : undefined);
+  return t ? new Date(t).getTime() : 0;
+}
+
+export function mergeInboxItems(
+  orders: ChatConversation[],
+  marketplace: MarketplaceConversation[],
+): InboxItem[] {
+  const orderItems: InboxItem[] = orders.map((c) => ({ ...c, kind: "order" as const }));
+  return [...orderItems, ...marketplace].sort((a, b) => inboxSortTime(b) - inboxSortTime(a));
+}
+
+export function marketplaceThreadKey(listingId: string, buyerId: string) {
+  return `mp:${listingId}:${buyerId}`;
+}
+
+export function isSameThread(a: ActiveChatThread | null, b: ActiveChatThread | null): boolean {
+  if (!a || !b) return false;
+  if (a.type !== b.type) return false;
+  if (a.type === "order" && b.type === "order") return a.orderId === b.orderId;
+  if (a.type === "marketplace" && b.type === "marketplace") {
+    return a.listingId === b.listingId && a.buyerId === b.buyerId;
+  }
+  return false;
+}
+
 export interface ChatMessage {
   id: string;
   content: string;
@@ -35,9 +90,42 @@ export interface OrderChatContext {
   provider?: { full_name?: string; phone?: string; avatar_url?: string; vehicle_type?: string };
   provider_name?: string;
   provider_phone?: string;
+  provider_plate?: string | null;
   customer?: { full_name?: string; phone?: string };
   pickup_contact_name?: string;
   pickup_contact_phone?: string;
+}
+
+export function upsertConversation(
+  prev: ChatConversation[],
+  orderId: string,
+  counterpartName?: string | null,
+): ChatConversation[] {
+  if (prev.some((c) => c.order_id === orderId)) return prev;
+  if (!counterpartName) return prev;
+  return [
+    {
+      id: `pending-${orderId}`,
+      order_id: orderId,
+      unread_count: 0,
+      last_message_preview: "Bắt đầu trò chuyện",
+      counterpart: { full_name: counterpartName },
+    },
+    ...prev,
+  ];
+}
+
+export function vehicleChatLabel(v?: string | null) {
+  const map: Record<string, string> = {
+    small_truck: "Xe tải 500kg",
+    medium_truck: "Xe tải 1 tấn",
+    large_truck: "Xe tải 1.5 tấn",
+    motorbike: "Xe máy",
+    truck_1t: "Xe tải 1 tấn",
+    truck_2t: "Xe tải 2 tấn",
+    truck_5t: "Xe tải 5 tấn+",
+  };
+  return (v && map[v]) || v || "Xe tải";
 }
 
 export const QUICK_REPLIES = [

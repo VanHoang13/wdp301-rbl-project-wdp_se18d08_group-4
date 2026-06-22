@@ -6,26 +6,27 @@ import { useParams } from "next/navigation";
 import {
   ArrowLeft, Phone, Star, CheckCircle, XCircle, CreditCard,
   AlertTriangle, ShieldCheck, Info, X, ChevronDown, ChevronUp,
-  MessageSquare,
+  MessageSquare, Check, Truck, Eye, FileText, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ordersApi, quotesApi, paymentsApi, providersApi, devApi, reviewsApi } from "@/lib/api";
+import { Container } from "@/components/layout/Container";
+import { FadeSlideIn } from "@/components/motion/fade-slide-in";
+import { ordersApi, quotesApi, paymentsApi, providersApi, devApi } from "@/lib/api";
 import { formatVND, formatDate } from "@/lib/utils";
 import { useUIStore } from "@/lib/stores";
 import { getStoredUser } from "@/lib/auth";
 
 /* ─── Interfaces (unchanged) ──────────────────────────────────── */
 interface OrderDetail {
-  id: string; status: string; service_type: string; quote_request?: boolean;
+  id: string; order_number?: string; status: string; service_type: string; quote_request?: boolean;
   pickup_address: string; dropoff_address: string; description?: string;
   estimated_price?: number; final_price?: number; total_price?: number;
   deposit_amount?: number; deposit_paid?: boolean; created_at: string;
-  provider_accepted_at?: string; scheduled_pickup_time?: string;
-  cancellation_reason?: string; cancelled_at?: string;
+  provider_id?: string;
   provider?: { id: string; full_name: string; phone: string; rating: number; vehicle_type?: string; total_reviews?: number };
   provider_name?: string;
-  my_review?: { id: string; rating: number; comment?: string; tags: string[]; created_at: string };
 }
 
 interface Quote {
@@ -72,17 +73,10 @@ const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> =
   pending:     { label: "Chờ báo giá",     color: "#D97706", bg: "#FFFBEB" },
   matched:     { label: "Chờ thanh toán",  color: "#2563EB", bg: "#EFF6FF" },
   accepted:    { label: "Đã xác nhận",     color: "#059669", bg: "#ECFDF5" },
-  scheduled:   { label: "Đã lên lịch",     color: "#0891B2", bg: "#ECFEFF" },
   picking_up:  { label: "Đang đến lấy",    color: "#7C3AED", bg: "#F5F3FF" },
   in_progress: { label: "Đang vận chuyển", color: "#7C3AED", bg: "#F5F3FF" },
   completed:   { label: "Hoàn thành",      color: "#059669", bg: "#ECFDF5" },
   cancelled:   { label: "Đã huỷ",          color: "#DC2626", bg: "#FEF2F2" },
-};
-
-const SERVICE_META: Record<string, { emoji: string; label: string }> = {
-  moving:        { emoji: "📦", label: "Chuyển nhà" },
-  delivery:      { emoji: "🚚", label: "Giao hàng" },
-  heavy_lifting: { emoji: "💪", label: "Khuân vác" },
 };
 
 const V_STEPS = [
@@ -97,6 +91,245 @@ const V_STEPS = [
 const STATUS_STEP: Record<string, number> = {
   pending: 0, matched: 1, accepted: 2, picking_up: 3, in_progress: 4, completed: 5,
 };
+
+const GENERIC_PROVIDER_NAMES = new Set(["Nhà xe", "Nhà vận chuyển", "Nhà xe N", "?"]);
+
+function resolveProviderName(order: OrderDetail, selectedQuote?: Quote): string | null {
+  const candidates = [
+    selectedQuote?.provider_name,
+    order.provider_name,
+    order.provider?.full_name,
+  ].filter((n): n is string => Boolean(n?.trim()));
+
+  return candidates.find((n) => !GENERIC_PROVIDER_NAMES.has(n)) ?? candidates[0] ?? null;
+}
+
+function providerProfileHref(providerId: string, orderId: string) {
+  return `/nha-xe/${providerId}?return=${encodeURIComponent(`/don-hang/${orderId}`)}`;
+}
+
+function orderChatHref(orderId: string, providerName?: string | null) {
+  const params = new URLSearchParams({ orderId });
+  if (providerName) params.set("with", providerName);
+  return `/tin-nhan?${params.toString()}`;
+}
+
+function SidebarBlocks({
+  order,
+  quotes,
+  selectedQuote,
+  totalPrice,
+  hasPrice,
+  acting,
+  hasProviderLinked,
+  canCancel,
+  selectQuote,
+  openCancelFlow,
+}: {
+  order: OrderDetail;
+  quotes: Quote[];
+  selectedQuote: Quote | undefined;
+  totalPrice: number;
+  hasPrice: boolean;
+  acting: boolean;
+  hasProviderLinked: boolean;
+  canCancel: boolean;
+  selectQuote: (id: string) => void;
+  openCancelFlow: () => void;
+}) {
+  const providerName = resolveProviderName(order, selectedQuote);
+  const providerId =
+    order.provider?.id ?? selectedQuote?.provider_id ?? order.provider_id;
+  const providerInitial = (providerName?.[0] ?? "N").toUpperCase();
+  const displayPrice = selectedQuote?.total_price ?? totalPrice;
+  const profileHref = providerId ? providerProfileHref(providerId, order.id) : null;
+  const chatHref = orderChatHref(order.id, providerName);
+  const showProviderCard = Boolean(
+    providerName &&
+      (order.provider || selectedQuote || order.provider_name || hasProviderLinked)
+  );
+
+  return (
+    <>
+      {showProviderCard && (
+        <div className="rounded-2xl overflow-hidden bg-[#2563EB] text-white shadow-[0_8px_24px_rgba(37,99,235,0.28)] p-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/70 mb-3">
+            Nhà vận chuyển được chọn
+          </p>
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 rounded-full bg-white/20 ring-2 ring-white/30 flex items-center justify-center text-lg font-bold shrink-0">
+              {providerInitial}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-base truncate">{providerName}</p>
+              <div className="flex items-center gap-2 mt-1 flex-wrap text-white/85 text-xs">
+                {(order.provider?.rating ?? 0) > 0 ? (
+                  <span className="flex items-center gap-0.5">
+                    <Star size={11} className="text-amber-300 fill-amber-300" />
+                    <span className="font-semibold text-white">{order.provider!.rating.toFixed(1)}</span>
+                    <span>/5</span>
+                  </span>
+                ) : (
+                  <span className="text-white/70">Nhà xe đối tác</span>
+                )}
+                {order.provider?.total_reviews ? (
+                  <span>
+                    ·{" "}
+                    {order.provider.total_reviews >= 1000
+                      ? `${(order.provider.total_reviews / 1000).toFixed(1)}k`
+                      : order.provider.total_reviews}{" "}
+                    chuyến
+                  </span>
+                ) : null}
+                {order.provider?.vehicle_type && (
+                  <span>· {order.provider.vehicle_type}</span>
+                )}
+              </div>
+              {profileHref ? (
+                <Link
+                  href={profileHref}
+                  className="mt-2.5 inline-block text-xs font-semibold text-white hover:text-white/90 underline underline-offset-2"
+                >
+                  Xem hồ sơ
+                </Link>
+              ) : null}
+            </div>
+            <div className="text-right shrink-0 flex flex-col items-end gap-2">
+              {displayPrice > 0 && (
+                <p className="text-xl font-extrabold text-white leading-none">
+                  {formatVND(displayPrice)}
+                </p>
+              )}
+              {order.provider?.phone && (
+                <a href={`tel:${order.provider.phone}`} className="inline-flex" aria-label="Gọi nhà xe">
+                  <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center hover:bg-white/25 transition-colors">
+                    <Phone size={15} className="text-white" />
+                  </div>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasPrice && (
+        <Card className="border-yellow-200 bg-yellow-50 shadow-sm p-5">
+          <p className="text-[11px] font-bold text-yellow-700 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+            <CreditCard size={13} /> Thanh toán
+          </p>
+          <div className="space-y-2.5 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Chi phí vận chuyển</span>
+              <span className="font-bold text-gray-900">{formatVND(totalPrice)}</span>
+            </div>
+            {order.deposit_amount != null && order.deposit_amount > 0 && (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Đặt cọc trước</span>
+                  <span className="font-bold text-yellow-800">{formatVND(order.deposit_amount)}</span>
+                </div>
+                <div className="h-px bg-yellow-200" />
+                <div className="flex justify-between items-center gap-3">
+                  <span className="text-gray-500 text-xs leading-snug">Thanh toán sau khi hoàn thành</span>
+                  <span className="text-base font-extrabold text-[#2563EB] shrink-0">
+                    {formatVND(totalPrice - order.deposit_amount)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          {order.deposit_paid ? (
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-yellow-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-semibold text-green-700">
+                <CheckCircle size={12} /> Đã thanh toán đặt cọc
+              </span>
+            </div>
+          ) : order.deposit_amount ? (
+            <p className="text-[11px] text-yellow-700 mt-3 leading-relaxed">
+              Khoản đặt cọc được giữ an toàn và hoàn lại nếu nhà xe không đến đúng hẹn.
+            </p>
+          ) : null}
+        </Card>
+      )}
+
+      {order.quote_request && quotes.length > 0 && (
+        <Card className="border-gray-100 bg-white shadow-sm p-5">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+            Báo giá khác
+          </p>
+          <div className="space-y-2">
+            {quotes.map((q) => {
+              const isSelected = q.status === "selected";
+              const canChoose = order.status === "pending" && !order.provider;
+              return (
+                <div
+                  key={q.id}
+                  className="rounded-xl border px-3 py-2.5 flex items-center gap-2"
+                  style={{
+                    borderColor: isSelected ? "#2563EB" : "#F3F4F6",
+                    backgroundColor: isSelected ? "#EFF6FF" : "#FAFAFA",
+                    opacity: !isSelected && order.status !== "pending" ? 0.55 : 1,
+                  }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {q.provider_name ?? "Nhà xe"}
+                      </p>
+                      {isSelected && (
+                        <span className="text-[10px] font-bold text-[#2563EB] bg-blue-100 px-1.5 py-0.5 rounded-full">
+                          ĐÃ CHỌN
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-[#2563EB]">{formatVND(q.total_price)}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Link
+                      href={providerProfileHref(q.provider_id, order.id)}
+                      className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:text-[#2563EB] hover:border-blue-200 transition-colors"
+                      aria-label="Xem hồ sơ nhà xe"
+                    >
+                      <Eye size={14} />
+                    </Link>
+                    {canChoose && !isSelected && (
+                      <Button size="sm" className="h-8 px-3 text-xs" loading={acting} onClick={() => selectQuote(q.id)}>
+                        Chọn
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {hasProviderLinked && (
+          <Link href={chatHref} className="block">
+            <Button
+              variant="outline"
+              className="w-full h-11 rounded-2xl border-[#2563EB] text-[#2563EB] font-semibold bg-white hover:bg-blue-50"
+            >
+              <MessageSquare size={16} />
+              Nhắn tin với nhà xe
+            </Button>
+          </Link>
+        )}
+        {canCancel && (
+          <button
+            type="button"
+            onClick={openCancelFlow}
+            className="w-full h-10 flex items-center justify-center gap-1.5 text-sm font-medium text-red-400 hover:text-red-500 transition-colors"
+          >
+            <XCircle size={14} /> Huỷ đơn hàng
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
 
 /* ─── Page ───────────────────────────────────────────────────────── */
 export default function DonHangDetailPage() {
@@ -115,19 +348,12 @@ export default function DonHangDetailPage() {
   const [selectedReason, setSelectedReason]   = useState("");
   const [customReason, setCustomReason]       = useState("");
   const [cancelling, setCancelling]           = useState(false);
-  const [cancellingTimeout, setCancellingTimeout] = useState(false);
 
   const [drawerProvider, setDrawerProvider]   = useState<ProviderProfile | null>(null);
   const [loadingProfile, setLoadingProfile]   = useState(false);
 
   /* UI state for route expand */
   const [showFullRoute, setShowFullRoute] = useState(false);
-
-  /* review form state */
-  const [reviewStars,   setReviewStars]   = useState(0);
-  const [reviewTags,    setReviewTags]    = useState<string[]>([]);
-  const [reviewComment, setReviewComment] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
 
   /* ── functions (ALL unchanged) ── */
   const openProviderDrawer = async (providerId: string) => {
@@ -143,40 +369,24 @@ export default function DonHangDetailPage() {
 
   const load = async () => {
     const r = await ordersApi.get(id);
-    if (r.success && r.data) setOrder(r.data as OrderDetail);
-    if ((r.data as OrderDetail)?.quote_request) {
-      const q = await quotesApi.list(id);
-      const qd = q.data as { quotes?: Quote[] };
-      setQuotes(qd?.quotes ?? (Array.isArray(q.data) ? q.data as Quote[] : []));
+    const od = r.success && r.data ? (r.data as OrderDetail) : null;
+    if (od) setOrder(od);
+    const shouldLoadQuotes =
+      od?.quote_request ||
+      (od && ["pending", "matched", "accepted", "picking_up", "in_progress", "completed"].includes(od.status));
+    if (shouldLoadQuotes) {
+      try {
+        const q = await quotesApi.list(id);
+        const qd = q.data as { quotes?: Quote[] };
+        const list = qd?.quotes ?? (Array.isArray(q.data) ? (q.data as Quote[]) : []);
+        if (list.length > 0) setQuotes(list);
+      } catch {
+        /* không có báo giá */
+      }
     }
   };
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [id]);
-
-  // Polling 15s khi đơn đang active — tự cập nhật step mà không cần reload
-  useEffect(() => {
-    const ACTIVE = ["pending", "matched", "accepted", "scheduled", "picking_up", "picked_up", "in_progress", "delivering"];
-    if (!order || !ACTIVE.includes(order.status)) return;
-    const timer = setInterval(() => { load(); }, 15_000);
-    return () => clearInterval(timer);
-  }, [order?.status]);
-
-  const submitReview = async () => {
-    if (reviewStars === 0) return;
-    setSubmittingReview(true);
-    try {
-      await reviewsApi.submit(id, {
-        rating: reviewStars,
-        comment: reviewComment.trim() || undefined,
-        tags: reviewTags,
-      });
-      await load();
-    } catch (e) {
-      showError(e instanceof Error ? e.message : "Gửi đánh giá thất bại");
-    } finally {
-      setSubmittingReview(false);
-    }
-  };
 
   const openCancelFlow = async () => {
     setCancelStep(1);
@@ -240,23 +450,8 @@ export default function DonHangDetailPage() {
     finally { setActing(false); }
   };
 
-  const cancelByTimeout = async () => {
-    if (!confirm("Bạn chắc chắn muốn hủy đơn vì nhà xe không phản hồi? Tiền cọc sẽ được hoàn lại.")) return;
-    setCancellingTimeout(true);
-    try {
-      await ordersApi.cancelTimeout(id);
-      showSuccess("Đã hủy đơn. Yêu cầu hoàn tiền đang chờ xử lý.");
-      await load();
-    } catch (e) { showError(e instanceof Error ? e.message : "Không thể hủy đơn"); }
-    finally { setCancellingTimeout(false); }
-  };
-
   /* ── derived (unchanged logic) ── */
-  const canCancel = order && ["pending", "matched", "accepted", "scheduled"].includes(order.status);
-
-  // Banner hủy: accepted + còn ≤15 phút đến giờ hẹn mà provider chưa bấm "Đang đến lấy"
-  const pickupTime = order?.scheduled_pickup_time ? new Date(order.scheduled_pickup_time).getTime() : 0;
-  const canCancelTimeout = order?.status === "accepted" && pickupTime > 0 && Date.now() >= pickupTime - 15 * 60 * 1000;
+  const canCancel = order && ["pending", "matched", "accepted"].includes(order.status);
   const hasProviderLinked = order && (
     !!order.provider || ["matched", "accepted", "picking_up", "in_progress", "completed"].includes(order.status)
   );
@@ -272,24 +467,35 @@ export default function DonHangDetailPage() {
   };
   const totalPrice = order ? (order.final_price ?? order.total_price ?? order.estimated_price ?? 0) : 0;
   const hasPrice = totalPrice > 0;
-  const selectedQuote = quotes.find(q => q.status === "selected");
-  const statusCfg = order
-    ? order.status === "matched" && order.deposit_paid
-      ? { label: "Đặt cọc thành công", color: "#059669", bg: "#ECFDF5" }
-      : (STATUS_CFG[order.status] ?? { label: order.status, color: "#6B7280", bg: "#F9FAFB" })
-    : null;
+  const selectedQuote =
+    quotes.find((q) => q.status === "selected") ??
+    (order?.provider_id ? quotes.find((q) => q.provider_id === order.provider_id) : undefined);
+  const statusCfg = order ? (STATUS_CFG[order.status] ?? { label: order.status, color: "#6B7280", bg: "#F9FAFB" }) : null;
+
+  const orderLabel = order
+    ? `#${(order.order_number ?? order.id.slice(0, 8)).toUpperCase()}`
+    : "";
 
   /* ══════════════════════════════════════════════════════════════ */
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <div className="bg-gray-50 min-h-screen pb-8">
 
       {/* ── Loading ── */}
       {loading && (
-        <div className="max-w-lg mx-auto px-4 pt-16 space-y-3">
-          {[80, 160, 120, 100].map((h, i) => (
-            <div key={i} className="animate-pulse bg-white rounded-2xl shadow-sm" style={{ height: h }} />
-          ))}
-        </div>
+        <Container className="py-8">
+          <Skeleton className="h-10 w-72 mb-6 rounded-xl" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              <Skeleton className="h-80 rounded-2xl" />
+              <Skeleton className="h-52 rounded-2xl" />
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="h-36 rounded-2xl" />
+              <Skeleton className="h-44 rounded-2xl" />
+              <Skeleton className="h-28 rounded-2xl" />
+            </div>
+          </div>
+        </Container>
       )}
 
       {/* ── Not found ── */}
@@ -304,426 +510,244 @@ export default function DonHangDetailPage() {
       {/* ── Main content ── */}
       {!loading && order && (
         <>
-          <div className={`max-w-lg mx-auto ${depositNeeded ? "pb-44 lg:pb-32" : "pb-8"}`}>
-
-            {/* ─ 1. Compact sticky header ─ */}
-            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
-              <div className="flex items-center gap-2.5 px-4 py-3">
-                <Link
-                  href="/don-hang"
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
-                >
-                  <ArrowLeft size={18} className="text-gray-700" />
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm">{SERVICE_META[order.service_type]?.emoji ?? "📦"}</span>
-                    <p className="text-sm font-bold text-gray-900 truncate">
-                      {SERVICE_META[order.service_type]?.label ?? "Đơn hàng"}
-                    </p>
+          <Container className={`pt-6 ${depositNeeded ? "pb-36 lg:pb-28" : "pb-8"}`}>
+            {/* Page header */}
+            <FadeSlideIn>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+                <div className="flex items-start gap-3">
+                  <Link
+                    href="/don-hang"
+                    className="mt-0.5 w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition-colors shrink-0"
+                  >
+                    <ArrowLeft size={18} className="text-gray-700" />
+                  </Link>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileText size={18} className="text-[#2563EB] shrink-0" />
+                      <h1 className="text-xl lg:text-2xl font-extrabold text-gray-900">
+                        Đơn hàng {orderLabel}
+                      </h1>
+                    </div>
+                    <p className="text-sm text-gray-400 mt-1">{formatDate(order.created_at)}</p>
                   </div>
-                  <p className="text-[11px] text-gray-400">
-                    #{order.id.slice(0, 8).toUpperCase()} · {formatDate(order.created_at)}
-                  </p>
                 </div>
                 {statusCfg && (
                   <span
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 whitespace-nowrap"
+                    className="inline-flex items-center gap-2 self-start rounded-full px-3.5 py-1.5 text-sm font-bold shrink-0"
                     style={{ color: statusCfg.color, backgroundColor: statusCfg.bg }}
                   >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: statusCfg.color }}
+                    />
                     {statusCfg.label}
                   </span>
                 )}
               </div>
-            </div>
+            </FadeSlideIn>
 
-            {/* ─ 2. Vertical stepper ─ */}
-            {order.status !== "cancelled" && (
-              <div className="bg-white rounded-2xl shadow-sm mx-4 mt-4 px-5 py-4">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Tiến trình đơn hàng</p>
-                <div>
-                  {V_STEPS.map((step, i) => {
-                    const currentIdx = (order.status === "matched" && order.deposit_paid)
-                      ? STATUS_STEP["accepted"]
-                      : (STATUS_STEP[order.status] ?? 0);
-                    const done = i < currentIdx;
-                    const current = i === currentIdx;
-                    const isLast = i === V_STEPS.length - 1;
-                    return (
-                      <div key={step.key} className="flex gap-3">
-                        {/* Dot + line */}
-                        <div className="flex flex-col items-center shrink-0" style={{ width: 28 }}>
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all"
-                            style={
-                              done    ? { backgroundColor: "#2563EB", color: "#fff" }
-                              : current ? { backgroundColor: "#EFF6FF", color: "#2563EB", border: "2px solid #2563EB" }
-                              : { backgroundColor: "#F9FAFB", color: "#9CA3AF", border: "2px solid #E5E7EB" }
-                            }
-                          >
-                            {done ? "✓" : step.icon}
-                          </div>
-                          {!isLast && (
-                            <div
-                              className="w-px my-1 rounded-full"
-                              style={{ flex: 1, minHeight: 16, backgroundColor: done ? "#2563EB" : "#E5E7EB" }}
-                            />
-                          )}
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+              {/* ── Left column ── */}
+              <div className="space-y-4 min-w-0">
+                {/* Stepper */}
+                {order.status !== "cancelled" && (
+                  <FadeSlideIn delay={60}>
+                    <Card className="border-gray-100 bg-white shadow-sm p-5 lg:p-6">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-5">
+                        Tiến trình đơn hàng
+                      </p>
+                      <div>
+                        {V_STEPS.map((step, i) => {
+                          const currentIdx = STATUS_STEP[order.status] ?? 0;
+                          const done = i < currentIdx;
+                          const current = i === currentIdx;
+                          const isLast = i === V_STEPS.length - 1;
+                          return (
+                            <div key={step.key} className="flex gap-4">
+                              <div className="flex flex-col items-center shrink-0" style={{ width: 32 }}>
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
+                                  style={
+                                    done
+                                      ? { backgroundColor: "#2563EB", color: "#fff" }
+                                      : current
+                                        ? { backgroundColor: "#2563EB", color: "#fff", boxShadow: "0 0 0 4px #EFF6FF" }
+                                        : { backgroundColor: "#F9FAFB", color: "#9CA3AF", border: "2px solid #E5E7EB" }
+                                  }
+                                >
+                                  {done ? (
+                                    <Check size={16} strokeWidth={3} />
+                                  ) : current && (step.key === "in_progress" || step.key === "picking_up") ? (
+                                    <Truck size={15} />
+                                  ) : (
+                                    <span className="text-xs">{step.icon}</span>
+                                  )}
+                                </div>
+                                {!isLast && (
+                                  <div
+                                    className="w-0.5 my-1.5 rounded-full flex-1"
+                                    style={{
+                                      minHeight: 20,
+                                      backgroundColor: done ? "#2563EB" : "#E5E7EB",
+                                      borderLeft: done ? undefined : "1px dashed #D1D5DB",
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              <div className={`flex-1 ${isLast ? "pb-0" : "pb-4"}`}>
+                                <p
+                                  className={`text-sm leading-snug ${
+                                    done
+                                      ? "text-gray-500 font-medium"
+                                      : current
+                                        ? "text-gray-900 font-bold"
+                                        : "text-gray-300 font-medium"
+                                  }`}
+                                >
+                                  {step.label}
+                                </p>
+                                {(current || done) && (
+                                  <p
+                                    className={`text-xs mt-0.5 leading-relaxed ${
+                                      current ? "text-[#2563EB]" : "text-gray-400"
+                                    }`}
+                                  >
+                                    {step.sub}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  </FadeSlideIn>
+                )}
+
+                {/* Cancelled */}
+                {order.status === "cancelled" && (
+                  <Card className="border-red-100 bg-red-50 p-5 flex gap-3 items-start">
+                    <XCircle className="text-red-500 shrink-0 mt-0.5" size={22} />
+                    <div>
+                      <p className="font-bold text-red-700">Đơn hàng đã bị huỷ</p>
+                      <p className="text-sm text-red-500 mt-0.5">
+                        Nếu bạn đã đặt cọc, tiền hoàn lại sẽ xử lý trong 1–3 ngày làm việc.
+                      </p>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Route */}
+                <FadeSlideIn delay={100}>
+                  <Card className="border-gray-100 bg-white shadow-sm p-5 lg:p-6">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">
+                      Lộ trình vận chuyển
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-5">
+                      <div className="flex gap-3 flex-1 min-w-0">
+                        <div className="flex flex-col items-center pt-1 shrink-0">
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-[#2563EB] bg-[#EFF6FF]" />
+                          <div className="w-px flex-1 bg-gray-200 my-2" style={{ minHeight: 28 }} />
+                          <MapPin size={16} className="text-red-500 shrink-0" fill="#FEE2E2" />
                         </div>
-                        {/* Text */}
-                        <div className={`flex-1 ${isLast ? "pb-0" : "pb-3"}`}>
-                          <p className={`text-sm leading-snug transition-all ${
-                            done    ? "text-gray-400 font-medium"
-                            : current ? "text-gray-900 font-bold"
-                            : "text-gray-300 font-medium"
-                          }`}>{step.label}</p>
-                          {current && (
-                            <p className="text-xs text-[#2563EB] mt-0.5 leading-relaxed">{step.sub}</p>
-                          )}
+                        <div className="flex-1 min-w-0 space-y-4">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Điểm lấy hàng</p>
+                            <p className="text-sm text-gray-800 leading-relaxed">
+                              {showFullRoute ? order.pickup_address : shortAddr(order.pickup_address)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Điểm giao hàng</p>
+                            <p className="text-sm font-semibold text-gray-900 leading-relaxed">
+                              {showFullRoute ? order.dropoff_address : shortAddr(order.dropoff_address)}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ─ Cancelled notice ─ */}
-            {order.status === "cancelled" && (
-              <div className="mx-4 mt-4 rounded-2xl bg-red-50 border border-red-100 p-5 flex gap-3 items-start">
-                <span className="text-2xl shrink-0">❌</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-red-700">Đơn hàng đã bị huỷ</p>
-                  {order.cancellation_reason && (
-                    <p className="text-sm text-red-600 mt-1 font-medium">{order.cancellation_reason}</p>
-                  )}
-                  {order.cancelled_at && (
-                    <p className="text-xs text-red-400 mt-0.5">Huỷ lúc {formatDate(order.cancelled_at)}</p>
-                  )}
-                  {order.deposit_paid && (
-                    <p className="text-sm text-red-500 mt-1.5">Tiền đặt cọc sẽ được hoàn trong 1–3 ngày làm việc.</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ─ 3. Selected provider card ─ */}
-            {(order.provider || (selectedQuote && order.status !== "pending")) && (
-              <div className="mx-4 mt-3 rounded-2xl bg-blue-50 border border-blue-200 p-4">
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">Nhà vận chuyển được chọn</p>
-                <div className="flex items-center gap-3">
-                  {/* Avatar */}
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shrink-0"
-                    style={{ backgroundColor: "#2563EB" }}
-                  >
-                    {(order.provider?.full_name ?? selectedQuote?.provider_name ?? "?")[0].toUpperCase()}
-                  </div>
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 truncate">
-                      {order.provider?.full_name ?? selectedQuote?.provider_name ?? "Nhà xe"}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      {order.provider?.vehicle_type && (
-                        <span className="text-xs text-gray-500">🚚 {order.provider.vehicle_type}</span>
-                      )}
-                      {(order.provider?.rating ?? 0) > 0 && (
-                        <span className="flex items-center gap-0.5 text-xs text-gray-600">
-                          <Star size={10} className="text-amber-400 fill-amber-400" />
-                          <span className="font-semibold">{order.provider!.rating.toFixed(1)}</span>
-                          {order.provider?.total_reviews ? <span className="text-gray-400">({order.provider.total_reviews} đánh giá)</span> : null}
-                        </span>
-                      )}
-                    </div>
-                    {/* Price from selected quote */}
-                    {selectedQuote && (
-                      <p className="text-sm font-bold text-[#2563EB] mt-1">{formatVND(selectedQuote.total_price)}</p>
-                    )}
-                  </div>
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 items-end shrink-0">
-                    {order.provider?.phone && (
-                      <a href={`tel:${order.provider.phone}`}>
-                        <div className="w-9 h-9 rounded-full bg-white border border-blue-200 flex items-center justify-center">
-                          <Phone size={15} className="text-[#2563EB]" />
+                      <div className="hidden sm:block w-[140px] lg:w-[160px] shrink-0">
+                        <div className="relative h-full min-h-[120px] rounded-xl bg-gradient-to-br from-blue-50 to-slate-100 border border-gray-100 overflow-hidden">
+                          <svg viewBox="0 0 160 120" className="absolute inset-0 w-full h-full" aria-hidden>
+                            <path d="M15 90 Q55 35 95 50 T145 30" fill="none" stroke="#2563EB" strokeWidth="2.5" strokeDasharray="5 4" />
+                            <circle cx="15" cy="90" r="4" fill="#2563EB" />
+                            <circle cx="145" cy="30" r="4" fill="#EF4444" />
+                          </svg>
                         </div>
-                      </a>
-                    )}
-                    {selectedQuote && (
+                      </div>
+                    </div>
+                    {(order.pickup_address.length > 42 || order.dropoff_address.length > 42) && (
                       <button
-                        onClick={() => openProviderDrawer(selectedQuote.provider_id)}
-                        className="text-[11px] text-[#2563EB] font-semibold flex items-center gap-0.5"
+                        type="button"
+                        onClick={() => setShowFullRoute(!showFullRoute)}
+                        className="mt-4 flex items-center gap-1 text-xs text-[#2563EB] font-semibold hover:underline"
                       >
-                        <Info size={11} /> Xem hồ sơ
+                        {showFullRoute ? (
+                          <><ChevronUp size={14} /> Thu gọn địa chỉ</>
+                        ) : (
+                          <><ChevronDown size={14} /> Xem địa chỉ đầy đủ</>
+                        )}
                       </button>
                     )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ─ 4. Quote list ─ */}
-            {order.quote_request && quotes.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-sm mx-4 mt-3 px-4 py-4">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-                  Báo giá nhận được · {quotes.length} nhà xe
-                </p>
-                <div className="space-y-2">
-                  {quotes.map((q) => {
-                    const isSelected = q.status === "selected";
-                    const canChoose = order.status === "pending" && !order.provider;
-                    return (
-                      <div
-                        key={q.id}
-                        className="rounded-xl border px-3 py-2.5 flex items-center gap-2"
-                        style={{
-                          borderColor: isSelected ? "#2563EB" : "#F3F4F6",
-                          backgroundColor: isSelected ? "#EFF6FF" : "#FAFAFA",
-                          opacity: !isSelected && order.status !== "pending" ? 0.5 : 1,
-                        }}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{q.provider_name ?? "Nhà xe"}</p>
-                            {isSelected && (
-                              <span className="text-[10px] font-bold text-[#2563EB] bg-blue-100 px-1.5 py-0.5 rounded-full shrink-0">✓ Đã chọn</span>
-                            )}
-                          </div>
-                          <p className="text-base font-bold text-[#2563EB]">{formatVND(q.total_price)}</p>
-                          {q.note && q.note !== "Sẵn sàng" && (
-                            <p className="text-xs text-gray-400 truncate">{q.note}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={() => openProviderDrawer(q.provider_id)}
-                            className="text-[11px] text-gray-400 font-medium flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-white border border-gray-200 transition-colors"
-                          >
-                            <Info size={11} /> Xem
-                          </button>
-                          {canChoose && !isSelected && (
-                            <Button size="sm" className="h-7 px-3 text-xs" loading={acting} onClick={() => selectQuote(q.id)}>
-                              Chọn
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ─ 5. Route ─ */}
-            <div className="bg-white rounded-2xl shadow-sm mx-4 mt-3 px-4 py-4">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Lộ trình</p>
-              <div className="flex gap-3">
-                {/* Timeline dots */}
-                <div className="flex flex-col items-center pt-1 shrink-0">
-                  <div className="w-3 h-3 rounded-full border-2 border-[#2563EB] bg-[#EFF6FF]" />
-                  <div className="w-px flex-1 bg-gray-200 my-1.5" style={{ minHeight: 24 }} />
-                  <div className="w-3 h-3 rounded-full bg-green-500" />
-                </div>
-                {/* Addresses */}
-                <div className="flex-1 min-w-0 space-y-3">
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-0.5">Điểm lấy hàng</p>
-                    <p className="text-sm text-gray-800 leading-snug">
-                      {showFullRoute ? order.pickup_address : shortAddr(order.pickup_address)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-0.5">Điểm giao hàng</p>
-                    <p className="text-sm text-gray-800 leading-snug">
-                      {showFullRoute ? order.dropoff_address : shortAddr(order.dropoff_address)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              {(order.pickup_address.length > 42 || order.dropoff_address.length > 42) && (
-                <button
-                  onClick={() => setShowFullRoute(!showFullRoute)}
-                  className="mt-2.5 flex items-center gap-1 text-xs text-[#2563EB] font-medium"
-                >
-                  {showFullRoute
-                    ? <><ChevronUp size={12} /> Thu gọn địa chỉ</>
-                    : <><ChevronDown size={12} /> Xem địa chỉ đầy đủ</>
-                  }
-                </button>
-              )}
-              {order.description && (
-                <p className="mt-2 text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2 leading-relaxed">{order.description}</p>
-              )}
-            </div>
-
-            {/* ─ 6. Payment ─ */}
-            {hasPrice && (
-              <div className="mx-4 mt-3 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-4">
-                <p className="text-[10px] font-bold text-yellow-600 uppercase tracking-widest mb-3">💳 Thanh toán</p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Chi phí vận chuyển</span>
-                    <span className="font-bold text-gray-900">{formatVND(totalPrice)}</span>
-                  </div>
-                  {order.deposit_amount && (
-                    <>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Đặt cọc trước</span>
-                        <span className="font-bold text-yellow-700">{formatVND(order.deposit_amount)}</span>
-                      </div>
-                      <div className="h-px bg-yellow-200 my-1" />
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">Thanh toán sau khi hoàn thành</span>
-                        <span className="font-semibold text-gray-600">{formatVND(totalPrice - order.deposit_amount)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-                {order.deposit_paid ? (
-                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-yellow-200">
-                    <CheckCircle size={13} className="text-green-600" />
-                    <p className="text-xs text-green-700 font-semibold">Đã thanh toán đặt cọc</p>
-                  </div>
-                ) : order.deposit_amount ? (
-                  <p className="text-[11px] text-yellow-600 mt-3 leading-relaxed">
-                    🔒 Khoản đặt cọc được giữ an toàn và hoàn lại nếu nhà xe không đến đúng hẹn.
-                  </p>
-                ) : null}
-              </div>
-            )}
-
-            {/* ─ 7. Secondary actions ─ */}
-            <div className="mx-4 mt-4 space-y-2">
-              {hasProviderLinked && (
-                <Link href={`/tin-nhan?orderId=${order.id}`} className="block">
-                  <button className="w-full h-11 flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
-                    <MessageSquare size={15} className="text-[#2563EB]" />
-                    Nhắn tin với nhà xe
-                  </button>
-                </Link>
-              )}
-              {canCancel && (
-                <button
-                  onClick={openCancelFlow}
-                  className="w-full h-10 flex items-center justify-center gap-1.5 text-sm font-medium text-red-400 hover:text-red-500 transition-colors"
-                >
-                  <XCircle size={14} /> Huỷ đơn hàng
-                </button>
-              )}
-              {canCancelTimeout && (
-                <button
-                  onClick={cancelByTimeout}
-                  disabled={cancellingTimeout}
-                  className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 flex items-center gap-3 hover:bg-orange-100 transition-colors disabled:opacity-60"
-                >
-                  <AlertTriangle size={16} className="text-orange-500 shrink-0" />
-                  <div className="text-left flex-1">
-                    <p className="text-sm font-semibold text-orange-700">Nhà xe không phản hồi?</p>
-                    <p className="text-xs text-orange-500 mt-0.5">Còn 15 phút đến giờ hẹn mà nhà xe chưa lên đường</p>
-                  </div>
-                </button>
-              )}
-            </div>
-
-            {/* ─ 8. Completed: review form or submitted review ─ */}
-            {order.status === "completed" && (
-              <div className="mx-4 mt-3">
-                {order.my_review ? (
-                  /* Already reviewed — show submitted card */
-                  <div className="rounded-2xl border border-green-100 bg-green-50 px-4 py-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle size={16} className="text-green-600 shrink-0" />
-                      <p className="text-sm font-bold text-green-800">Đánh giá của bạn</p>
-                    </div>
-                    <div className="flex gap-0.5 mb-2">
-                      {[1,2,3,4,5].map(s => (
-                        <Star key={s} size={16}
-                          fill={s <= order.my_review!.rating ? "#F59E0B" : "none"}
-                          stroke={s <= order.my_review!.rating ? "#F59E0B" : "#D1D5DB"} />
-                      ))}
-                    </div>
-                    {order.my_review.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {order.my_review.tags.map(t => (
-                          <span key={t} className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">{t}</span>
-                        ))}
+                    {order.description && (
+                      <div className="mt-4 flex gap-2.5 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-xs text-gray-500 leading-relaxed">
+                        <Info size={14} className="text-gray-400 shrink-0 mt-0.5" />
+                        <span>{order.description}</span>
                       </div>
                     )}
-                    {order.my_review.comment && (
-                      <p className="text-sm text-gray-600 italic">"{order.my_review.comment}"</p>
-                    )}
-                  </div>
-                ) : (
-                  /* Review form */
-                  <div className="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-4 space-y-4">
-                    <div>
-                      <p className="text-sm font-bold text-gray-800">Đánh giá chuyến đi</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Chia sẻ trải nghiệm để giúp các khách hàng khác</p>
-                    </div>
+                  </Card>
+                </FadeSlideIn>
 
-                    {/* Stars */}
-                    <div className="flex gap-2 justify-center py-1">
-                      {[1,2,3,4,5].map(s => (
-                        <button key={s} onClick={() => setReviewStars(s)} className="transition-transform active:scale-90">
-                          <Star size={36}
-                            fill={s <= reviewStars ? "#F59E0B" : "none"}
-                            stroke={s <= reviewStars ? "#F59E0B" : "#D1D5DB"}
-                            strokeWidth={1.5} />
-                        </button>
-                      ))}
-                    </div>
-                    {reviewStars > 0 && (
-                      <p className="text-center text-sm font-semibold text-amber-500 -mt-2">
-                        {["","Rất tệ","Tệ","Bình thường","Tốt","Xuất sắc"][reviewStars]}
-                      </p>
-                    )}
+                {/* Mobile-only: payment & provider below route on small screens */}
+                <div className="space-y-4 lg:hidden">
+                  <SidebarBlocks
+                    order={order}
+                    quotes={quotes}
+                    selectedQuote={selectedQuote}
+                    totalPrice={totalPrice}
+                    hasPrice={hasPrice}
+                    acting={acting}
+                    hasProviderLinked={!!hasProviderLinked}
+                    canCancel={!!canCancel}
+                    selectQuote={selectQuote}
+                    openCancelFlow={openCancelFlow}
+                  />
+                </div>
 
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-2">
-                      {["Cẩn thận","Đúng giờ","Chuyên nghiệp","Thân thiện","Giá tốt","Nhanh chóng","Gọn gàng"].map(tag => {
-                        const on = reviewTags.includes(tag);
-                        return (
-                          <button key={tag}
-                            onClick={() => setReviewTags(p => on ? p.filter(t => t !== tag) : [...p, tag])}
-                            className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
-                            style={on
-                              ? { backgroundColor: "#EFF6FF", borderColor: "#2563EB", color: "#2563EB" }
-                              : { backgroundColor: "#F9FAFB", borderColor: "#E5E7EB", color: "#6B7280" }}>
-                            {tag}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Comment */}
-                    <textarea
-                      placeholder="Nhận xét thêm (tuỳ chọn)..."
-                      value={reviewComment}
-                      onChange={e => setReviewComment(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
-                    />
-
-                    <Button
-                      className="w-full h-11 rounded-2xl text-sm font-bold"
-                      style={{ backgroundColor: reviewStars > 0 ? "#2563EB" : undefined }}
-                      disabled={reviewStars === 0}
-                      loading={submittingReview}
-                      onClick={submitReview}
-                    >
-                      Gửi đánh giá
-                    </Button>
-                  </div>
+                {order.status === "completed" && (
+                  <Link href="/cho-sinh-vien" className="block">
+                    <Card className="border-yellow-200 bg-yellow-50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Mua bán trên Chợ sinh viên?</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Tìm đồ cũ giá tốt từ sinh viên ĐN</p>
+                      </div>
+                      <span className="text-2xl">🛍️</span>
+                    </Card>
+                  </Link>
                 )}
               </div>
-            )}
-          </div>
+
+              {/* ── Right sidebar (desktop) ── */}
+              <div className="hidden lg:block space-y-4">
+                <SidebarBlocks
+                  order={order}
+                  quotes={quotes}
+                  selectedQuote={selectedQuote}
+                  totalPrice={totalPrice}
+                  hasPrice={hasPrice}
+                  acting={acting}
+                  hasProviderLinked={!!hasProviderLinked}
+                  canCancel={!!canCancel}
+                  selectQuote={selectQuote}
+                  openCancelFlow={openCancelFlow}
+                />
+              </div>
+            </div>
+          </Container>
 
           {/* ─ Sticky bottom bar (deposit CTA) ─ */}
           {depositNeeded && (
             <div className="fixed bottom-20 lg:bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-[0_-4px_24px_rgba(0,0,0,0.09)]">
-              <div className="max-w-lg mx-auto px-4 py-3 space-y-2">
+              <Container className="py-3 space-y-2">
                 <div className="flex items-center gap-4">
                   <div className="shrink-0">
                     <p className="text-[10px] text-gray-400 font-medium leading-none mb-0.5">Đặt cọc</p>
@@ -740,6 +764,7 @@ export default function DonHangDetailPage() {
                 </div>
                 {process.env.NODE_ENV === "development" && (
                   <button
+                    type="button"
                     onClick={devSkipPayment}
                     disabled={acting}
                     className="w-full h-8 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors disabled:opacity-50"
@@ -747,7 +772,7 @@ export default function DonHangDetailPage() {
                     🧪 Dev: Bỏ qua PayOS (giả lập thành công)
                   </button>
                 )}
-              </div>
+              </Container>
             </div>
           )}
         </>

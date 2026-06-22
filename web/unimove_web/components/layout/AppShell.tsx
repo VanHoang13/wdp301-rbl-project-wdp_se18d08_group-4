@@ -1,6 +1,7 @@
-﻿import { MobileBottomNav } from "./MobileBottomNav";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { DesktopTopNav } from "./DesktopTopNav";
 import { CustomerFooter } from "./CustomerFooter";
+import { ChatQuickAccess } from "./ChatQuickAccess";
 import { MeshBackground } from "./mesh-background";
 import { ToastRenderer } from "@/components/shared/ToastRenderer";
 import { ActiveOrderBanner } from "@/components/shared/active-order-banner";
@@ -14,7 +15,7 @@ export function AppShell({ children }: AppShellProps) {
     <div className="relative flex min-h-screen flex-col bg-[#F8FAFC] dark:bg-[var(--bg)]">
       <MeshBackground />
       <DesktopTopNav />
-      <main id="main-content" className="relative flex-1">
+      <main id="main-content" className="relative flex min-h-0 flex-1 flex-col">
         {children}
       </main>
       <CustomerFooter />
@@ -24,6 +25,7 @@ export function AppShell({ children }: AppShellProps) {
         aria-hidden="true"
       />
       <MobileBottomNav />
+      <ChatQuickAccess />
       <ToastRenderer />
       <ActiveOrderBanner />
     </div>

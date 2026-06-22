@@ -3,11 +3,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, MessageCircle, User, LogOut, Settings, Search } from 'lucide-react'
+import { Bell, User, LogOut, Settings, Search, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getStoredUser, clearAuth, type AuthUser } from '@/lib/auth'
 import { useNotificationStore } from '@/lib/stores'
-import { notificationsApi } from '@/lib/api'
+import { notificationsApi, conversationsApi } from '@/lib/api'
 
 const NAV_LINKS = [
   { href: '/trang-chu', label: 'Trang chủ' },
@@ -21,6 +21,7 @@ export function DesktopTopNav() {
   const pathname    = usePathname()
   const router      = useRouter()
   const unreadCount    = useNotificationStore((s) => s.unreadCount)
+  const [chatUnread, setChatUnread] = useState(0)
   const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
 
   const [user, setUser]           = useState<AuthUser | null>(null)
@@ -43,10 +44,30 @@ export function DesktopTopNav() {
         setUnreadCount(count)
       } catch { /* ignore */ }
     }
+    const fetchChatUnread = async () => {
+      if (!user) {
+        setChatUnread(0)
+        return
+      }
+      try {
+        const res = await conversationsApi.list()
+        if (res.success && Array.isArray(res.data)) {
+          const total = (res.data as { unread_count?: number }[]).reduce(
+            (sum, c) => sum + (c.unread_count ?? 0),
+            0
+          )
+          setChatUnread(total)
+        }
+      } catch { /* ignore */ }
+    }
     fetchUnread()
-    const timer = setInterval(fetchUnread, 30_000)
+    fetchChatUnread()
+    const timer = setInterval(() => {
+      fetchUnread()
+      fetchChatUnread()
+    }, 30_000)
     return () => clearInterval(timer)
-  }, [setUnreadCount])
+  }, [setUnreadCount, user])
 
   useEffect(() => {
     if (!open) return
@@ -147,16 +168,29 @@ export function DesktopTopNav() {
               <>
                 <Link
                   href="/tin-nhan"
-                  aria-label="Tin nhắn"
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
+                  aria-label={chatUnread > 0 ? `${chatUnread} tin nhắn chưa đọc` : 'Tin nhắn'}
+                  aria-current={isActive('/tin-nhan') ? 'page' : undefined}
+                  className={cn(
+                    'relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100',
+                    isActive('/tin-nhan') && 'bg-blue-50 text-[#0047FF]'
+                  )}
                 >
                   <MessageCircle className="h-5 w-5 text-gray-600" strokeWidth={1.75} />
+                  {chatUnread > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                      {chatUnread > 99 ? '99+' : chatUnread}
+                    </span>
+                  )}
                 </Link>
 
                 <Link
                   href="/thong-bao"
                   aria-label={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Thông báo'}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100"
+                  aria-current={isActive('/thong-bao') ? 'page' : undefined}
+                  className={cn(
+                    'relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-gray-100',
+                    isActive('/thong-bao') && 'bg-blue-50 text-[#0047FF]'
+                  )}
                 >
                   <Bell className="h-5 w-5 text-gray-600" strokeWidth={1.75} />
                   {unreadCount > 0 && (

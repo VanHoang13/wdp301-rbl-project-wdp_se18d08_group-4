@@ -4,14 +4,12 @@ export const dynamic = "force-dynamic";
 
 
 import React, { useState, useEffect, useCallback, useTransition } from "react";
-import { AlertTriangle, RefreshCw, DollarSign } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import {
   getDisputes,
   getDisputeById,
   resolveDispute,
-  getRefunds,
-  approveRefund,
 } from "@/lib/admin/queries/disputes";
 import type { Dispute, Refund, DisputeStatus, DisputeType } from "@/lib/admin/types";
 import { formatVND, formatDateTime } from "@/lib/admin/formatters";
@@ -23,7 +21,6 @@ import { StatusBadge } from "@/components/admin-dashboard/status-badge";
 import { EmptyState } from "@/components/admin-dashboard/empty-state";
 import { Pagination } from "@/components/admin-dashboard/pagination";
 import { Button } from "@/components/admin-ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/admin-ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -475,239 +472,15 @@ function DisputesTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Approve Refund Confirmation Dialog
-// ---------------------------------------------------------------------------
-
-interface ApproveRefundDialogProps {
-  refundId: string | null;
-  open: boolean;
-  onClose: () => void;
-  onApproved: () => void;
-}
-
-function ApproveRefundDialog({ refundId, open, onClose, onApproved }: ApproveRefundDialogProps) {
-  const [pending, startTransition] = useTransition();
-
-  const handleApprove = () => {
-    if (!refundId) return;
-    startTransition(async () => {
-      const adminId = getAdminUserId();
-      const { error } = await approveRefund(refundId, adminId);
-      if (!error) {
-        onApproved();
-        onClose();
-      }
-    });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Xác nhận duyệt hoàn tiền</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Bạn có chắc chắn muốn duyệt yêu cầu hoàn tiền này không? Hành động này không thể hoàn tác.
-        </p>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm">Hủy</Button>
-          </DialogClose>
-          <Button size="sm" disabled={pending} onClick={handleApprove}>
-            {pending ? "Đang xử lý..." : "Duyệt hoàn tiền"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Refunds Tab
-// ---------------------------------------------------------------------------
-
-type RefundRow = {
-  id: string;
-  refund_amount: number;
-  refund_reason: string;
-  status: string;
-  created_at: string;
-  order?: { id: string; order_number: string } | null;
-  requester?: { id: string; full_name: string; role: string } | null;
-};
-
-function RefundsTab() {
-  const [refunds, setRefunds] = useState<RefundRow[]>([]);
-  const [meta, setMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [approveId, setApproveId] = useState<string | null>(null);
-  const [approveOpen, setApproveOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const result = await getRefunds({
-      page,
-      pageSize: 20,
-      status: statusFilter === "all" ? undefined : statusFilter,
-    });
-    setRefunds(result.data as unknown as RefundRow[]);
-    setMeta(result.meta);
-    setLoading(false);
-  }, [page, statusFilter]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleStatusChange = (val: string) => {
-    setStatusFilter(val);
-    setPage(1);
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Filter bar */}
-      <div className="flex items-center gap-3">
-        <Select value={statusFilter} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả trạng thái</SelectItem>
-            <SelectItem value="pending">Đang chờ</SelectItem>
-            <SelectItem value="completed">Đã hoàn tiền</SelectItem>
-            <SelectItem value="failed">Thất bại</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-sm ml-auto" style={{ color: "var(--muted)" }}>
-          {meta.total} yêu cầu
-        </span>
-      </div>
-
-      {/* Table */}
-      <div
-        className="rounded-2xl shadow-sm overflow-hidden"
-        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-      >
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <RefreshCw className="w-5 h-5 animate-spin" style={{ color: "var(--muted)" }} />
-          </div>
-        ) : refunds.length === 0 ? (
-          <EmptyState
-            icon={DollarSign}
-            title="Không có yêu cầu hoàn tiền"
-            description="Chưa có yêu cầu hoàn tiền nào phù hợp bộ lọc."
-          />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                    {["#Mã đơn", "Người yêu cầu", "Số tiền hoàn", "Lý do", "Trạng thái", "Ngày tạo", ""].map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                        style={{ color: "var(--muted)" }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {refunds.map((r) => (
-                    <tr
-                      key={r.id}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                      className="transition-colors hover:bg-[var(--primary-tint)]/30"
-                    >
-                      <td className="px-4 py-3 font-medium" style={{ color: "var(--text)" }}>
-                        #{r.order?.order_number ?? r.id.slice(0, 8)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div style={{ color: "var(--text)" }}>{r.requester?.full_name ?? "—"}</div>
-                        <div className="text-xs" style={{ color: "var(--muted)" }}>
-                          {r.requester?.role === "customer" ? "Khách hàng" : r.requester?.role === "provider" ? "Tài xế" : "—"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-semibold" style={{ color: "var(--text)" }}>
-                        {formatVND(r.refund_amount)}
-                      </td>
-                      <td className="px-4 py-3 max-w-[200px]">
-                        <span className="line-clamp-2" style={{ color: "var(--muted)" }}>{r.refund_reason}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge type="payment" status={r.status} />
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>
-                        {formatDateTime(r.created_at)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {r.status === "pending" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setApproveId(r.id); setApproveOpen(true); }}
-                          >
-                            Duyệt hoàn tiền
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={meta.page}
-              totalPages={meta.totalPages}
-              total={meta.total}
-              pageSize={meta.pageSize}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </div>
-
-      <ApproveRefundDialog
-        refundId={approveId}
-        open={approveOpen}
-        onClose={() => setApproveOpen(false)}
-        onApproved={load}
-      />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 export default function DisputesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Khiếu nại & Hoàn tiền"
-        description="Quản lý khiếu nại và yêu cầu hoàn tiền của người dùng"
+        title="Khiếu nại"
+        description="Quản lý khiếu nại từ khách hàng và nhà vận chuyển"
       />
 
-      <Tabs defaultValue="disputes">
-        <TabsList>
-          <TabsTrigger value="disputes">Khiếu nại</TabsTrigger>
-          <TabsTrigger value="refunds">Hoàn tiền</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="disputes">
-          <DisputesTab />
-        </TabsContent>
-
-        <TabsContent value="refunds">
-          <RefundsTab />
-        </TabsContent>
-      </Tabs>
+      <DisputesTab />
     </div>
   );
 }

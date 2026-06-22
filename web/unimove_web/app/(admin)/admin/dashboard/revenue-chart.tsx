@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import {
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,7 +35,6 @@ interface TooltipArgs {
 function CustomTooltip({ active, payload, label }: TooltipArgs) {
   if (!active || !payload?.length) return null;
   const revenue = payload[0]?.value ?? 0;
-  const orders = payload[1]?.value ?? 0;
 
   return (
     <div
@@ -52,9 +51,6 @@ function CustomTooltip({ active, payload, label }: TooltipArgs) {
       <p style={{ color: "var(--primary)" }}>
         Doanh thu: <span className="font-medium">{formatVND(revenue)}</span>
       </p>
-      <p style={{ color: "var(--muted)" }}>
-        Đơn hàng: <span className="font-medium">{orders.toLocaleString("vi-VN")}</span>
-      </p>
     </div>
   );
 }
@@ -69,18 +65,11 @@ export function RevenueChart({ data }: RevenueChartProps) {
   const chartData = data.map((d) => ({
     month: toMonthLabel(d.date),
     revenue: d.revenue,
-    orders: d.orders,
   }));
 
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-        <defs>
-          <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
+      <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
         <CartesianGrid
           strokeDasharray="3 3"
           stroke="var(--border)"
@@ -105,16 +94,13 @@ export function RevenueChart({ data }: RevenueChartProps) {
           width={48}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Area
-          type="monotone"
+        <Bar
           dataKey="revenue"
-          stroke="var(--primary)"
-          strokeWidth={2}
-          fill="url(#revenueGradient)"
-          dot={false}
-          activeDot={{ r: 5, fill: "var(--primary)", strokeWidth: 0 }}
+          fill="var(--primary)"
+          radius={[6, 6, 0, 0]}
+          maxBarSize={48}
         />
-      </AreaChart>
+      </BarChart>
     </ResponsiveContainer>
   );
 }

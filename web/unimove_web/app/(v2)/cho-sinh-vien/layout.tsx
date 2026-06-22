@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -14,10 +14,19 @@ export default function ChoSinhVienLayout({ children }: { children: React.ReactN
   const pathname = usePathname()
   const isExplore = pathname === '/cho-sinh-vien'
   const isChat = pathname.includes('/chat')
+  const isMyMarketplace =
+    pathname.startsWith('/cho-sinh-vien/tin-cua-toi') ||
+    pathname.startsWith('/cho-sinh-vien/yeu-thich')
+  const isFixedViewport = isExplore || isChat
 
   return (
-    <div className="flex min-h-full flex-col bg-[#F8FAFC]">
-      {!isExplore && !isChat && (
+    <div
+      className={cn(
+        'flex flex-col bg-[#F8FAFC]',
+        isFixedViewport ? 'min-h-0 flex-1' : 'min-h-full'
+      )}
+    >
+      {!isExplore && !isChat && !isMyMarketplace && (
         <div className="border-b border-gray-100 bg-white">
           <nav
             className="mx-auto flex max-w-7xl gap-1 px-4 py-2 lg:px-8"
@@ -47,7 +56,7 @@ export default function ChoSinhVienLayout({ children }: { children: React.ReactN
           </nav>
         </div>
       )}
-      {children}
+      {isFixedViewport ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
     </div>
   )
 }

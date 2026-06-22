@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -17,6 +17,9 @@ import {
   Zap,
   EyeOff,
   Flag,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
 import { marketplaceApi } from "@/lib/api";
@@ -40,7 +43,11 @@ interface ListingDetail {
   status: string;
   images?: string[];
   created_at: string;
+  bumped_at?: string | null;
   is_interested?: boolean;
+  deal_confirmed?: boolean;
+  transport_booked?: boolean;
+  confirmed_buyer_id?: string;
   seller_id: string;
   seller?: {
     id: string;
@@ -115,6 +122,24 @@ function shortListingId(id: string) {
   return compact.slice(-7).toUpperCase() || id.slice(0, 7).toUpperCase();
 }
 
+function safeListingImage(url?: string): string | undefined {
+  if (!url?.trim()) return undefined;
+  const u = url.trim();
+  if (/^file:/i.test(u) || /^blob:/i.test(u)) return undefined;
+  return u;
+}
+
+function bumpHoursRemaining(bumpedAt?: string | null): number {
+  if (!bumpedAt) return 0;
+  const hoursSince = (Date.now() - new Date(bumpedAt).getTime()) / 3_600_000;
+  if (hoursSince >= 24 || Number.isNaN(hoursSince)) return 0;
+  return Math.ceil(24 - hoursSince);
+}
+
+function canBumpStatus(status: string): boolean {
+  return status === "active" || status === "reserved";
+}
+
 function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
@@ -162,6 +187,8 @@ function SellerSidebar({
   onBump,
   onHide,
   onConfirmReceived,
+  bumpLoading,
+  bumpHoursLeft,
 }: {
   listing: ListingDetail;
   isOwner: boolean;
@@ -169,12 +196,16 @@ function SellerSidebar({
   onBump: () => void;
   onHide: () => void;
   onConfirmReceived: () => void;
+  bumpLoading?: boolean;
+  bumpHoursLeft?: number;
 }) {
   const seller = listing.seller;
   if (!seller) return null;
 
   const sales = seller.total_sales ?? 0;
   const rating = seller.rating != null ? seller.rating.toFixed(1) : "—";
+  const bumpBlocked = (bumpHoursLeft ?? 0) > 0;
+  const bumpAllowed = canBumpStatus(listing.status) && !bumpBlocked && !sold;
 
   return (
     <Card className="lg:sticky lg:top-[calc(var(--z-index-topnav,50px)+72px)] lg:p-5">
@@ -222,13 +253,51 @@ function SellerSidebar({
       <div className="mt-5 space-y-2.5">
         {isOwner ? (
           <>
+            <Link
+              href={`/tin-nhan?listingId=${listing.id}`}
+              className="relative flex w-full items-center justify-center gap-2 rounded-xl bg-[#0047FF] py-3 text-sm font-bold text-white no-underline transition hover:bg-[#0039CC]"
+            >
+              <MessageCircle size={16} />
+              Quản lý khách quan tâm
+              {(listing.interest_count ?? 0) > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {(listing.interest_count ?? 0) > 9 ? "9+" : listing.interest_count}
+                </span>
+              )}
+            </Link>
+            {listing.deal_confirmed && (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 py-2.5 text-center text-xs font-semibold text-emerald-800">
+                {listing.transport_booked ? "Đã chốt & đã đặt xe" : "Đã chốt đơn — chờ khách đặt xe"}
+              </p>
+            )}
             <button
               type="button"
               onClick={onBump}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0047FF] py-3 text-sm font-bold text-white transition hover:bg-[#0039CC]"
+              disabled={!bumpAllowed || bumpLoading}
+              title={
+                bumpBlocked
+                  ? `Còn ${bumpHoursLeft} giờ mới đẩy lại được`
+                  : !canBumpStatus(listing.status)
+                    ? "Chỉ đẩy được tin đang mở hoặc đang giữ"
+                    : undefined
+              }
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition",
+                bumpAllowed && !bumpLoading
+                  ? "bg-[#0047FF] text-white hover:bg-[#0039CC]"
+                  : "cursor-not-allowed bg-gray-100 text-gray-400"
+              )}
             >
-              <Zap size={16} />
-              Đẩy tin ngay
+              {bumpLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Zap size={16} />
+              )}
+              {bumpLoading
+                ? "Đang đẩy..."
+                : bumpBlocked
+                  ? `Đẩy lại sau ${bumpHoursLeft}h`
+                  : "Đẩy tin ngay"}
             </button>
             <button
               type="button"
@@ -245,7 +314,7 @@ function SellerSidebar({
           </p>
         ) : (
           <Link
-            href={`/cho-sinh-vien/${listing.id}/chat`}
+            href={`/tin-nhan?listingId=${listing.id}`}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0047FF] py-3 text-sm font-bold text-white no-underline transition hover:bg-[#0039CC]"
           >
             <MessageCircle size={16} />
@@ -280,9 +349,15 @@ export default function ListingDetailPage() {
   const { toast } = useToast();
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bumpLoading, setBumpLoading] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
   const currentUser = getStoredUser();
   const isOwner = currentUser?.id === listing?.seller_id;
+
+  const loadListing = useCallback(async () => {
+    const r = await marketplaceApi.get(id);
+    if (r.success && r.data) setListing(r.data as ListingDetail);
+  }, [id]);
 
   useEffect(() => {
     marketplaceApi
@@ -306,12 +381,26 @@ export default function ListingDetailPage() {
   };
 
   const handleBump = async () => {
-    if (!listing) return;
+    if (!listing || bumpLoading) return;
+    setBumpLoading(true);
     try {
-      await marketplaceApi.bump(listing.id);
-      toast("Đã đẩy tin!", "success");
-    } catch {
-      toast("Thử lại", "error");
+      const r = await marketplaceApi.bump(listing.id);
+      if (r.success) {
+        const bumpedAt =
+          (r.data as { bumped_at?: string } | undefined)?.bumped_at ??
+          new Date().toISOString();
+        setListing((prev) => (prev ? { ...prev, bumped_at: bumpedAt } : null));
+        toast("Đã đẩy tin lên đầu!", "success");
+        void loadListing();
+      } else {
+        toast(r.message || "Không đẩy được tin", "error");
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Không đẩy được tin. Vui lòng thử lại.";
+      toast(msg, "error");
+    } finally {
+      setBumpLoading(false);
     }
   };
 
@@ -335,7 +424,16 @@ export default function ListingDetailPage() {
     }
   };
 
-  const images = listing?.images ?? [];
+  const images = (listing?.images ?? [])
+    .map(safeListingImage)
+    .filter((u): u is string => !!u);
+  const bumpHoursLeft = bumpHoursRemaining(listing?.bumped_at);
+
+  useEffect(() => {
+    if (imgIdx >= images.length && images.length > 0) {
+      setImgIdx(0);
+    }
+  }, [images.length, imgIdx]);
 
   if (loading) {
     return (
@@ -375,6 +473,17 @@ export default function ListingDetailPage() {
   const location = listing.area ?? listing.city;
   const interestedCount = listing.interest_count ?? 0;
   const descriptionText = listing.description?.trim() || "Người bán chưa thêm mô tả.";
+  const hasMultipleImages = images.length > 1;
+
+  const goPrevImage = () => {
+    if (!hasMultipleImages) return;
+    setImgIdx((i) => (i <= 0 ? images.length - 1 : i - 1));
+  };
+
+  const goNextImage = () => {
+    if (!hasMultipleImages) return;
+    setImgIdx((i) => (i >= images.length - 1 ? 0 : i + 1));
+  };
 
   return (
     <div className="pb-24 lg:pb-10">
@@ -416,7 +525,7 @@ export default function ListingDetailPage() {
                 <button
                   type="button"
                   onClick={toggleInterest}
-                  className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md transition hover:scale-105"
+                  className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md transition hover:scale-105"
                   aria-label={listing.is_interested ? "Bỏ yêu thích" : "Yêu thích"}
                 >
                   <Heart
@@ -427,14 +536,35 @@ export default function ListingDetailPage() {
                   />
                 </button>
 
-                {images.length > 1 && (
+                {hasMultipleImages && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={goPrevImage}
+                      className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-md transition hover:bg-white hover:scale-105"
+                      aria-label="Ảnh trước"
+                    >
+                      <ChevronLeft size={22} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goNextImage}
+                      className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-md transition hover:bg-white hover:scale-105"
+                      aria-label="Ảnh sau"
+                    >
+                      <ChevronRight size={22} />
+                    </button>
+                  </>
+                )}
+
+                {hasMultipleImages && (
                   <span className="absolute bottom-3 right-3 rounded-lg bg-black/55 px-2 py-0.5 text-xs font-semibold text-white">
                     {imgIdx + 1}/{images.length}
                   </span>
                 )}
               </div>
 
-              {images.length > 1 && (
+              {hasMultipleImages && (
                 <div className="flex gap-2 overflow-x-auto border-t border-gray-100 p-3">
                   {images.map((src, i) => (
                     <button
@@ -473,6 +603,11 @@ export default function ListingDetailPage() {
                 {listing.is_negotiable && (
                   <span className="rounded-full bg-[#0047FF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#0047FF]">
                     Thương lượng
+                  </span>
+                )}
+                {listing.deal_confirmed && !sold && (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    Đã chốt đơn
                   </span>
                 )}
               </div>
@@ -538,6 +673,8 @@ export default function ListingDetailPage() {
               onBump={handleBump}
               onHide={handleHide}
               onConfirmReceived={handleConfirmReceived}
+              bumpLoading={bumpLoading}
+              bumpHoursLeft={bumpHoursLeft}
             />
           </div>
         </div>
@@ -551,7 +688,9 @@ export default function ListingDetailPage() {
             onBump={handleBump}
             onHide={handleHide}
             onConfirmReceived={handleConfirmReceived}
-          />
+            bumpLoading={bumpLoading}
+            bumpHoursLeft={bumpHoursLeft}
+            />
         </div>
       </div>
 
@@ -562,11 +701,32 @@ export default function ListingDetailPage() {
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
           <Link
-            href={`/cho-sinh-vien/${id}/chat`}
+            href={`/tin-nhan?listingId=${id}`}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0047FF] py-3 text-sm font-bold text-white no-underline"
           >
             <MessageCircle size={18} />
             Nhắn tin hỏi mua
+          </Link>
+        </div>
+      )}
+
+      {/* Mobile sticky CTA for owner */}
+      {isOwner && !sold && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white p-3 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] lg:hidden"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <Link
+            href={`/tin-nhan?listingId=${id}`}
+            className="relative flex w-full items-center justify-center gap-2 rounded-xl bg-[#0047FF] py-3 text-sm font-bold text-white no-underline"
+          >
+            <MessageCircle size={18} />
+            Quản lý khách quan tâm
+            {interestedCount > 0 && (
+              <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {interestedCount > 9 ? "9+" : interestedCount}
+              </span>
+            )}
           </Link>
         </div>
       )}
@@ -602,7 +762,7 @@ export default function ListingDetailPage() {
       {/* Chat FAB */}
       {!isOwner && !sold && (
         <Link
-          href={`/cho-sinh-vien/${id}/chat`}
+          href={`/tin-nhan?listingId=${id}`}
           className="fixed bottom-20 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#0047FF] text-white shadow-lg transition hover:bg-[#0039CC] lg:bottom-8 lg:right-8"
           aria-label="Mở chat"
         >
