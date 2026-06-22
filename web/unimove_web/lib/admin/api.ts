@@ -204,6 +204,7 @@ export const adminApi = {
   // Orders Management
   getOrders: (params?: {
     status?: string;
+    statusGroup?: string;
     search?: string;
     page?: number;
     pageSize?: number;

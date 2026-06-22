@@ -5,40 +5,28 @@ import {
   Users,
   ShieldCheck,
   ArrowRight,
-  ClipboardList,
 } from "lucide-react";
 
 import {
   getAdminDashboardStats,
   getRevenueByMonth,
-  getOrderStatusDistribution,
-  getLatestOrders,
 } from "@/lib/admin/queries/dashboard";
 import { formatVND } from "@/lib/admin/formatters";
 import { StatCard } from "@/components/admin-dashboard/stat-card";
-import { EmptyState } from "@/components/admin-dashboard/empty-state";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
 
 import { RevenueChart } from "./revenue-chart";
-import { OrderDonutChart } from "./order-donut-chart";
-import { OrdersTableClient } from "./orders-table-client";
+import { OrdersChart } from "./orders-chart";
 
 export const dynamic = "force-dynamic";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   Dashboard Page - Server Component (fetches data server-side with auth cookie)
-───────────────────────────────────────────────────────────────────────────── */
-
 export default async function DashboardPage() {
-  // All data fetched server-side — token read from cookie automatically
-  const [stats, revenueRaw, orderDistribution, latestOrders] = await Promise.all([
+  const [stats, revenueRaw] = await Promise.all([
     getAdminDashboardStats(),
     getRevenueByMonth(12),
-    getOrderStatusDistribution(),
-    getLatestOrders(1, 10),
   ]);
 
-  const revenueData = revenueRaw.map((item: any) => ({
+  const revenueData = revenueRaw.map((item: { date: string; revenue: number; orders?: number }) => ({
     date: item.date,
     revenue: item.revenue,
     orders: item.orders ?? 0,
@@ -86,80 +74,49 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
-          <div
-            className="rounded-2xl p-5 shadow-sm"
-            style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
-                  Doanh thu theo tháng
-                </h2>
-                <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                  12 tháng gần nhất
-                </p>
-              </div>
-            </div>
-            <RevenueChart data={revenueData} />
-          </div>
-        </div>
-        <div className="xl:col-span-1">
-          <div
-            className="rounded-2xl p-5 shadow-sm"
-            style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-          >
-            <div className="mb-4">
+      {/* Column charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div
+          className="rounded-2xl p-5 shadow-sm"
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div>
               <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
-                Phân bổ trạng thái đơn hàng
+                Doanh thu theo tháng
               </h2>
               <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                Tất cả thời gian
+                12 tháng gần nhất
               </p>
             </div>
-            <OrderDonutChart data={orderDistribution} />
           </div>
+          <RevenueChart data={revenueData} />
         </div>
-      </div>
 
-      {/* Latest Orders */}
-      <div
-        className="rounded-2xl shadow-sm overflow-hidden"
-        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-      >
         <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: "1px solid var(--border)" }}
+          className="rounded-2xl p-5 shadow-sm"
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
         >
-          <div>
-            <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
-              Đơn hàng mới nhất
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-              {latestOrders.meta.total} đơn hàng
-            </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
+                Số đơn theo tháng
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                12 tháng gần nhất
+              </p>
+            </div>
+            <Link
+              href="/admin/orders"
+              className="flex items-center gap-1 text-sm font-medium transition-colors hover:opacity-80"
+              style={{ color: "var(--primary)" }}
+            >
+              Quản lý đơn
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
-          <Link
-            href="/admin/orders"
-            className="flex items-center gap-1 text-sm font-medium transition-colors hover:opacity-80"
-            style={{ color: "var(--primary)" }}
-          >
-            Xem tất cả
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          <OrdersChart data={revenueData} />
         </div>
-
-        {latestOrders.data.length === 0 ? (
-          <EmptyState
-            icon={ClipboardList}
-            title="Chưa có đơn hàng nào"
-            description="Các đơn hàng mới sẽ xuất hiện tại đây."
-          />
-        ) : (
-          <OrdersTableClient initialData={latestOrders} />
-        )}
       </div>
     </div>
   );

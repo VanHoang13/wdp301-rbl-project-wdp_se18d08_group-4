@@ -49,8 +49,15 @@ const disputeStatusMap: Record<DisputeStatus, { label: string; className: string
   closed: { label: "Đã đóng", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
 };
 
+const refundStatusMap: Record<string, { label: string; className: string }> = {
+  pending: { label: "Chờ duyệt", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" },
+  processing: { label: "Đã duyệt", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
+  completed: { label: "Hoàn tất", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  failed: { label: "Thất bại", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
+};
+
 interface StatusBadgeProps {
-  type: "order" | "payment" | "user" | "verification" | "dispute";
+  type: "order" | "payment" | "user" | "verification" | "dispute" | "refund";
   status: string;
   className?: string;
 }
@@ -63,6 +70,7 @@ export function StatusBadge({ type, status, className }: StatusBadgeProps) {
   else if (type === "user") config = userStatusMap[status as UserStatus];
   else if (type === "verification") config = verificationStatusMap[status as VerificationStatus];
   else if (type === "dispute") config = disputeStatusMap[status as DisputeStatus];
+  else if (type === "refund") config = refundStatusMap[status];
 
   if (!config) {
     config = { label: status, className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" };

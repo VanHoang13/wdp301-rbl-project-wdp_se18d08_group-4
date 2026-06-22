@@ -13,6 +13,7 @@ import {
   BarChart3,
   Bell,
   History,
+  RotateCcw,
   Wallet,
   Settings,
   Truck,
@@ -77,9 +78,14 @@ function buildNavItems(pendingVerifications?: number): NavItem[] {
       icon: Package,
     },
     {
-      label: "Khiếu nại & Hoàn tiền",
+      label: "Khiếu nại",
       href: "/admin/disputes",
       icon: AlertTriangle,
+    },
+    {
+      label: "Yêu cầu hoàn tiền",
+      href: "/admin/refunds",
+      icon: RotateCcw,
     },
     {
       label: "Đánh giá",
