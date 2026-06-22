@@ -28,7 +28,7 @@ import {
   MessageSquare,
   ShoppingBag,
 } from "lucide-react";
-import { conversationsApi, notificationsApi, ordersApi, marketplaceApi } from "@/lib/api";
+import { chatApi, conversationsApi, notificationsApi, ordersApi, marketplaceApi } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
 import { cn, formatVND, getOrderStatusLabel, timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -230,6 +230,8 @@ export function OrderChatWorkspace({
   const [notifLoading, setNotifLoading] = useState(false);
   const [selectedNotifId, setSelectedNotifId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const deepLinkedRef = useRef(false);
   const messagesCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const orderCacheRef = useRef<Map<string, OrderChatContext>>(new Map());
@@ -331,13 +333,22 @@ export function OrderChatWorkspace({
                 content,
                 is_mine: isMine,
                 created_at: String(m.created_at ?? new Date().toISOString()),
+                media_url: (m.media_url as string | null | undefined) ?? null,
+                media_type: (m.media_type as string | null | undefined) ?? null,
+                media_name: (m.media_name as string | null | undefined) ?? null,
                 message_type: m.is_deal_confirm
                   ? "deal_confirm"
                   : m.is_deal_cancel
                     ? "deal_cancel"
                     : m.is_offer
                       ? "offer"
-                      : undefined,
+                      : m.message_type
+                        ? String(m.message_type)
+                        : m.media_url
+                          ? String(m.media_type ?? "").startsWith("image/")
+                            ? "image"
+                            : "file"
+                          : undefined,
               } satisfies ChatMessage;
             });
           messagesCacheRef.current.set(`mp:${listingId}:${buyerId}`, mapped);
@@ -681,6 +692,48 @@ export function OrderChatWorkspace({
       alert(e instanceof Error ? e.message : "Không xác nhận được");
     } finally {
       setMpDealLoading(false);
+    }
+  };
+
+  const sendAttachment = async (file: File) => {
+    if (!activeThread || sending) return;
+
+    if (activeThread.type === "marketplace" && !canSendMarketplace) return;
+    if (activeThread.type === "order" && (!canSendOrder || !activeOrderId)) return;
+
+    setSending(true);
+    try {
+      const up = await chatApi.uploadAttachment(file);
+      if (!up.success || !up.data) {
+        throw new Error(up.message || "Upload thất bại");
+      }
+
+      const caption = text.trim();
+      const payload = {
+        ...(caption ? { content: caption, text: caption } : {}),
+        media_url: up.data.url,
+        media_type: up.data.media_type,
+        media_size: up.data.media_size,
+        media_name: up.data.media_name,
+      };
+
+      if (activeThread.type === "marketplace") {
+        await marketplaceApi.sendMessage(activeThread.listingId, activeThread.buyerId, payload);
+        setText("");
+        await loadMarketplaceMessages(activeThread.listingId, activeThread.buyerId);
+        await loadInbox();
+      } else if (activeOrderId) {
+        await conversationsApi.sendMessage(activeOrderId, payload);
+        setText("");
+        await loadMessages(activeOrderId);
+        await loadInbox();
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Không gửi được tệp đính kèm");
+    } finally {
+      setSending(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -1335,6 +1388,26 @@ export function OrderChatWorkspace({
 
               {canSend && (
                 <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void sendAttachment(file);
+                    }}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,application/zip"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void sendAttachment(file);
+                    }}
+                  />
                   <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 focus-within:border-gray-300 focus-within:ring-2 focus-within:ring-gray-200">
                     <textarea
                       value={text}
@@ -1352,15 +1425,25 @@ export function OrderChatWorkspace({
                     <div className="flex items-center justify-between px-3 pb-2.5">
                       <div className="flex items-center gap-1">
                         {[
-                          { Icon: Paperclip, label: "Đính kèm" },
+                          {
+                            Icon: Paperclip,
+                            label: "Đính kèm file",
+                            onClick: () => fileInputRef.current?.click(),
+                          },
                           { Icon: Smile, label: "Emoji" },
-                          { Icon: ImageIcon, label: "Ảnh" },
-                        ].map(({ Icon, label }) => (
+                          {
+                            Icon: ImageIcon,
+                            label: "Gửi ảnh",
+                            onClick: () => imageInputRef.current?.click(),
+                          },
+                        ].map(({ Icon, label, onClick }) => (
                           <button
                             key={label}
                             type="button"
                             aria-label={label}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-600"
+                            disabled={sending}
+                            onClick={onClick}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-600 disabled:opacity-40"
                           >
                             <Icon size={17} />
                           </button>
@@ -1606,6 +1689,17 @@ function NotificationDetailPanel({
   );
 }
 
+function shouldShowCaption(message: ChatMessage) {
+  const content = message.content?.trim();
+  if (!content) return false;
+  if (message.media_url && message.media_type?.startsWith("image/") && content === "📷 Ảnh") {
+    return false;
+  }
+  if (message.media_name && content === `📎 ${message.media_name}`) return false;
+  if (message.media_url && content === "📎 Tệp đính kèm") return false;
+  return true;
+}
+
 function MessageBubble({
   message: m,
   partnerName,
@@ -1633,6 +1727,11 @@ function MessageBubble({
   }
 
   const mine = m.is_mine ?? false;
+  const isImage =
+    m.message_type === "image" ||
+    (!!m.media_url && (m.media_type?.startsWith("image/") ?? false));
+  const isFile = !!m.media_url && !isImage;
+  const showCaption = shouldShowCaption(m);
 
   return (
     <div className={cn("flex gap-2", mine ? "justify-end" : "justify-start")}>
@@ -1651,7 +1750,38 @@ function MessageBubble({
           )}
           style={mine ? { backgroundColor: NAVY_LIGHT } : undefined}
         >
-          {m.content}
+          {isImage && m.media_url && (
+            <a
+              href={m.media_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-2 block overflow-hidden rounded-xl"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={m.media_url}
+                alt={m.media_name || "Ảnh đính kèm"}
+                className="max-h-56 w-full object-cover"
+              />
+            </a>
+          )}
+          {isFile && m.media_url && (
+            <a
+              href={m.media_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium",
+                mine
+                  ? "border-white/20 bg-white/10 text-white hover:bg-white/15"
+                  : "border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100",
+              )}
+            >
+              <FileText size={16} className="shrink-0" />
+              <span className="truncate">{m.media_name || "Tải file đính kèm"}</span>
+            </a>
+          )}
+          {showCaption && <p className="whitespace-pre-wrap break-words">{m.content}</p>}
         </div>
         <div className={cn("mt-1 flex items-center gap-1.5 px-1", mine && "flex-row-reverse")}>
           <span className="text-[10px] text-gray-400">

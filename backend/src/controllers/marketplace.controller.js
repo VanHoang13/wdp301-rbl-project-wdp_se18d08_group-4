@@ -23,6 +23,18 @@ async function payListingFee(req, res, next) {
   } catch (error) { next(error); }
 }
 
+/** GET /api/marketplace/listing-fee/quota — xem quota miễn phí & ước tính phí */
+async function getListingFeeQuota(req, res, next) {
+  try {
+    const price = req.query.price;
+    const data = await marketplaceService.getListingFeeQuota(
+      req.user.id,
+      price !== undefined && price !== '' ? Number(price) : undefined,
+    );
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+}
+
 /** API-059 — GET /api/marketplace/listings */
 async function browseListings(req, res, next) {
   try {
@@ -197,7 +209,7 @@ async function listConversations(req, res, next) {
 }
 
 module.exports = {
-  createListing, payListingFee, browseListings, getMyListings,
+  createListing, payListingFee, getListingFeeQuota, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   listConversations, getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,

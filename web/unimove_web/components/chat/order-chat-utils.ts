@@ -79,6 +79,9 @@ export interface ChatMessage {
   is_read?: boolean;
   created_at: string;
   sender?: { full_name?: string; avatar_url?: string };
+  media_url?: string | null;
+  media_type?: string | null;
+  media_name?: string | null;
 }
 
 export interface OrderChatContext {

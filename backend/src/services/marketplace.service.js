@@ -2,6 +2,7 @@ const { supabaseAdmin } = require('./supabase.service');
 const { httpError } = require('./auth.helpers');
 const { createNotification } = require('./notification.service');
 const { ensurePublicImageBucket, getImageExtFromMime, COMMON_IMAGE_MIME_TYPES } = require('./storage.helpers');
+const { previewLabel, isImageMime } = require('./chat-attachments.service');
 const payosService = require('./payos.service');
 const env = require('../config/env');
 
@@ -80,6 +81,79 @@ function computeListingFee(price) {
   return raw;
 }
 
+const FREE_LISTINGS_PER_ACCOUNT = 2;
+
+async function countOwnerListings(userId) {
+  const { count, error } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId);
+  if (error) throw httpError(500, error.message, 'db_error');
+  return count ?? 0;
+}
+
+/** Tính phí đăng tin theo quota miễn phí (2 tin đầu / tài khoản). */
+function buildListingFeeInfo(price, listingsCreatedBefore) {
+  const p = Number(price);
+  if (!p || p <= 0) {
+    return {
+      amount: 0,
+      requires_payment: false,
+      reason: 'free_item',
+      message: 'Đồ cho tặng — không thu phí đăng tin',
+    };
+  }
+
+  const amount = computeListingFee(price);
+  const used = Math.max(0, Number(listingsCreatedBefore) || 0);
+  const remainingBefore = Math.max(0, FREE_LISTINGS_PER_ACCOUNT - used);
+
+  if (used < FREE_LISTINGS_PER_ACCOUNT) {
+    return {
+      amount,
+      requires_payment: false,
+      reason: 'free_quota',
+      message: `Tin miễn phí (${remainingBefore} lượt còn lại trong ${FREE_LISTINGS_PER_ACCOUNT} tin đầu)`,
+      free_listings_total: FREE_LISTINGS_PER_ACCOUNT,
+      free_listings_used: used,
+      free_listings_remaining_before: remainingBefore,
+      free_listings_remaining_after: Math.max(0, remainingBefore - 1),
+    };
+  }
+
+  return {
+    amount,
+    requires_payment: amount > 0,
+    reason: 'paid',
+    message: amount > 0
+      ? `Phí đăng tin ${amount.toLocaleString('vi-VN')}đ (2% giá bán, tối thiểu 5.000đ, tối đa 30.000đ)`
+      : 'Miễn phí',
+    free_listings_total: FREE_LISTINGS_PER_ACCOUNT,
+    free_listings_used: used,
+    free_listings_remaining_before: 0,
+    free_listings_remaining_after: 0,
+  };
+}
+
+async function getListingFeeQuota(userId, price) {
+  const listingsCreated = await countOwnerListings(userId);
+  const remaining = Math.max(0, FREE_LISTINGS_PER_ACCOUNT - listingsCreated);
+  const base = {
+    free_listings_total: FREE_LISTINGS_PER_ACCOUNT,
+    free_listings_used: Math.min(listingsCreated, FREE_LISTINGS_PER_ACCOUNT),
+    free_listings_remaining: remaining,
+    listings_created_count: listingsCreated,
+    rate_label: '2% giá bán (tối thiểu 5.000đ, tối đa 30.000đ) · 2 tin đầu miễn phí',
+  };
+
+  if (price === undefined || price === null || price === '') {
+    return base;
+  }
+
+  const feeInfo = buildListingFeeInfo(price, listingsCreated);
+  return { ...base, preview: feeInfo };
+}
+
 const BUMPED_AT_MISSING = /bumped_at/i;
 
 function orderListingsByRecency(q, useBumpSort = true) {
@@ -118,7 +192,9 @@ async function createListing(userId, body) {
     throw httpError(400, 'price phải là số không âm', 'validation_error');
   }
 
-  const listingFee = computeListingFee(price);
+  const listingsCreated = await countOwnerListings(userId);
+  const feeInfo = buildListingFeeInfo(price, listingsCreated);
+  const requiresPayment = feeInfo.requires_payment;
 
   const { data, error } = await supabaseAdmin
     .from('marketplace_listings')
@@ -132,8 +208,8 @@ async function createListing(userId, body) {
       price:          Number(price),
       images:         Array.isArray(images) ? images : [],
       usage_duration: usage_duration ? String(usage_duration).trim() : null,
-      status:      'active',
-      fee_paid:    true,
+      status:      requiresPayment ? 'hidden' : 'active',
+      fee_paid:    !requiresPayment,
     }])
     .select(`
       id, title, description, category, condition, area,
@@ -146,8 +222,12 @@ async function createListing(userId, body) {
   return {
     listing: data,
     listing_fee: {
-      amount: listingFee,
-      requires_payment: false,
+      amount: feeInfo.amount,
+      requires_payment: feeInfo.requires_payment,
+      reason: feeInfo.reason,
+      message: feeInfo.message,
+      free_listings_total: feeInfo.free_listings_total,
+      free_listings_remaining_after: feeInfo.free_listings_remaining_after,
     },
   };
 }
@@ -829,6 +909,7 @@ async function getMessages(listingId, buyerId, userId) {
     .select(`
       id, text, sender_id, is_offer, offer_amount,
       is_deal_confirm, is_deal_cancel, created_at,
+      media_url, media_type, media_size, media_name,
       profiles:sender_id ( id, full_name )
     `)
     .eq('conversation_id', conv.id)
@@ -854,6 +935,13 @@ async function getMessages(listingId, buyerId, userId) {
         offer_amount: m.offer_amount,
         is_deal_confirm: m.is_deal_confirm,
         is_deal_cancel: m.is_deal_cancel,
+        media_url: m.media_url ?? null,
+        media_type: m.media_type ?? null,
+        media_size: m.media_size ?? null,
+        media_name: m.media_name ?? null,
+        message_type: m.media_url
+          ? (isImageMime(m.media_type) ? 'image' : 'file')
+          : undefined,
         created_at: m.created_at,
       };
     }),
@@ -863,9 +951,19 @@ async function getMessages(listingId, buyerId, userId) {
 /** API-068 — POST /api/marketplace/listings/:listingId/conversations/:buyerId/messages */
 async function sendMessage(listingId, buyerId, userId, body) {
   const rawText = body?.text ?? body?.content;
-  const { is_offer = false, offer_amount } = body || {};
+  const {
+    is_offer = false,
+    offer_amount,
+    media_url,
+    media_type,
+    media_size,
+    media_name,
+  } = body || {};
 
-  if (!rawText || !String(rawText).trim()) {
+  const textContent = rawText ? String(rawText).trim() : '';
+  const hasMedia = !!(media_url && media_type);
+
+  if (!textContent && !hasMedia) {
     throw httpError(400, 'text không được để trống', 'validation_error');
   }
 
@@ -906,16 +1004,27 @@ async function sendMessage(listingId, buyerId, userId, body) {
       );
   }
 
+  const storedText = textContent || previewLabel({
+    text: '',
+    mediaUrl: media_url,
+    mediaType: media_type,
+    mediaName: media_name,
+  });
+
   const { data: msg, error } = await supabaseAdmin
     .from('marketplace_messages')
     .insert([{
       conversation_id: conv.id,
       sender_id:       userId,
-      text:            String(rawText).trim(),
+      text:            storedText,
       is_offer:        is_offer && !!offer_amount,
       offer_amount:    is_offer && offer_amount ? Number(offer_amount) : null,
+      media_url:       hasMedia ? media_url : null,
+      media_type:      hasMedia ? media_type : null,
+      media_size:      hasMedia ? (media_size ?? null) : null,
+      media_name:      hasMedia ? (media_name ?? null) : null,
     }])
-    .select('id, text, is_offer, offer_amount, created_at')
+    .select('id, text, is_offer, offer_amount, media_url, media_type, media_name, created_at')
     .single();
 
   if (error) throw httpError(500, error.message, 'db_error');
@@ -930,8 +1039,14 @@ async function sendMessage(listingId, buyerId, userId, body) {
     .eq('id', conv.id);
 
   const recipientId = isSeller ? buyerId : listing.owner_id;
-  const preview = msg.text.length > 60 ? msg.text.substring(0, 60) + '…' : msg.text;
-  createNotification(recipientId, 'marketplace_message', 'Tin nhắn mới trong Chợ sinh viên', preview, {
+  const preview = previewLabel({
+    text: msg.text,
+    mediaUrl: msg.media_url,
+    mediaType: msg.media_type,
+    mediaName: msg.media_name,
+  });
+  const previewShort = preview.length > 60 ? `${preview.slice(0, 60)}…` : preview;
+  createNotification(recipientId, 'marketplace_message', 'Tin nhắn mới trong Chợ sinh viên', previewShort, {
     listingId,
     actionData: { listing_id: listingId, buyer_id: buyerId },
     icon: 'chat',
@@ -1417,11 +1532,11 @@ async function getMyConversations(userId) {
 }
 
 module.exports = {
-  createListing, payListingFee, finalizeListingFeePayment, browseListings, getMyListings,
+  createListing, payListingFee, finalizeListingFeePayment, getListingFeeQuota, browseListings, getMyListings,
   getListing, updateListingStatus, expressInterest, removeInterest,
   listUserConversations, getInterestedBuyers, getMessages, sendMessage,
   confirmDeal, cancelDeal, markTransportBooked,
   getMyInterests, browseByOwner, bumpListing,
   confirmReceived, createRating, getSellerStats,
-  uploadListingImage, computeListingFee, getMyConversations,
+  uploadListingImage, computeListingFee, buildListingFeeInfo, FREE_LISTINGS_PER_ACCOUNT, getMyConversations,
 };

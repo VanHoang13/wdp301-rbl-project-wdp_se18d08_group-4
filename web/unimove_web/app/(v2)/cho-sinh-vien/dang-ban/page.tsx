@@ -4,12 +4,14 @@ import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Tag, MapPin, Clock, Receipt,
+  ArrowLeft, Tag, MapPin, Clock,
   Banknote, ImagePlus, X, Send,
 } from "lucide-react";
 import { marketplaceApi } from "@/lib/api";
 import { useUIStore } from "@/lib/stores";
 import { formatVND } from "@/lib/utils";
+import { ListingFeeQuotaCard } from "@/components/marketplace/ListingFeeQuotaCard";
+import { useListingFeeQuota } from "@/components/marketplace/useListingFeeQuota";
 
 /* ─── Constants ─────────────────────────────────────────────── */
 const MAX_IMAGES = 5;
@@ -29,13 +31,7 @@ const CONDITIONS = [
   { value: "fair",     label: "Cũ nhẹ"  },
 ];
 
-/* Fee: 2% of price, min 5 000đ, max 30 000đ — free if price = 0 */
-function calcFee(price: number, isFree: boolean): number {
-  if (isFree || price <= 0) return 0;
-  return Math.max(5_000, Math.min(30_000, Math.round(price * 0.02)));
-}
-
-const FEE_RATE_LABEL = "2% giá bán (tối thiểu 5.000đ, tối đa 30.000đ)";
+/* Fee preview uses API quota — see useListingFeeQuota */
 
 /* ─── Sub-components ─────────────────────────────────────────── */
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -104,7 +100,7 @@ export default function DangBanPage() {
   const [loading, setLoading]     = useState(false);
 
   const price    = isFree ? 0 : (Number(priceStr) || 0);
-  const fee      = calcFee(price, isFree);
+  const { preview, displayFee, isFreePost } = useListingFeeQuota(price);
   const isValid  = images.length > 0 && title.trim() !== "" && area.trim() !== "" && (isFree || price > 0);
 
   /* ─── Image handling ─── */
@@ -355,16 +351,7 @@ export default function DangBanPage() {
         </section>
 
         {/* ── Fee card ── */}
-        <div className="flex items-center gap-3 bg-blue-50 rounded-2xl border border-blue-100 px-4 py-3.5">
-          <Receipt size={20} className="text-[#0047FF] shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-bold text-gray-900">Phí đăng tin</p>
-            <p className="text-xs text-gray-500">{FEE_RATE_LABEL}</p>
-          </div>
-          <p className={`text-base font-extrabold ${fee === 0 ? "text-green-600" : "text-[#0047FF]"}`}>
-            {fee === 0 ? "Miễn phí" : formatVND(fee)}
-          </p>
-        </div>
+        <ListingFeeQuotaCard price={price} isGiveaway={isFree} />
 
         {!isValid && (
           <p className="text-xs text-gray-500 text-center">
@@ -397,7 +384,7 @@ export default function DangBanPage() {
             <div className="mx-auto w-10 h-1 bg-gray-200 rounded-full" />
             <div>
               <h3 className="text-lg font-extrabold text-gray-900">Phí đăng tin</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{FEE_RATE_LABEL}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{preview?.message ?? "2 tin đầu miễn phí · sau đó 2% giá bán"}</p>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
@@ -413,11 +400,11 @@ export default function DangBanPage() {
               <hr className="border-gray-100" />
               <div className="flex justify-between items-center">
                 <span className="font-bold text-gray-900">Phí đăng tin</span>
-                <span className={`text-xl font-extrabold ${fee === 0 ? "text-green-600" : "text-[#0047FF]"}`}>
-                  {fee === 0 ? "Miễn phí" : formatVND(fee)}
+                <span className={`text-xl font-extrabold ${isFreePost ? "text-green-600" : "text-[#0047FF]"}`}>
+                  {isFreePost ? "Miễn phí" : formatVND(displayFee)}
                 </span>
               </div>
-              {fee > 0 && (
+              {!isFreePost && displayFee > 0 && (
                 <p className="text-xs text-gray-500">Thanh toán qua QR PayOS sau khi đăng tin</p>
               )}
             </div>
@@ -427,7 +414,7 @@ export default function DangBanPage() {
               className="w-full h-12 rounded-full bg-[#0047FF] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(0,71,255,0.3)] hover:brightness-110 disabled:opacity-50"
             >
               <Send size={16} />
-              {fee === 0 ? "Đăng tin miễn phí" : "Tiếp tục thanh toán"}
+              {isFreePost ? "Đăng tin miễn phí" : "Tiếp tục thanh toán"}
             </button>
           </div>
         </div>
