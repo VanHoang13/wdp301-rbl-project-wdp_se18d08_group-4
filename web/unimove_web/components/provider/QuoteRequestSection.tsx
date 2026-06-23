@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Clock, DollarSign } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ interface QuoteRequestSectionProps {
   orderId: string;
   scheduledPickupTime?: string | null;
   onSubmitted?: () => void;
+  redirectTo?: string;
   compact?: boolean;
 }
 
@@ -38,8 +40,10 @@ export function QuoteRequestSection({
   orderId,
   scheduledPickupTime,
   onSubmitted,
+  redirectTo = "/orders?tab=quoted",
   compact = true,
 }: QuoteRequestSectionProps) {
+  const router = useRouter();
   const { toast } = useToast();
   const [loadingQuote, setLoadingQuote] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +103,7 @@ export function QuoteRequestSection({
       setMyQuote((res.data as MyQuote) ?? { total_price: base + surAmount, schedule_fit: scheduleFit, status: "submitted" });
       toast("Đã gửi báo giá — chờ khách chốt", "success");
       onSubmitted?.();
+      if (redirectTo) router.push(redirectTo);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gửi báo giá thất bại", "error");
     } finally {

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   RefreshCw, Search, MapPin, Package, Clock,
 } from "lucide-react";
@@ -62,12 +63,19 @@ function StatusBadge({ status, depositPaid }: { status: string; depositPaid?: bo
 
 export default function ProviderOrdersPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [tab,          setTab]          = useState(0);
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
   const [nearbyOnly,   setNearbyOnly]   = useState(false);
   const providerWard = getStoredUser()?.ward ?? "";
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "quoted") {
+      setTab(TABS.findIndex((t) => t.key === "__quoted__"));
+    }
+  }, [searchParams]);
 
   const load = useCallback(async (status: string, ward?: string) => {
     setLoading(true);
