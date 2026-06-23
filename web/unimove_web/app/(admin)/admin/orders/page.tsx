@@ -6,14 +6,19 @@ import { apiClient, adminApi } from "@/lib/admin/api";
 import { normalizeMeta } from "@/lib/admin/normalize-meta";
 import { usePolling } from "@/lib/admin/use-polling";
 import { PageHeader } from "@/components/admin-dashboard/page-header";
-import { OrdersClient } from "./orders-client";
+import { OrdersClient, ORDER_STATUS_TABS, type OrderStatusTab } from "./orders-client";
 
 const PAGE_SIZE = 10;
 const POLL_INTERVAL_MS = 8_000;
 
+function parseOrderTab(value: string | null): OrderStatusTab {
+  const tab = value ?? "pending";
+  return ORDER_STATUS_TABS.some((t) => t.value === tab) ? (tab as OrderStatusTab) : "pending";
+}
+
 export default function OrdersPage() {
   const searchParams = useSearchParams();
-  const tab = searchParams.get("tab") || "pending";
+  const tab = parseOrderTab(searchParams.get("tab"));
   const search = searchParams.get("search");
   const page = Number(searchParams.get("page") ?? 1);
 
