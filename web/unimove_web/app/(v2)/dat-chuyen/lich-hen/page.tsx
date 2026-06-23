@@ -13,9 +13,8 @@ import {
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
 import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import { ordersApi, customerApi } from "@/lib/api";
-import { buildOrderPayload, defaultPickupSuggestion, isValidPickupTime } from "@/lib/booking/order-payload";
+import { buildOrderPayload, defaultPickupSuggestion, isValidPickupTime, getAvailableScheduleSlots, resolveScheduleSelection, toLocalDateInputValue } from "@/lib/booking/order-payload";
 import { uploadDormPhotos } from "@/lib/booking/upload-dorm-photos";
-import { SCHEDULE_SLOT_HOURS } from "@/lib/booking/constants";
 import { cn } from "@/lib/utils";
 import { getStoredUser } from "@/lib/auth";
 
@@ -32,15 +31,27 @@ export default function LichHenPage() {
   const store = useBookingFlowStore();
   const { isComboBooking, pickup, destination, scheduledPickupAt, setScheduledPickupAt } = store;
 
-  const initial = useMemo(() => {
-    if (scheduledPickupAt) return new Date(scheduledPickupAt);
-    return defaultPickupSuggestion();
+  const initialSchedule = useMemo(() => {
+    const preferred = scheduledPickupAt ? new Date(scheduledPickupAt) : defaultPickupSuggestion();
+    return resolveScheduleSelection(preferred);
   }, []);
 
-  const [selectedDay, setSelectedDay] = useState(() => initial.toISOString().slice(0, 10));
-  const [selectedHour, setSelectedHour] = useState(initial.getHours());
+  const [selectedDay, setSelectedDay] = useState(() => initialSchedule.day);
+  const [selectedHour, setSelectedHour] = useState(initialSchedule.hour);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const availableHours = useMemo(
+    () => getAvailableScheduleSlots(selectedDay),
+    [selectedDay],
+  );
+
+  useEffect(() => {
+    if (availableHours.length === 0) return;
+    if (!availableHours.includes(selectedHour)) {
+      setSelectedHour(availableHours[0]);
+    }
+  }, [selectedDay, availableHours, selectedHour]);
 
   const combined = useMemo(() => {
     const [y, m, d] = selectedDay.split("-").map(Number);
@@ -150,7 +161,7 @@ export default function LichHenPage() {
             <input
               type="date"
               value={selectedDay}
-              min={new Date().toISOString().slice(0, 10)}
+              min={toLocalDateInputValue(new Date())}
               onChange={(e) => setSelectedDay(e.target.value)}
               className={inputClass}
             />
@@ -158,23 +169,32 @@ export default function LichHenPage() {
 
           <div>
             <FieldLabel>Khung giờ gợi ý</FieldLabel>
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-              {SCHEDULE_SLOT_HOURS.map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => setSelectedHour(h)}
-                  className={cn(
-                    "rounded-xl border py-2 text-center text-xs font-medium transition-colors sm:py-2.5 sm:text-sm",
-                    selectedHour === h
-                      ? "border-[#0047FF] bg-blue-50 text-[#0047FF]"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                  )}
-                >
-                  {String(h).padStart(2, "0")}:00
-                </button>
-              ))}
-            </div>
+            {availableHours.length === 0 ? (
+              <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                Không còn khung giờ hôm nay. Vui lòng chọn ngày khác.
+              </p>
+            ) : (
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                {availableHours.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setSelectedHour(h)}
+                    className={cn(
+                      "rounded-xl border py-2 text-center text-xs font-medium transition-colors sm:py-2.5 sm:text-sm",
+                      selectedHour === h
+                        ? "border-[#0047FF] bg-blue-50 text-[#0047FF]"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-gray-300",
+                    )}
+                  >
+                    {String(h).padStart(2, "0")}:00
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[11px] text-gray-400">
+              Chỉ hiển thị khung giờ sau ít nhất 1 giờ so với hiện tại.
+            </p>
           </div>
 
           <div className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-sm">

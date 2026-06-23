@@ -4,14 +4,29 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, MapPin, Phone, CheckCircle, XCircle, DollarSign,
-  Truck, Camera, AlertTriangle, Clock, Wallet, Layers, Users,
+  ArrowLeft, MapPin, Phone, CheckCircle, XCircle,
+  Truck, Camera, AlertTriangle, Clock, Wallet, Users,
   Image as ImageIcon, Home, X, ArrowRight, Send, MessageSquare,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ordersApi, quotesApi } from "@/lib/api";
-import { getOrderStatusLabel, getOrderStatusColor, formatVND, formatDate } from "@/lib/utils";
+import { getOrderStatusLabel, getOrderStatusColor, formatVND, formatDate, cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface OrderDetail {
@@ -25,6 +40,12 @@ interface OrderDetail {
   description?: string; dorm_image_urls?: string[];
   estimated_price?: number; created_at: string;
   customer?: { id: string; full_name: string; phone: string };
+}
+
+interface MyQuote {
+  total_price?: number;
+  status?: string;
+  note?: string;
 }
 
 const VEHICLE_LABELS: Record<string, string> = {
@@ -61,6 +82,7 @@ export default function ProviderOrderDetailPage() {
   const [acting,          setActing]          = useState(false);
   const [price,           setPrice]           = useState("");
   const [quoteNote,       setQuoteNote]       = useState("");
+  const [myQuote,         setMyQuote]         = useState<MyQuote | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason,    setCancelReason]    = useState("");
   const [lightboxIdx,     setLightboxIdx]     = useState<number | null>(null);
@@ -72,6 +94,19 @@ export default function ProviderOrderDetailPage() {
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [id]);
 
+  useEffect(() => {
+    if (!order?.quote_request) {
+      setMyQuote(null);
+      return;
+    }
+    quotesApi.list(id)
+      .then((res) => {
+        const quotes = (res.data ?? []) as MyQuote[];
+        setMyQuote(quotes.length > 0 ? quotes[0] : null);
+      })
+      .catch(() => setMyQuote(null));
+  }, [id, order?.quote_request]);
+
   /* ── Actions ── */
   const submitQuote = async () => {
     const base = parseInt(price.replace(/\D/g, ""), 10);
@@ -79,8 +114,8 @@ export default function ProviderOrderDetailPage() {
     setActing(true);
     try {
       await quotesApi.submit(id, { base_price: base, schedule_fit: "exact_match", note: quoteNote || undefined });
-      toast("Đã gửi báo giá", "success");
-      await load();
+      toast("Đã gửi báo giá — chờ khách chốt", "success");
+      router.push("/orders?tab=quoted");
     } catch (e) { toast(e instanceof Error ? e.message : "Gửi báo giá thất bại", "error"); }
     finally { setActing(false); }
   };
@@ -139,362 +174,325 @@ export default function ProviderOrderDetailPage() {
     ? (VEHICLE_LABELS[order.vehicle_size] ?? order.vehicle_size)
     : null;
   const sc           = order ? getOrderStatusColor(order.status) : "#9CA3AF";
+  const shortId      = order?.id.slice(0, 8).toUpperCase();
 
   /* ── Layout ── */
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.back()}
-          className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center shadow-sm hover:bg-gray-50 transition-colors shrink-0">
-          <ArrowLeft size={17} />
-        </button>
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Chi tiết đơn hàng</h1>
-          {order && <p className="text-xs text-gray-400 font-mono">#{order.id.slice(0, 8).toUpperCase()}</p>}
+    <div className="mx-auto w-full max-w-6xl">
+      {/* Page header */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => router.back()}
+            className="h-10 w-10 shrink-0 rounded-xl border-gray-200"
+            aria-label="Quay lại"
+          >
+            <ArrowLeft size={18} />
+          </Button>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+                Chi tiết đơn hàng
+              </h1>
+              {order && (
+                <Badge variant="secondary" className="font-mono text-[11px]">
+                  #{shortId}
+                </Badge>
+              )}
+            </div>
+            {order && (
+              <p className="mt-1 text-sm text-gray-500">
+                Tạo lúc {formatDate(order.created_at)}
+              </p>
+            )}
+          </div>
         </div>
+        {order && (
+          <Badge
+            className="w-fit gap-2 px-3 py-1.5 text-sm"
+            style={{ backgroundColor: `${sc}18`, color: sc, border: `1px solid ${sc}33` }}
+          >
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: sc }} />
+            {getOrderStatusLabel(order.status)}
+          </Badge>
+        )}
       </div>
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-4">
+            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-40 rounded-2xl" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-36 rounded-2xl" />
+            <Skeleton className="h-48 rounded-2xl" />
+          </div>
         </div>
       ) : !order ? (
-        <div className="text-center py-16 text-gray-400">Không tìm thấy đơn hàng</div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <XCircle size={48} className="mb-3 text-gray-300" />
+            <p className="font-medium text-gray-500">Không tìm thấy đơn hàng</p>
+            <Button variant="outline" className="mt-4" onClick={() => router.push("/orders")}>
+              Về danh sách đơn
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-4">
-
-          {/* Status */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold"
-              style={{ backgroundColor: sc + "18", color: sc }}>
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sc }} />
-              {getOrderStatusLabel(order.status)}
-            </span>
-            <span className="text-xs text-gray-400">{formatDate(order.created_at)}</span>
-          </div>
-
-          {/* Route card */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-gray-50">
-              <p className="text-sm font-bold text-gray-800">Lộ trình</p>
-            </div>
-
-            {/* Pickup */}
-            <div className="flex items-start gap-3 px-5 py-4 bg-blue-50/60">
-              <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
-                <MapPin size={14} className="text-blue-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-blue-400 uppercase tracking-wide mb-1">Điểm lấy đồ</p>
-                <p className="text-sm font-semibold text-gray-800 leading-snug">{order.pickup_address || "—"}</p>
-                {(pickupNotes.length > 0 || order.pickup_floor || order.pickup_has_elevator !== undefined) && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {order.pickup_floor && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-medium">
-                        Tầng {order.pickup_floor}
-                      </span>
-                    )}
-                    {order.pickup_has_elevator === true && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-medium">
-                        Có thang máy
-                      </span>
-                    )}
-                    {order.pickup_has_elevator === false && (
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-medium">
-                        Không thang máy
-                      </span>
-                    )}
-                    {pickupNotes.map((n, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-medium">
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Arrow */}
-            <div className="flex items-center gap-3 px-5 py-2 bg-gray-50 border-y border-gray-100">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="flex items-center gap-1 text-xs text-gray-400"><ArrowRight size={11} /> Chuyển đến</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
-
-            {/* Delivery */}
-            <div className="flex items-start gap-3 px-5 py-4 bg-amber-50/60">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                <Home size={14} className="text-amber-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-amber-500 uppercase tracking-wide mb-1">Điểm giao đồ</p>
-                <p className="text-sm font-semibold text-gray-800 leading-snug">{deliveryAddr || "—"}</p>
-                {(deliveryNotes.length > 0 || order.delivery_floor || order.delivery_has_elevator !== undefined) && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {order.delivery_floor && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-medium">
-                        Tầng {order.delivery_floor}
-                      </span>
-                    )}
-                    {order.delivery_has_elevator === true && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-medium">
-                        Có thang máy
-                      </span>
-                    )}
-                    {order.delivery_has_elevator === false && (
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-medium">
-                        Không thang máy
-                      </span>
-                    )}
-                    {deliveryNotes.map((n, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-medium">
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Summary chips */}
-            {(order.requires_helpers || vehicleLabel) && (
-              <div className="flex flex-wrap gap-2 px-5 py-3.5 border-t border-gray-50">
-                {order.requires_helpers && (
-                  <Chip icon={<Users size={11} />}
-                    label={order.number_of_helpers ? `${order.number_of_helpers} nhân công` : "Cần nhân công"}
-                    color="purple" />
-                )}
-                {vehicleLabel && (
-                  <Chip icon={<Truck size={11} />} label={vehicleLabel} />
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Image gallery */}
-          {images.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
-              <div className="flex items-center gap-2 mb-3">
-                <ImageIcon size={14} className="text-gray-400" />
-                <p className="text-sm font-bold text-gray-800">Ảnh đồ đạc <span className="text-gray-400 font-normal">({images.length} tấm)</span></p>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {images.map((url, i) => (
-                  <button key={i} onClick={() => setLightboxIdx(i)}
-                    className="aspect-square rounded-xl overflow-hidden border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all group">
-                    <img src={url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Customer */}
-          {order.customer && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
-              <p className="text-sm font-bold text-gray-800 mb-3">Khách hàng</p>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">
-                    {order.customer.full_name?.[0] ?? "K"}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{order.customer.full_name}</p>
-                    <p className="text-xs text-gray-400">{order.customer.phone}</p>
-                  </div>
-                </div>
-                <a href={`tel:${order.customer.phone}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors">
-                  <Phone size={12} /> Gọi
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* ── Actions per status ── */}
-
-          {/* Báo giá */}
-          {order.status === "pending" && order.quote_request && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 space-y-3">
-              <p className="text-sm font-bold text-gray-800">Gửi báo giá</p>
-              <div className="relative">
-                <input
-                  type="text" inputMode="numeric"
-                  placeholder="Giá báo (VNĐ)"
-                  value={price}
-                  onChange={e => setPrice(e.target.value.replace(/\D/g, ""))}
-                  className="w-full h-11 rounded-xl border border-gray-200 bg-gray-50 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white"
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+          {/* ── Main column ── */}
+          <div className="space-y-5">
+            {/* Route */}
+            <Card className="overflow-hidden border-gray-100 shadow-sm">
+              <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-[#F8FAFC] to-white pb-4">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <MapPin size={18} className="text-[#1A56DB]" />
+                  Lộ trình
+                </CardTitle>
+                <CardDescription>Vị trí lấy và giao hàng</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <RoutePoint
+                  type="pickup"
+                  label="Điểm lấy đồ"
+                  address={order.pickup_address}
+                  badges={[
+                    order.pickup_floor ? `Tầng ${order.pickup_floor}` : null,
+                    order.pickup_has_elevator === true ? "Có thang máy" : null,
+                    order.pickup_has_elevator === false ? "Không thang máy" : null,
+                    ...pickupNotes,
+                  ].filter(Boolean) as string[]}
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold">₫</span>
-              </div>
-              {price && parseInt(price) > 0 && (
-                <p className="text-xs text-blue-600 font-semibold">= {formatVND(parseInt(price))}</p>
-              )}
-              <input
-                placeholder="Ghi chú (tùy chọn)"
-                value={quoteNote}
-                onChange={e => setQuoteNote(e.target.value)}
-                className="w-full h-11 rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white"
-              />
-              <Button className="w-full gap-2" loading={acting} onClick={submitQuote}>
-                <Send size={14} /> Gửi báo giá
-              </Button>
-            </div>
-          )}
+                <div className="flex items-center gap-3 bg-gray-50/80 px-6 py-2.5">
+                  <Separator className="flex-1" />
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+                    <ArrowRight size={12} /> Chuyển đến
+                  </span>
+                  <Separator className="flex-1" />
+                </div>
+                <RoutePoint
+                  type="delivery"
+                  label="Điểm giao đồ"
+                  address={deliveryAddr}
+                  badges={[
+                    order.delivery_floor ? `Tầng ${order.delivery_floor}` : null,
+                    order.delivery_has_elevator === true ? "Có thang máy" : null,
+                    order.delivery_has_elevator === false ? "Không thang máy" : null,
+                    ...deliveryNotes,
+                  ].filter(Boolean) as string[]}
+                />
+                {(order.requires_helpers || vehicleLabel) && (
+                  <>
+                    <Separator />
+                    <div className="flex flex-wrap gap-2 px-6 py-4">
+                      {order.requires_helpers && (
+                        <Badge variant="outline" className="gap-1.5 border-violet-200 bg-violet-50 text-violet-700">
+                          <Users size={12} />
+                          {order.number_of_helpers ? `${order.number_of_helpers} nhân công` : "Cần nhân công"}
+                        </Badge>
+                      )}
+                      {vehicleLabel && (
+                        <Badge variant="outline" className="gap-1.5">
+                          <Truck size={12} />
+                          {vehicleLabel}
+                        </Badge>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Phản hồi đơn thường (không báo giá) */}
-          {order.status === "pending" && !order.quote_request && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
-              <p className="text-sm font-bold text-gray-800 mb-3">Phản hồi đơn</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" loading={acting} onClick={() => respond("reject")}>
-                  Bỏ qua
-                </Button>
-                <Button loading={acting} onClick={() => respond("accept")}>
-                  <CheckCircle size={15} /> Nhận đơn
-                </Button>
-              </div>
-            </div>
-          )}
+            {/* Images */}
+            {images.length > 0 && (
+              <Card className="border-gray-100 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ImageIcon size={18} className="text-gray-400" />
+                    Ảnh đồ đạc
+                    <Badge variant="secondary" className="ml-1 font-normal">
+                      {images.length} tấm
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                    {images.map((url, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setLightboxIdx(i)}
+                        className="group aspect-square overflow-hidden rounded-xl border border-gray-100 bg-gray-50 transition hover:border-blue-300 hover:shadow-md"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Chờ khách đặt cọc */}
-          {order.status === "matched" && !order.deposit_paid && (
-            <div className="bg-amber-50 border border-amber-100 rounded-2xl px-5 py-4 flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <Clock size={18} className="text-amber-500" />
-              </div>
-              <div>
-                <p className="font-bold text-gray-900 text-sm">Khách đã chọn báo giá của bạn</p>
-                <p className="text-sm text-amber-600 mt-0.5">Đang chờ khách thanh toán đặt cọc…</p>
-                <p className="text-xs text-gray-400 mt-1.5">Sau khi đặt cọc thành công, đơn sẽ tự động chuyển sang trạng thái sẵn sàng.</p>
-              </div>
+            {/* Status alerts — mobile only (duplicate in sidebar on desktop) */}
+            <div className="space-y-4 lg:hidden">
+              <StatusAlerts order={order} myQuote={myQuote} />
             </div>
-          )}
+          </div>
 
-          {/* Đã đặt cọc — tự động chuyển accepted, hiển thị thông báo */}
-          {order.status === "matched" && order.deposit_paid && (
-            <div className="bg-green-50 border border-green-100 rounded-2xl px-5 py-3.5 flex items-center gap-3">
-              <Wallet size={18} className="text-green-600 shrink-0" />
-              <div>
-                <p className="text-sm font-bold text-green-800">Đặt cọc thành công — đơn đang được xử lý</p>
-                <p className="text-xs text-green-600">Trang sẽ tự cập nhật trong giây lát…</p>
-              </div>
-            </div>
-          )}
+          {/* ── Sidebar ── */}
+          <div className="space-y-4 lg:sticky lg:top-6">
+            {/* Customer */}
+            {order.customer && (
+              <Card className="border-gray-100 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Khách hàng</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-11 w-11">
+                      <AvatarFallback className="bg-[#EFF6FF] text-base text-[#1A56DB]">
+                        {order.customer.full_name?.[0]?.toUpperCase() ?? "K"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900">{order.customer.full_name}</p>
+                      <p className="text-sm text-gray-500">{order.customer.phone}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                      <a href={`tel:${order.customer.phone}`}>
+                        <Phone size={14} /> Gọi
+                      </a>
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                      <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`}>
+                        <MessageSquare size={14} /> Chat
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Đã nhận — bắt đầu */}
-          {order.status === "accepted" && (
-            <div className="space-y-3">
-              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
-                <Truck size={15} /> Đang đến lấy hàng
-              </Button>
-              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
-                <Button variant="outline" className="w-full gap-2">
-                  <MessageSquare size={15} /> Chat với khách hàng
-                </Button>
-              </Link>
-              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
-                <XCircle size={15} /> Hủy đơn
-              </Button>
-            </div>
-          )}
+            {/* Price */}
+            {order.estimated_price != null && order.estimated_price > 0 && (
+              <Card className="border-gray-100 shadow-sm">
+                <CardContent className="flex items-center justify-between py-4">
+                  <span className="text-sm text-gray-500">Giá báo / ước tính</span>
+                  <span className="text-lg font-bold text-[#1A56DB]">
+                    {formatVND(order.estimated_price)}
+                  </span>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Đang đến lấy */}
-          {order.status === "picking_up" && (
-            <div className="space-y-3">
-              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("start")}>
-                <Truck size={15} /> Đang vận chuyển
-              </Button>
-              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
-                <Button variant="outline" className="w-full gap-2">
-                  <MessageSquare size={15} /> Chat với khách hàng
-                </Button>
-              </Link>
-              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
-                <XCircle size={15} /> Hủy đơn
-              </Button>
+            {/* Alerts desktop */}
+            <div className="hidden space-y-4 lg:block">
+              <StatusAlerts order={order} myQuote={myQuote} />
             </div>
-          )}
 
-          {/* Đang vận chuyển */}
-          {order.status === "in_progress" && (
-            <div className="space-y-3">
-              <input type="file" accept="image/*" id="delivery-photo" className="hidden" onChange={uploadPhoto} />
-              <Button variant="outline" className="w-full gap-2"
-                onClick={() => document.getElementById("delivery-photo")?.click()}>
-                <Camera size={15} /> Ảnh giao hàng
-              </Button>
-              <Button className="w-full gap-2" loading={acting} onClick={() => lifecycle("complete")}>
-                <CheckCircle size={15} /> Hoàn thành đơn
-              </Button>
-              <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`} className="block">
-                <Button variant="outline" className="w-full gap-2">
-                  <MessageSquare size={15} /> Chat với khách hàng
-                </Button>
-              </Link>
-              <Button variant="destructive" className="w-full gap-2" onClick={() => setShowCancelModal(true)}>
-                <XCircle size={15} /> Hủy đơn
-              </Button>
-            </div>
-          )}
-
-        </div>
-      )}
-
-      {/* ── Cancel modal ── */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                <AlertTriangle size={20} className="text-red-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900">Hủy đơn hàng?</h3>
-                <p className="text-xs text-red-500 mt-0.5">Điểm tuân thủ sẽ bị trừ 2 điểm</p>
-              </div>
-              <button onClick={() => { setShowCancelModal(false); setCancelReason(""); }}
-                className="ml-auto w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
-                <X size={13} />
-              </button>
-            </div>
-            <textarea
-              value={cancelReason}
-              onChange={e => setCancelReason(e.target.value)}
-              placeholder="Lý do hủy đơn (bắt buộc)..."
-              rows={3}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" onClick={() => { setShowCancelModal(false); setCancelReason(""); }}>
-                Quay lại
-              </Button>
-              <Button variant="destructive" loading={acting} onClick={cancelOrder}>
-                Xác nhận hủy
-              </Button>
-            </div>
+            {/* Actions */}
+            <Card className="border-gray-100 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Thao tác</CardTitle>
+                <CardDescription>Cập nhật tiến trình đơn hàng</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <OrderActions
+                  order={order}
+                  myQuote={myQuote}
+                  acting={acting}
+                  price={price}
+                  quoteNote={quoteNote}
+                  onPriceChange={setPrice}
+                  onQuoteNoteChange={setQuoteNote}
+                  onSubmitQuote={submitQuote}
+                  onRespond={respond}
+                  onLifecycle={lifecycle}
+                  onUploadPhoto={uploadPhoto}
+                  onCancel={() => setShowCancelModal(true)}
+                />
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
 
-      {/* ── Lightbox ── */}
+      {/* Cancel dialog */}
+      <Dialog open={showCancelModal} onOpenChange={(open) => {
+        setShowCancelModal(open);
+        if (!open) setCancelReason("");
+      }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle size={20} />
+              Hủy đơn hàng?
+            </DialogTitle>
+            <DialogDescription>
+              Điểm tuân thủ sẽ bị trừ 2 điểm. Vui lòng ghi rõ lý do hủy.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="Lý do hủy đơn (bắt buộc)..."
+            rows={3}
+            className="min-h-[96px] resize-none"
+          />
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setShowCancelModal(false); setCancelReason(""); }}>
+              Quay lại
+            </Button>
+            <Button variant="destructive" loading={acting} onClick={cancelOrder}>
+              Xác nhận hủy
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox */}
       {lightboxIdx !== null && images.length > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setLightboxIdx(null)}>
-          <button onClick={() => setLightboxIdx(null)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxIdx(null)}
+          role="presentation"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxIdx(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
             <X size={18} />
           </button>
-          <img src={images[lightboxIdx]} alt=""
-            className="max-w-full max-h-full rounded-2xl object-contain shadow-2xl"
-            onClick={e => e.stopPropagation()} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={images[lightboxIdx]}
+            alt=""
+            className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
           {images.length > 1 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+            <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-2">
               {images.map((_, i) => (
-                <button key={i} onClick={e => { e.stopPropagation(); setLightboxIdx(i); }}
-                  className="w-2 h-2 rounded-full transition-colors"
-                  style={{ backgroundColor: i === lightboxIdx ? "#fff" : "rgba(255,255,255,0.3)" }} />
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
+                  className={cn(
+                    "h-2 w-2 rounded-full transition-colors",
+                    i === lightboxIdx ? "bg-white" : "bg-white/30",
+                  )}
+                />
               ))}
             </div>
           )}
@@ -504,15 +502,243 @@ export default function ProviderOrderDetailPage() {
   );
 }
 
-function Chip({ icon, label, color = "gray" }: { icon: React.ReactNode; label: string; color?: "gray" | "purple" }) {
-  const styles = {
-    gray:   { bg: "#F3F4F6", text: "#374151" },
-    purple: { bg: "#F5F3FF", text: "#6D28D9" },
-  }[color];
+function RoutePoint({
+  type,
+  label,
+  address,
+  badges,
+}: {
+  type: "pickup" | "delivery";
+  label: string;
+  address?: string;
+  badges: string[];
+}) {
+  const isPickup = type === "pickup";
   return (
-    <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
-      style={{ backgroundColor: styles.bg, color: styles.text }}>
-      {icon}{label}
-    </span>
+    <div className={cn("px-6 py-5", isPickup ? "bg-blue-50/40" : "bg-amber-50/40")}>
+      <div className="flex items-start gap-4">
+        <div
+          className={cn(
+            "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+            isPickup ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600",
+          )}
+        >
+          {isPickup ? <MapPin size={18} /> : <Home size={18} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={cn("text-[11px] font-bold uppercase tracking-wider", isPickup ? "text-blue-500" : "text-amber-600")}>
+            {label}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-gray-900">{address || "—"}</p>
+          {badges.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {badges.map((b) => (
+                <Badge
+                  key={b}
+                  variant="outline"
+                  className={cn(
+                    "font-normal",
+                    isPickup ? "border-blue-200 bg-blue-50/80 text-blue-700" : "border-amber-200 bg-amber-50/80 text-amber-800",
+                  )}
+                >
+                  {b}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusAlerts({ order, myQuote }: { order: OrderDetail; myQuote: MyQuote | null }) {
+  if (order.status === "pending" && order.quote_request && myQuote) {
+    return (
+      <Card className="border-green-200 bg-green-50/50 shadow-sm">
+        <CardContent className="py-4">
+          <p className="font-semibold text-gray-900">Báo giá đã gửi</p>
+          <p className="mt-1 text-sm text-gray-600">
+            {formatVND(Math.round(Number(myQuote.total_price ?? 0)))} · Chờ khách chốt.
+          </p>
+          <Link href="/orders?tab=quoted" className="mt-2 inline-flex text-xs font-semibold text-[#1A56DB] hover:underline">
+            Xem tab «Đã báo giá» →
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (order.status === "matched" && !order.deposit_paid) {
+    return (
+      <Card className="border-amber-200 bg-amber-50/50 shadow-sm">
+        <CardContent className="flex gap-3 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+            <Clock size={18} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Khách đã chọn báo giá</p>
+            <p className="mt-0.5 text-sm text-amber-700">Đang chờ khách thanh toán đặt cọc…</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (order.status === "matched" && order.deposit_paid) {
+    return (
+      <Card className="border-green-200 bg-green-50/50 shadow-sm">
+        <CardContent className="flex gap-3 py-4">
+          <Wallet size={18} className="mt-0.5 shrink-0 text-green-600" />
+          <div>
+            <p className="font-semibold text-green-800">Đặt cọc thành công</p>
+            <p className="text-xs text-green-600">Trang sẽ tự cập nhật trong giây lát…</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  return null;
+}
+
+function OrderActions({
+  order,
+  myQuote,
+  acting,
+  price,
+  quoteNote,
+  onPriceChange,
+  onQuoteNoteChange,
+  onSubmitQuote,
+  onRespond,
+  onLifecycle,
+  onUploadPhoto,
+  onCancel,
+}: {
+  order: OrderDetail;
+  myQuote: MyQuote | null;
+  acting: boolean;
+  price: string;
+  quoteNote: string;
+  onPriceChange: (v: string) => void;
+  onQuoteNoteChange: (v: string) => void;
+  onSubmitQuote: () => void;
+  onRespond: (action: "accept" | "reject") => void;
+  onLifecycle: (action: "accept" | "start" | "complete") => void;
+  onUploadPhoto: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onCancel: () => void;
+}) {
+  const chatBtn = (
+    <Button variant="outline" size="sm" className="w-full gap-2" asChild>
+      <Link href={`/tai-xe/tin-nhan?orderId=${order.id}`}>
+        <MessageSquare size={15} /> Chat với khách
+      </Link>
+    </Button>
+  );
+
+  if (order.status === "pending" && order.quote_request && !myQuote) {
+    const parsed = parseInt(price, 10);
+    return (
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="quote-price">Giá báo (VNĐ)</Label>
+          <Input
+            id="quote-price"
+            inputMode="numeric"
+            placeholder="VD: 1500000"
+            value={price}
+            onChange={(e) => onPriceChange(e.target.value.replace(/\D/g, ""))}
+            endAdornment={<span className="text-xs font-semibold text-gray-400">₫</span>}
+          />
+          {parsed > 0 && (
+            <p className="text-xs font-semibold text-[#1A56DB]">= {formatVND(parsed)}</p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="quote-note">Ghi chú (tuỳ chọn)</Label>
+          <Input
+            id="quote-note"
+            placeholder="VD: 2 người khuân, xe 1 tấn..."
+            value={quoteNote}
+            onChange={(e) => onQuoteNoteChange(e.target.value)}
+          />
+        </div>
+        <Button className="w-full gap-2" loading={acting} onClick={onSubmitQuote}>
+          <Send size={15} /> Gửi báo giá
+        </Button>
+      </div>
+    );
+  }
+
+  if (order.status === "pending" && !order.quote_request) {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" size="sm" loading={acting} onClick={() => onRespond("reject")}>
+          Bỏ qua
+        </Button>
+        <Button size="sm" className="gap-1.5" loading={acting} onClick={() => onRespond("accept")}>
+          <CheckCircle size={15} /> Nhận đơn
+        </Button>
+      </div>
+    );
+  }
+
+  if (order.status === "accepted") {
+    return (
+      <div className="space-y-2">
+        <Button className="w-full gap-2" loading={acting} onClick={() => onLifecycle("start")}>
+          <Truck size={15} /> Đang đến lấy hàng
+        </Button>
+        {chatBtn}
+        <Button variant="destructive" size="sm" className="w-full gap-2" onClick={onCancel}>
+          <XCircle size={15} /> Hủy đơn
+        </Button>
+      </div>
+    );
+  }
+
+  if (order.status === "picking_up") {
+    return (
+      <div className="space-y-2">
+        <Button className="w-full gap-2" loading={acting} onClick={() => onLifecycle("start")}>
+          <Truck size={15} /> Đang vận chuyển
+        </Button>
+        {chatBtn}
+        <Button variant="destructive" size="sm" className="w-full gap-2" onClick={onCancel}>
+          <XCircle size={15} /> Hủy đơn
+        </Button>
+      </div>
+    );
+  }
+
+  if (order.status === "in_progress") {
+    return (
+      <div className="space-y-2">
+        <input type="file" accept="image/*" id="delivery-photo" className="hidden" onChange={onUploadPhoto} />
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={() => document.getElementById("delivery-photo")?.click()}
+        >
+          <Camera size={15} /> Ảnh giao hàng
+        </Button>
+        <Button className="w-full gap-2" loading={acting} onClick={() => onLifecycle("complete")}>
+          <CheckCircle size={15} /> Hoàn thành đơn
+        </Button>
+        {chatBtn}
+        <Button variant="destructive" size="sm" className="w-full gap-2" onClick={onCancel}>
+          <XCircle size={15} /> Hủy đơn
+        </Button>
+      </div>
+    );
+  }
+
+  if (order.status === "pending" && order.quote_request && myQuote) {
+    return (
+      <p className="text-sm text-gray-500">Đã gửi báo giá — chờ khách phản hồi.</p>
+    );
+  }
+
+  return (
+    <p className="text-sm text-gray-500">Không có thao tác khả dụng cho trạng thái này.</p>
   );
 }

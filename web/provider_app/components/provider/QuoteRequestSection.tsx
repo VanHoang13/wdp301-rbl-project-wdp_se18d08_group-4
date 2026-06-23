@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Clock, DollarSign } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ interface QuoteRequestSectionProps {
   orderId: string;
   scheduledPickupTime?: string | null;
   onSubmitted?: () => void;
+  redirectTo?: string;
 }
 
 const inputCls =
@@ -33,7 +35,13 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="text-xs font-semibold block mb-1" style={{ color: "var(--muted)" }}>{children}</label>;
 }
 
-export function QuoteRequestSection({ orderId, scheduledPickupTime, onSubmitted }: QuoteRequestSectionProps) {
+export function QuoteRequestSection({
+  orderId,
+  scheduledPickupTime,
+  onSubmitted,
+  redirectTo = "/orders",
+}: QuoteRequestSectionProps) {
+  const router = useRouter();
   const { toast } = useToast();
   const [loadingQuote, setLoadingQuote] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -90,6 +98,7 @@ export function QuoteRequestSection({ orderId, scheduledPickupTime, onSubmitted 
       setMyQuote((res.data as MyQuote) ?? { total_price: base + surAmount, schedule_fit: scheduleFit, status: "submitted" });
       toast("Đã gửi báo giá — chờ khách chốt", "success");
       onSubmitted?.();
+      if (redirectTo) router.push(redirectTo);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gửi báo giá thất bại", "error");
     } finally {

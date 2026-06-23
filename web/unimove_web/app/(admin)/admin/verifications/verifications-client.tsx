@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Dialog,
@@ -32,9 +32,67 @@ const TABS: { value: VerificationStatus; label: string }[] = [
 const DOC_TYPE_LABELS: Record<string, string> = {
   license: "Bằng lái xe",
   id_card: "Căn cước công dân",
-  vehicle_registration: "Đăng ký xe",
-  insurance: "Bảo hiểm xe",
+  vehicle_registration: "Đăng ký xe (cà vẹt)",
+  insurance: "Ảnh phương tiện",
 };
+
+/** Khớp field name từ form đăng ký tài xế */
+const REGISTRATION_FIELD_LABELS: Record<string, string> = {
+  cccd_front: "CCCD/CMND mặt trước",
+  cccd_back: "CCCD/CMND mặt sau",
+  driver_license: "Bằng lái xe",
+  vehicle_registration: "Đăng ký xe (cà vẹt)",
+  vehicle_photo: "Ảnh phương tiện",
+};
+
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  motorbike: "Xe máy (≤ 100kg)",
+  pickup: "Bán tải",
+  van: "Xe van 5 tạ – 1 tấn",
+  truck_1t: "Xe tải 1 tấn",
+  truck_2t: "Xe tải 2 tấn",
+  truck_5t: "Xe tải 5 tấn+",
+  small_truck: "Xe tải nhỏ",
+  medium_truck: "Xe tải vừa",
+  large_truck: "Xe tải lớn",
+};
+
+function documentLabel(doc: ProviderDocument): string {
+  if (doc.notes && REGISTRATION_FIELD_LABELS[doc.notes]) {
+    return REGISTRATION_FIELD_LABELS[doc.notes];
+  }
+  const raw = doc.document_type || "";
+  const suffix = raw.split("_").slice(1).join("_");
+  if (suffix && REGISTRATION_FIELD_LABELS[suffix]) {
+    return REGISTRATION_FIELD_LABELS[suffix];
+  }
+  if (DOC_TYPE_LABELS[raw]) return DOC_TYPE_LABELS[raw];
+  for (const [key, label] of Object.entries(REGISTRATION_FIELD_LABELS)) {
+    if (raw.includes(key)) return label;
+  }
+  return raw || "Tài liệu";
+}
+
+function vehicleTypeLabel(value: string | null): string {
+  if (!value) return "—";
+  return VEHICLE_TYPE_LABELS[value] ?? value;
+}
+
+const DOC_SORT_ORDER = [
+  "cccd_front",
+  "cccd_back",
+  "driver_license",
+  "vehicle_registration",
+  "vehicle_photo",
+];
+
+function sortRegistrationDocuments(docs: ProviderDocument[]): ProviderDocument[] {
+  return [...docs].sort((a, b) => {
+    const ai = DOC_SORT_ORDER.indexOf(a.notes ?? "");
+    const bi = DOC_SORT_ORDER.indexOf(b.notes ?? "");
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+}
 
 type Provider = {
   id: string;
@@ -42,6 +100,9 @@ type Provider = {
   email: string;
   phone: string | null;
   avatar_url: string | null;
+  address: string | null;
+  ward: string | null;
+  city: string | null;
   business_name: string | null;
   vehicle_type: string | null;
   vehicle_plate: string | null;
@@ -51,6 +112,7 @@ type Provider = {
   created_at: string;
   rating: number | null;
   total_orders: number;
+  documents: ProviderDocument[];
 };
 
 /** API trả profiles lồng — flatten để UI hiển thị đúng tên/email. */
@@ -62,6 +124,8 @@ export function normalizeProvider(raw: Record<string, unknown>): Provider {
 
   const businessName = (raw.business_name as string | null) ?? null;
   const fullName = (profile?.full_name as string | undefined) ?? businessName ?? "Chưa có tên";
+  const docsRaw = raw.provider_documents;
+  const documents = (Array.isArray(docsRaw) ? docsRaw : []) as ProviderDocument[];
 
   return {
     id: raw.id as string,
@@ -69,6 +133,9 @@ export function normalizeProvider(raw: Record<string, unknown>): Provider {
     email: (profile?.email as string | undefined) ?? "",
     phone: (profile?.phone as string | null | undefined) ?? null,
     avatar_url: (profile?.avatar_url as string | null | undefined) ?? null,
+    address: (profile?.address as string | null | undefined) ?? null,
+    ward: (profile?.ward as string | null | undefined) ?? null,
+    city: (profile?.city as string | null | undefined) ?? null,
     business_name: businessName,
     vehicle_type: (raw.vehicle_type as string | null | undefined) ?? null,
     vehicle_plate: (raw.vehicle_plate as string | null | undefined) ?? null,
@@ -78,6 +145,7 @@ export function normalizeProvider(raw: Record<string, unknown>): Provider {
     created_at: raw.created_at as string,
     rating: (raw.rating as number | null | undefined) ?? null,
     total_orders: (raw.total_orders as number | undefined) ?? 0,
+    documents,
   };
 }
 
@@ -124,28 +192,45 @@ function VerifyDialog({
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  async function loadDocs() {
-    if (docs !== null) return;
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setDocs(null);
+    setDocsError(null);
     setDocsLoading(true);
-    try {
-      const { data, error } = await getProviderDocuments(provider.id);
-      if (error) setDocsError(error.message);
-      else setDocs(data);
-    } catch {
-      setDocsError("Không thể tải tài liệu.");
-    } finally {
-      setDocsLoading(false);
-    }
-  }
+
+    (async () => {
+      try {
+        const { data, error } = await getProviderDocuments(provider.id);
+        if (cancelled) return;
+        if (error) {
+          setDocsError(error.message);
+          setDocs(provider.documents?.length ? provider.documents : []);
+        } else {
+          setDocs(data?.length ? data : provider.documents ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setDocsError("Không thể tải tài liệu.");
+          setDocs(provider.documents?.length ? provider.documents : []);
+        }
+      } finally {
+        if (!cancelled) setDocsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, provider.id, provider.documents]);
 
   function handleOpenChange(o: boolean) {
-    if (o) {
-      loadDocs();
-    } else {
-      // Reset state on close
+    if (!o) {
       setAction(null);
       setReason("");
       setSubmitError(null);
+      setDocs(null);
     }
     onOpenChange(o);
   }
@@ -205,16 +290,21 @@ function VerifyDialog({
                 <p className="font-semibold text-base break-words" style={{ color: "var(--text)" }}>
                   {provider.full_name}
                 </p>
-                {provider.business_name && provider.business_name !== provider.full_name && (
-                  <p className="text-sm break-words" style={{ color: "var(--muted)" }}>
+                {provider.business_name && (
+                  <p className="text-sm font-medium break-words" style={{ color: "var(--text)" }}>
                     {provider.business_name}
                   </p>
                 )}
                 <p className="text-sm break-all" style={{ color: "var(--muted)" }}>
                   {provider.email || "—"}
                 </p>
-                {provider.phone && (
-                  <p className="text-sm" style={{ color: "var(--muted)" }}>{provider.phone}</p>
+                <p className="text-sm" style={{ color: "var(--muted)" }}>
+                  {provider.phone || "—"}
+                </p>
+                {(provider.address || provider.ward) && (
+                  <p className="text-sm break-words pt-1" style={{ color: "var(--muted)" }}>
+                    {[provider.address, provider.ward, provider.city || "Đà Nẵng"].filter(Boolean).join(", ")}
+                  </p>
                 )}
               </div>
             </div>
@@ -226,9 +316,12 @@ function VerifyDialog({
               Thông tin phương tiện
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              <InfoRow label="Loại xe" value={provider.vehicle_type ?? "—"} />
-              <InfoRow label="Biển số xe" value={provider.vehicle_plate ?? "—"} />
-              <InfoRow label="Ngày đăng ký" value={formatDate(provider.created_at)} />
+              <InfoRow label="Loại xe" value={vehicleTypeLabel(provider.vehicle_type)} />
+              <InfoRow
+                label="Biển số xe"
+                value={provider.vehicle_plate?.trim() ? provider.vehicle_plate : "Chưa khai báo"}
+              />
+              <InfoRow label="Ngày nộp hồ sơ" value={formatDate(provider.created_at)} />
               <InfoRow label="Trạng thái" value={
                 <StatusBadge type="verification" status={provider.verification_status} />
               } />
@@ -257,44 +350,49 @@ function VerifyDialog({
               </p>
             )}
             {docs && docs.length > 0 && (
-              <div className="space-y-3">
-                {docs.map((doc) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {sortRegistrationDocuments(docs).map((doc) => (
                   <div
                     key={doc.id}
-                    className="rounded-xl p-4"
+                    className="rounded-xl overflow-hidden"
                     style={{
                       backgroundColor: "var(--surface)",
                       border: "1px solid var(--border)",
                     }}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
-                          {DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type}
+                    <a
+                      href={doc.document_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block aspect-[4/3] bg-black/5"
+                    >
+                      <img
+                        src={doc.document_url}
+                        alt={documentLabel(doc)}
+                        className="w-full h-full object-contain"
+                      />
+                    </a>
+                    <div className="p-3 space-y-2">
+                      <p className="text-sm font-medium" style={{ color: "var(--text)" }}>
+                        {documentLabel(doc)}
+                      </p>
+                      {doc.document_number && (
+                        <p className="text-xs" style={{ color: "var(--muted)" }}>
+                          Số: {doc.document_number}
                         </p>
-                        {doc.document_number && (
-                          <p className="text-xs" style={{ color: "var(--muted)" }}>
-                            Số: {doc.document_number}
-                          </p>
-                        )}
-                        {doc.expiry_date && (
-                          <p className="text-xs" style={{ color: "var(--muted)" }}>
-                            Hết hạn: {formatDate(doc.expiry_date)}
-                          </p>
-                        )}
-                      </div>
+                      )}
                       <a
                         href={doc.document_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80 shrink-0"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
                         style={{
                           backgroundColor: "var(--primary-tint)",
                           color: "var(--primary)",
                         }}
                       >
                         <ExternalLink className="w-3 h-3" />
-                        Xem ảnh
+                        Mở ảnh gốc
                       </a>
                     </div>
                   </div>
@@ -594,7 +692,7 @@ export function VerificationsClient({
                         {p.email || "—"}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>
-                        {p.vehicle_type ?? "—"}
+                        {vehicleTypeLabel(p.vehicle_type)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: "var(--muted)" }}>
                         {p.vehicle_plate ?? "—"}
@@ -639,6 +737,7 @@ export function VerificationsClient({
       {/* Verify Dialog */}
       {selectedProvider && (
         <VerifyDialog
+          key={selectedProvider.id}
           provider={selectedProvider}
           adminId={adminId}
           open={!!selectedProvider}

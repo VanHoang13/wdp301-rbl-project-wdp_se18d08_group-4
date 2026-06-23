@@ -31,7 +31,7 @@ interface Order {
 
 const SERVICES = [
   { href: "/dat-chuyen", icon: Route, title: "Đặt chuyến", sub: "Chọn điểm đón & đến", tint: "#EFF6FF", color: BLUE },
-  { href: "/dat-chuyen?loai=khuan-vac", icon: Users, title: "Khuân vác", sub: "Thêm vào đơn đã đặt", tint: "#FEF9C3", color: "#CA8A04" },
+  { href: "/dat-chuyen?mode=combo", icon: Users, title: "Đặt combo", sub: "Xe + người khuân trọn gói", tint: "#FEF9C3", color: "#CA8A04" },
   { href: "/cho-sinh-vien", icon: Store, title: "Chợ sinh viên", sub: "Mua bán đồ · SV tin nhau", tint: "#DCFCE7", color: "#16A34A" },
   { href: "/reference-prices", icon: Receipt, title: "Bảng phụ phí", sub: "Tham khảo minh bạch", tint: "#FCE7F3", color: "#DB2777" },
 ] as const;

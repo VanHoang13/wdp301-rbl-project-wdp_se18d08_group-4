@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   RefreshCw, Search, MapPin, Package, Clock,
 } from "lucide-react";
@@ -11,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { getStoredUser } from "@/lib/auth";
 
 interface Order {
-  id: string; status: string; deposit_paid?: boolean;
+  id: string; status: string; deposit_paid?: boolean; quote_request?: boolean;
   pickup_address: string; delivery_address: string;
   base_price?: number; total_price?: number;
   created_at: string;
@@ -62,12 +63,19 @@ function StatusBadge({ status, depositPaid }: { status: string; depositPaid?: bo
 
 export default function ProviderOrdersPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [tab,          setTab]          = useState(0);
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
   const [nearbyOnly,   setNearbyOnly]   = useState(false);
   const providerWard = getStoredUser()?.ward ?? "";
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "quoted") {
+      setTab(TABS.findIndex((t) => t.key === "__quoted__"));
+    }
+  }, [searchParams]);
 
   const load = useCallback(async (status: string, ward?: string) => {
     setLoading(true);
@@ -208,9 +216,7 @@ export default function ProviderOrdersPage() {
                 {filtered.map(o => {
                   const isQuotedTab = TABS[tab].quoted;
                   const needsProviderAction = o.status === "pending" || (o.status === "matched" && o.deposit_paid);
-                  const price = isQuotedTab && o.my_quote
-                    ? o.my_quote.total_price
-                    : (o.total_price ?? o.base_price);
+                  const price = o.my_quote?.total_price ?? (o.total_price ?? o.base_price);
                   return (
                     <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
 
@@ -259,10 +265,12 @@ export default function ProviderOrdersPage() {
                             <span className="text-sm font-bold" style={{ color: SUCCESS }}>
                               {formatVND(price)}
                             </span>
-                            {isQuotedTab && o.my_quote && (
+                            {o.my_quote && (
                               <p className="text-[10px] text-blue-500 font-semibold mt-0.5">Báo giá của bạn</p>
                             )}
                           </div>
+                        ) : o.quote_request && o.status === "pending" ? (
+                          <span className="text-sm font-semibold text-amber-600">Chờ báo giá</span>
                         ) : (
                           <span className="text-sm text-gray-300">—</span>
                         )}

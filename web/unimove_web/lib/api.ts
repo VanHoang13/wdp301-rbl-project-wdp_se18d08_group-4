@@ -461,3 +461,11 @@ export const reviewsApi = {
     professionalism_rating?: number; value_for_money_rating?: number;
   }) => post(`/reviews/orders/${orderId}`, payload),
 };
+
+
+/* ── Disputes ── */
+export const disputesApi = {
+  create: (formData: FormData) => upload<{ id: string }>("/disputes", formData),
+  my: (params?: Record<string, unknown>) => get("/disputes/my", params),
+  getById: (id: string) => get(`/disputes/${id}`),
+};
