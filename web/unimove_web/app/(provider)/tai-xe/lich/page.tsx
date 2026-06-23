@@ -171,7 +171,7 @@ export default function LichGiaoHangPage() {
         setEditDay(null);
         toast("Đã cập nhật lịch rảnh", "success");
       } else {
-        toast(res.error || "Không lưu được lịch rảnh", "error");
+        toast(res.message || "Không lưu được lịch rảnh", "error");
       }
     } catch {
       toast("Không lưu được lịch rảnh", "error");

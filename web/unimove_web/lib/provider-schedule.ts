@@ -163,7 +163,7 @@ export interface DayHourEvent {
   end: Date;
   order?: ScheduleOrderLike & {
     id: string;
-    status: string;
+    status?: string;
     pickup_address?: string;
     delivery_address?: string;
     total_price?: number;
