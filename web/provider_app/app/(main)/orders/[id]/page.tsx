@@ -58,18 +58,25 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!order || !POLLING_STATUSES.includes(order.status)) return;
 
-    const interval = setInterval(async () => {
+    const poll = async () => {
       const res = await providerOrdersApi.getOrder(id);
       if (res.success && res.data) {
         const fresh = res.data as OrderDetail;
-        // Nếu status thay đổi → update và dừng polling
-        if (fresh.status !== order.status) {
-          setOrder(fresh);
-        }
+        if (fresh.status !== order.status) setOrder(fresh);
       }
-    }, POLL_INTERVAL_MS);
+    };
 
-    return () => clearInterval(interval);
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+
+    // Force refresh ngay khi tab được focus lại
+    // Browser throttle setInterval khi tab ẩn → cần catch lại khi visible
+    const onVisible = () => { if (document.visibilityState === "visible") poll(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [id, order?.status]);
 
   const respond = async (response: "accepted" | "declined") => {
