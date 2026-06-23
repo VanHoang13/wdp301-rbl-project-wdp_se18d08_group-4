@@ -105,5 +105,6 @@ abstract final class PassListingFee {
     return raw;
   }
 
-  static String rateLabel = '2% giá bán (tối thiểu 5.000đ, tối đa 30.000đ)';
+  static String rateLabel =
+      '2 tin đầu miễn phí · sau đó 2% giá bán (tối thiểu 5.000đ, tối đa 30.000đ)';
 }

@@ -13,12 +13,30 @@ import {
   Headphones,
   CheckCircle2,
   X,
+  Banknote,
+  Gift,
+  Handshake,
+  Clock,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { marketplaceApi } from "@/lib/api";
 import { useUIStore } from "@/lib/stores";
-import { cn, formatVND } from "@/lib/utils";
+import { formatVND, cn } from "@/lib/utils";
+import { ListingFeeQuotaCard } from "@/components/marketplace/ListingFeeQuotaCard";
 
 const CATEGORIES = [
   { value: "", label: "Chọn danh mục" },
@@ -46,8 +64,91 @@ const TIPS = [
 
 const DRAFT_KEY = "unimove-marketplace-listing-draft";
 
-const fieldClass =
-  "mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15";
+const noSpinner =
+  "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+function RequiredMark() {
+  return <span className="text-red-500">*</span>;
+}
+
+function FormField({
+  label,
+  required,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={htmlFor} className="flex items-center gap-1">
+        {label}
+        {required && <RequiredMark />}
+      </Label>
+      {children}
+      {hint && <p className="text-xs text-[var(--muted)]">{hint}</p>}
+    </div>
+  );
+}
+
+function SettingRow({
+  icon: Icon,
+  title,
+  subtitle,
+  checked,
+  disabled,
+  onCheckedChange,
+  accent,
+}: {
+  icon: React.ElementType;
+  title: string;
+  subtitle: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (v: boolean) => void;
+  accent?: "emerald" | "blue";
+}) {
+  const accentClass =
+    accent === "emerald"
+      ? "bg-emerald-50 text-emerald-600"
+      : "bg-[var(--primary-tint)] text-[var(--primary)]";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 rounded-xl px-4 py-3.5 transition-colors",
+        disabled && "opacity-50",
+        checked && accent === "emerald" && "bg-emerald-50/60",
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className={cn(
+            "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+            accentClass,
+          )}
+        >
+          <Icon size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900">{title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-gray-500">{subtitle}</p>
+        </div>
+      </div>
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={title}
+      />
+    </div>
+  );
+}
 
 export default function DangTinPage() {
   const router = useRouter();
@@ -65,6 +166,8 @@ export default function DangTinPage() {
     price: "",
     usage_duration: "",
   });
+  const [isFree, setIsFree] = useState(false);
+  const [isNego, setIsNego] = useState(false);
 
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -72,8 +175,10 @@ export default function DangTinPage() {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
-      const saved = JSON.parse(raw) as typeof form;
+      const saved = JSON.parse(raw) as typeof form & { isFree?: boolean; isNego?: boolean };
       setForm((p) => ({ ...p, ...saved }));
+      if (saved.isFree) setIsFree(true);
+      if (saved.isNego) setIsNego(true);
     } catch {
       /* ignore */
     }
@@ -96,7 +201,7 @@ export default function DangTinPage() {
   };
 
   const saveDraft = () => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form, isFree, isNego }));
     showSuccess("Đã lưu nháp trên thiết bị này");
   };
 
@@ -110,9 +215,9 @@ export default function DangTinPage() {
       showError("Chọn danh mục");
       return;
     }
-    const price = Number(form.price);
-    if (!Number.isFinite(price) || price < 0) {
-      showError("Giá không hợp lệ");
+    const price = isFree ? 0 : Number(form.price);
+    if (!isFree && (!Number.isFinite(price) || price <= 0)) {
+      showError("Nhập giá bán hoặc bật «Tặng miễn phí»");
       return;
     }
     setLoading(true);
@@ -131,6 +236,7 @@ export default function DangTinPage() {
         price,
         images: imageUrls,
         usage_duration: form.usage_duration.trim() || undefined,
+        is_negotiable: isNego && !isFree,
       });
       if (!res.success) {
         showError((res as { message?: string }).message || "Đăng tin thất bại");
@@ -163,6 +269,8 @@ export default function DangTinPage() {
     }
   };
 
+  const priceForQuota = isFree ? 0 : form.price.trim() ? Number(form.price) : undefined;
+
   const emptySlots = Math.max(0, 6 - images.length);
 
   return (
@@ -189,124 +297,158 @@ export default function DangTinPage() {
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-8">
           {/* Left — form */}
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
-            <div className="mb-6 flex items-center gap-2 border-b border-gray-100 pb-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
-                <Info size={16} />
-              </span>
-              <h2 className="text-base font-bold text-gray-900">Thông tin cơ bản</h2>
-            </div>
+          <Card className="overflow-hidden border-gray-100 shadow-sm">
+            <CardHeader className="border-b border-gray-100 bg-gradient-to-r from-[#F8FAFC] to-white pb-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#2563EB] shadow-sm">
+                  <Info size={18} />
+                </span>
+                <div>
+                  <CardTitle className="text-lg">Thông tin cơ bản</CardTitle>
+                  <p className="mt-0.5 text-sm font-normal text-gray-500">
+                    Mô tả rõ sản phẩm để thu hút người mua
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
 
-            <div className="space-y-5">
-              <div>
-                <label className="text-sm font-semibold text-gray-800">
-                  Tiêu đề tin đăng <span className="text-red-500">*</span>
-                </label>
+            <CardContent className="space-y-6 p-5 sm:p-6 lg:p-8">
+              <FormField label="Tiêu đề tin đăng" required htmlFor="listing-title">
                 <Input
+                  id="listing-title"
                   required
                   value={form.title}
                   onChange={(e) => set("title", e.target.value)}
                   placeholder="VD: Bàn học + ghế"
-                  className="mt-1.5 h-11 rounded-xl"
+                  startAdornment={<Tag size={16} />}
                 />
-              </div>
+              </FormField>
 
-              <div>
-                <label className="text-sm font-semibold text-gray-800">Mô tả chi tiết</label>
-                <textarea
+              <FormField
+                label="Mô tả chi tiết"
+                hint="Ghi rõ tình trạng, kích thước, lý do bán để tăng độ tin cậy"
+                htmlFor="listing-description"
+              >
+                <Textarea
+                  id="listing-description"
                   value={form.description}
                   onChange={(e) => set("description", e.target.value)}
                   rows={5}
-                  className={cn(fieldClass, "resize-y min-h-[120px]")}
                   placeholder="Mô tả tình trạng, kích thước, lý do bán..."
+                  className="min-h-[132px]"
                 />
+              </FormField>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormField label="Danh mục" required>
+                  <Select value={form.category || undefined} onValueChange={(v) => set("category", v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn danh mục" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.filter((c) => c.value).map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+
+                <FormField label="Tình trạng" required>
+                  <Select value={form.condition} onValueChange={(v) => set("condition", v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONDITIONS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-gray-800">
-                    Danh mục <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={form.category}
-                    onChange={(e) => set("category", e.target.value)}
-                    className={fieldClass}
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c.value || "empty"} value={c.value} disabled={!c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-[#FAFBFC]">
+                <div className="border-b border-gray-200 bg-white px-4 py-3 sm:px-5">
+                  <p className="text-sm font-bold text-gray-900">Giá & giao dịch</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Đặt giá bán hoặc chọn cho tặng miễn phí
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-800">
-                    Tình trạng <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={form.condition}
-                    onChange={(e) => set("condition", e.target.value)}
-                    className={fieldClass}
-                  >
-                    {CONDITIONS.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-gray-800">
-                    Giá (VNĐ) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative mt-1.5">
+                <div className="space-y-4 p-4 sm:p-5">
+                  <FormField label="Giá mong muốn" required={!isFree}>
                     <Input
                       type="number"
                       min={0}
-                      required
-                      value={form.price}
+                      disabled={isFree}
+                      value={isFree ? "" : form.price}
                       onChange={(e) => set("price", e.target.value)}
-                      placeholder="0"
-                      className="h-11 rounded-xl pr-10"
+                      placeholder={isFree ? "Miễn phí — cho tặng" : "VD: 250000"}
+                      startAdornment={<Banknote size={16} />}
+                      endAdornment={
+                        <span className="text-xs font-semibold text-gray-400">VNĐ</span>
+                      }
+                      className={cn(noSpinner, isFree && "opacity-70")}
                     />
-                    <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-400">
-                      đ
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-800">Khu vực</label>
-                  <div className="relative mt-1.5">
-                    <MapPin
-                      size={16}
-                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                  </FormField>
+
+                  <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <SettingRow
+                      icon={Gift}
+                      title="Tặng miễn phí"
+                      subtitle="Cho tặng, không lấy tiền — luôn miễn phí đăng tin"
+                      checked={isFree}
+                      accent="emerald"
+                      onCheckedChange={(v) => {
+                        setIsFree(v);
+                        if (v) {
+                          setIsNego(false);
+                          set("price", "");
+                        }
+                      }}
                     />
-                    <Input
-                      value={form.area}
-                      onChange={(e) => set("area", e.target.value)}
-                      placeholder="Quận/Huyện, Thành phố"
-                      className="h-11 rounded-xl pl-10"
+                    <Separator />
+                    <SettingRow
+                      icon={Handshake}
+                      title="Có thể thương lượng"
+                      subtitle="Cho phép người mua trả giá"
+                      checked={isNego}
+                      disabled={isFree}
+                      accent="blue"
+                      onCheckedChange={setIsNego}
                     />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-semibold text-gray-800">Thời gian đã sử dụng</label>
-                <Input
-                  value={form.usage_duration}
-                  onChange={(e) => set("usage_duration", e.target.value)}
-                  placeholder="VD: 1 năm, 6 tháng"
-                  className="mt-1.5 h-11 rounded-xl"
-                />
-              </div>
-            </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormField label="Khu vực" htmlFor="listing-area">
+                  <Input
+                    id="listing-area"
+                    value={form.area}
+                    onChange={(e) => set("area", e.target.value)}
+                    placeholder="Quận/Huyện, Thành phố"
+                    startAdornment={<MapPin size={16} />}
+                  />
+                </FormField>
 
-            <div className="mt-8 flex flex-col-reverse gap-3 border-t border-gray-100 pt-6 sm:flex-row sm:justify-end">
+                <FormField label="Thời gian đã sử dụng" htmlFor="listing-usage">
+                  <Input
+                    id="listing-usage"
+                    value={form.usage_duration}
+                    onChange={(e) => set("usage_duration", e.target.value)}
+                    placeholder="VD: 1 năm, 6 tháng"
+                    startAdornment={<Clock size={16} />}
+                  />
+                </FormField>
+              </div>
+            </CardContent>
+
+            <CardFooter className="flex flex-col-reverse gap-3 border-t border-gray-100 bg-[#FAFBFC] px-5 py-5 sm:flex-row sm:justify-end sm:px-6 lg:px-8">
               <Button
                 type="button"
                 variant="outline"
@@ -323,11 +465,13 @@ export default function DangTinPage() {
                 <Send size={16} />
                 Đăng tin ngay
               </Button>
-            </div>
-          </div>
+            </CardFooter>
+          </Card>
 
           {/* Right — images, tips, support */}
           <div className="space-y-5">
+            <ListingFeeQuotaCard price={priceForQuota ?? -1} isGiveaway={isFree} />
+
             <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="mb-1 flex items-center gap-2">
                 <ImagePlus size={18} className="text-[#2563EB]" />
