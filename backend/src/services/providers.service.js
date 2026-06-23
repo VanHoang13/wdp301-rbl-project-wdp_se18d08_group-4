@@ -416,7 +416,7 @@ async function uploadProviderDocuments(providerId, filesMap) {
     const docType = FIELD_TO_DOC_TYPE[field] || field;
     const { error: dbError } = await supabaseAdmin.from('provider_documents').insert({
       provider_id: providerId,
-      document_type: `${docType}_${field}`,
+      document_type: docType,
       document_url: url,
       is_verified: false,
       notes: field,

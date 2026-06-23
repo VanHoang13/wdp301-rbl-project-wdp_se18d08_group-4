@@ -167,6 +167,35 @@ async function enrichOrderWithProvider(order) {
   };
 }
 
+async function enrichProviderOrdersList(orders, providerId) {
+  if (!orders?.length) return [];
+
+  const orderIds = orders.map((o) => o.id);
+  const customerIds = [...new Set(orders.map((o) => o.customer_id).filter(Boolean))];
+
+  const [{ data: quotes }, { data: profiles }] = await Promise.all([
+    supabaseAdmin
+      .from('order_quotes')
+      .select('order_id, total_price, status, note, created_at')
+      .eq('provider_id', providerId)
+      .in('order_id', orderIds),
+    customerIds.length
+      ? supabaseAdmin.from('profiles').select('id, full_name, phone').in('id', customerIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const quoteByOrder = Object.fromEntries((quotes || []).map((q) => [q.order_id, q]));
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+
+  return orders.map((order) => ({
+    ...order,
+    dropoff_address: order.dropoff_address || order.delivery_address,
+    estimated_price: order.estimated_price ?? order.total_price ?? order.base_price ?? null,
+    customer: profileMap[order.customer_id] ?? null,
+    my_quote: quoteByOrder[order.id] ?? null,
+  }));
+}
+
 async function listOrdersForUser(userId, role, queryParams = {}) {
   let query = supabaseAdmin.from('orders').select('*').order('created_at', { ascending: false });
 
@@ -216,7 +245,7 @@ async function listOrdersForUser(userId, role, queryParams = {}) {
       if (order.status !== 'pending' && order.status !== 'matched') return false;
       return isDaNangOrder(order);
     });
-    return filtered;
+    return enrichProviderOrdersList(filtered, userId);
   }
 
   return Promise.all((data || []).map(enrichOrderWithProvider));

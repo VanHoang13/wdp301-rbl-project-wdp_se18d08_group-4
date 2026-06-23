@@ -15,9 +15,12 @@ import { formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/
 import { useToast } from "@/components/ui/toast";
 
 interface Order {
-  id: string; status: string; pickup_address: string; dropoff_address: string;
-  estimated_price?: number; created_at: string;
+  id: string; status: string; quote_request?: boolean;
+  pickup_address: string; dropoff_address?: string; delivery_address?: string;
+  estimated_price?: number; total_price?: number; base_price?: number;
+  created_at: string;
   customer?: { full_name: string; phone: string };
+  my_quote?: { total_price: number; status: string; note?: string };
 }
 
 const BRAND   = "#1A56DB";
@@ -151,7 +154,9 @@ export default function ProviderDashboardPage() {
                     {pending.map(o => (
                       <tr key={o.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-3.5">
-                          <p className="font-semibold text-gray-900 truncate max-w-[180px]">{o.dropoff_address}</p>
+                          <p className="font-semibold text-gray-900 truncate max-w-[180px]">
+                            {o.dropoff_address || o.delivery_address || "—"}
+                          </p>
                           <p className="text-xs text-gray-400 truncate max-w-[180px] mt-0.5">{o.pickup_address}</p>
                         </td>
                         <td className="px-4 py-3.5">
@@ -163,9 +168,24 @@ export default function ProviderDashboardPage() {
                             : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className="font-bold" style={{ color: BRAND }}>
-                            {o.estimated_price ? formatVND(o.estimated_price) : "Chờ báo giá"}
-                          </span>
+                          {o.my_quote?.total_price ? (
+                            <div>
+                              <span className="font-bold" style={{ color: SUCCESS }}>
+                                {formatVND(o.my_quote.total_price)}
+                              </span>
+                              <p className="text-[10px] font-semibold mt-0.5" style={{ color: BLUE }}>
+                                Đã báo giá · chờ khách chốt
+                              </p>
+                            </div>
+                          ) : o.quote_request && o.status === "pending" ? (
+                            <span className="font-bold" style={{ color: BRAND }}>Chờ báo giá</span>
+                          ) : o.estimated_price || o.total_price || o.base_price ? (
+                            <span className="font-bold" style={{ color: BRAND }}>
+                              {formatVND(o.estimated_price ?? o.total_price ?? o.base_price ?? 0)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-xs text-gray-400">{timeAgo(o.created_at)}</td>
                         <td className="px-5 py-3.5">

@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { getStoredUser } from "@/lib/auth";
 
 interface Order {
-  id: string; status: string; deposit_paid?: boolean;
+  id: string; status: string; deposit_paid?: boolean; quote_request?: boolean;
   pickup_address: string; delivery_address: string;
   base_price?: number; total_price?: number;
   created_at: string;
@@ -216,9 +216,7 @@ export default function ProviderOrdersPage() {
                 {filtered.map(o => {
                   const isQuotedTab = TABS[tab].quoted;
                   const needsProviderAction = o.status === "pending" || (o.status === "matched" && o.deposit_paid);
-                  const price = isQuotedTab && o.my_quote
-                    ? o.my_quote.total_price
-                    : (o.total_price ?? o.base_price);
+                  const price = o.my_quote?.total_price ?? (o.total_price ?? o.base_price);
                   return (
                     <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
 
@@ -267,10 +265,12 @@ export default function ProviderOrdersPage() {
                             <span className="text-sm font-bold" style={{ color: SUCCESS }}>
                               {formatVND(price)}
                             </span>
-                            {isQuotedTab && o.my_quote && (
+                            {o.my_quote && (
                               <p className="text-[10px] text-blue-500 font-semibold mt-0.5">Báo giá của bạn</p>
                             )}
                           </div>
+                        ) : o.quote_request && o.status === "pending" ? (
+                          <span className="text-sm font-semibold text-amber-600">Chờ báo giá</span>
                         ) : (
                           <span className="text-sm text-gray-300">—</span>
                         )}

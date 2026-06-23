@@ -295,7 +295,10 @@ async function getPendingProviders(req, res) {
           full_name,
           email,
           phone,
-          avatar_url
+          avatar_url,
+          address,
+          ward,
+          city
         ),
         provider_documents(
           id,
@@ -304,7 +307,9 @@ async function getPendingProviders(req, res) {
           document_number,
           issue_date,
           expiry_date,
-          is_verified
+          is_verified,
+          notes,
+          created_at
         )
       `)
       .eq('verification_status', normalizedStatus)
