@@ -8,10 +8,10 @@ import 'package:flutter/foundation.dart';
 /// **Android emulator:** [useLanHost] = false → `10.0.2.2`
 abstract final class ApiConfig {
   /// May that qua Wi-Fi cung mang voi PC.
-  static const useLanHost = true;
+  static const useLanHost = false;
 
   /// IP PC (Wi-Fi) — chi khi useLanHost = true.
-  static const lanHost = '192.168.1.38';
+  static const lanHost = '192.168.29.1';
 
   /// USB + `adb reverse tcp:5000 tcp:5000` (cach 2 — dang dung).
   static const useAdbReverse = false;

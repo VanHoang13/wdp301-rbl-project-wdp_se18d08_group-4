@@ -4,8 +4,14 @@ const { createNotification, notifyAdmins } = require('./notification.service');
 
 const EVIDENCE_BUCKET = 'dispute-evidence';
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-
-const VALID_DISPUTE_TYPES = ['payment', 'service_quality', 'damage', 'cancellation', 'other'];
+const VALID_DISPUTE_TYPES = [
+  'payment',
+  'service_quality',
+  'damage',
+  'cancellation',
+  'app_error',
+  'other',
+];
 
 /**
  * Upload ảnh evidence lên Supabase Storage
@@ -62,7 +68,6 @@ async function createDispute(userId, userRole, body, files) {
     throw httpError(400, 'description tối thiểu 10 ký tự', 'validation_error');
   }
 
-  // Lấy đơn hàng
   const { data: order, error: orderErr } = await supabaseAdmin
     .from('orders')
     .select('id, order_number, status, customer_id, provider_id, pickup_address, delivery_address')
@@ -72,17 +77,14 @@ async function createDispute(userId, userRole, body, files) {
   if (orderErr) throw httpError(500, orderErr.message, 'db_error');
   if (!order) throw httpError(404, 'Không tìm thấy đơn hàng', 'order_not_found');
 
-  // Kiểm tra quyền — chỉ customer hoặc provider của đơn mới được tạo dispute
   const isCustomer = order.customer_id === userId;
   const isProvider = order.provider_id === userId;
   if (!isCustomer && !isProvider) {
     throw httpError(403, 'Bạn không có quyền khiếu nại đơn hàng này', 'access_denied');
   }
 
-  // against_user_id = bên kia
   const againstUserId = isCustomer ? order.provider_id : order.customer_id;
 
-  // Kiểm tra đã có dispute open cho đơn này chưa
   const { data: existing } = await supabaseAdmin
     .from('disputes')
     .select('id, status')
@@ -95,7 +97,6 @@ async function createDispute(userId, userRole, body, files) {
     throw httpError(409, 'Bạn đã có khiếu nại đang xử lý cho đơn hàng này', 'dispute_already_exists');
   }
 
-  // Tạo dispute trước để có ID
   const { data: dispute, error: insertErr } = await supabaseAdmin
     .from('disputes')
     .insert({
@@ -107,14 +108,13 @@ async function createDispute(userId, userRole, body, files) {
       subject: String(subject).trim(),
       description: String(description).trim(),
       status: 'open',
-      priority: dispute_type === 'damage' || dispute_type === 'payment' ? 'high' : 'normal',
+      priority: ['damage', 'payment'].includes(dispute_type) ? 'high' : 'normal',
     })
     .select('*')
     .single();
 
   if (insertErr) throw httpError(500, insertErr.message, 'db_error');
 
-  // Upload ảnh evidence nếu có
   let evidenceUrls = [];
   if (files && files.length > 0) {
     evidenceUrls = await uploadEvidenceImages(dispute.id, files);
@@ -126,7 +126,6 @@ async function createDispute(userId, userRole, body, files) {
     }
   }
 
-  // Notify admin
   await notifyAdmins(
     'system_announcement',
     'Khiếu nại mới',
@@ -134,7 +133,6 @@ async function createDispute(userId, userRole, body, files) {
     { priority: 'high', actionData: { dispute_id: dispute.id, order_id } },
   );
 
-  // Notify người bị khiếu nại
   if (againstUserId) {
     await createNotification(
       againstUserId,
@@ -160,7 +158,7 @@ async function getMyDisputes(userId, query = {}) {
     .from('disputes')
     .select(`
       id, dispute_type, subject, status, priority, created_at, resolved_at, resolution_type,
-      orders!inner(order_number, pickup_address, delivery_address)
+      orders!disputes_order_id_fkey(order_number, pickup_address, delivery_address)
     `)
     .eq('raised_by', userId)
     .order('created_at', { ascending: false })
@@ -197,12 +195,10 @@ async function getDisputeById(disputeId, userId) {
   if (error) throw httpError(500, error.message, 'db_error');
   if (!data) throw httpError(404, 'Không tìm thấy khiếu nại', 'not_found');
 
-  // Chỉ người liên quan mới xem được
   if (data.raised_by !== userId && data.against_user_id !== userId) {
     throw httpError(403, 'Không có quyền xem khiếu nại này', 'access_denied');
   }
 
-  // Lọc bỏ internal messages
   data.dispute_messages = (data.dispute_messages || []).filter((m) => !m.is_internal);
 
   return data;

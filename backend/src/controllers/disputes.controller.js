@@ -8,7 +8,6 @@ const { supabaseAdmin } = require('../services/supabase.service');
  */
 async function createDispute(req, res, next) {
   try {
-    // req.files từ multer array field 'evidence'
     const files = req.files || [];
     const { data: profile } = await supabaseAdmin
       .from('profiles')
