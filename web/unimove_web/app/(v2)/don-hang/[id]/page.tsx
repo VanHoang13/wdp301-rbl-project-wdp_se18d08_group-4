@@ -326,6 +326,18 @@ function SidebarBlocks({
             <XCircle size={14} /> Huỷ đơn hàng
           </button>
         )}
+        {order.status === "completed" && (
+          <Link href={`/don-hang/${order.id}/bao-cao-su-co`} className="block">
+            <Button
+              variant="outline"
+              className="w-full h-11 rounded-2xl font-semibold"
+              style={{ backgroundColor: "#FFCC00", borderColor: "#FFCC00", color: "#1a1a1a" }}
+            >
+              <AlertTriangle size={16} />
+              Báo cáo sự cố
+            </Button>
+          </Link>
+        )}
       </div>
     </>
   );
