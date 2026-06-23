@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import {
   ArrowLeft, Phone, Star, CheckCircle, XCircle, CreditCard,
   AlertTriangle, ShieldCheck, Info, X, ChevronDown, ChevronUp,
-  MessageSquare, Check, Truck, Eye, FileText, MapPin,
+  MessageSquare, Check, Truck, Eye, FileText, MapPin, ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,19 +14,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Container } from "@/components/layout/Container";
 import { FadeSlideIn } from "@/components/motion/fade-slide-in";
 import { ordersApi, quotesApi, paymentsApi, providersApi, devApi } from "@/lib/api";
-import { formatVND, formatDate } from "@/lib/utils";
+import { formatVND, formatDate, cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/stores";
 import { getStoredUser } from "@/lib/auth";
 
 /* ─── Interfaces (unchanged) ──────────────────────────────────── */
 interface OrderDetail {
   id: string; order_number?: string; status: string; service_type: string; quote_request?: boolean;
-  pickup_address: string; dropoff_address: string; description?: string;
+  pickup_address: string; dropoff_address: string; delivery_address?: string;
+  description?: string; pickup_notes?: string;
+  dorm_image_urls?: string[];
   estimated_price?: number; final_price?: number; total_price?: number;
   deposit_amount?: number; deposit_paid?: boolean; created_at: string;
   provider_id?: string;
   provider?: { id: string; full_name: string; phone: string; rating: number; vehicle_type?: string; total_reviews?: number };
   provider_name?: string;
+  my_review?: { id: string; rating: number; comment?: string };
 }
 
 interface Quote {
@@ -91,6 +94,20 @@ const V_STEPS = [
 const STATUS_STEP: Record<string, number> = {
   pending: 0, matched: 1, accepted: 2, picking_up: 3, in_progress: 4, completed: 5,
 };
+
+function stripPhotoMetaFromNotes(text: string): string {
+  return text
+    .replace(/Ảnh mô tả:\s*\d+\s*tấm\s*/gi, "")
+    .replace(/Ảnh đính kèm:\s*\d+\s*/gi, "")
+    .replace(/\n+/g, " · ")
+    .replace(/\s*·\s*(·\s*)+/g, " · ")
+    .trim()
+    .replace(/^(?:\s*·\s*)+|(?:\s*·\s*)+$/g, "");
+}
+
+function extractOrderPhotoUrls(order: OrderDetail): string[] {
+  return order.dorm_image_urls?.filter(Boolean) ?? [];
+}
 
 const GENERIC_PROVIDER_NAMES = new Set(["Nhà xe", "Nhà vận chuyển", "Nhà xe N", "?"]);
 
@@ -354,6 +371,7 @@ export default function DonHangDetailPage() {
 
   /* UI state for route expand */
   const [showFullRoute, setShowFullRoute] = useState(false);
+  const [photoLightbox, setPhotoLightbox] = useState<number | null>(null);
 
   /* ── functions (ALL unchanged) ── */
   const openProviderDrawer = async (providerId: string) => {
@@ -475,6 +493,13 @@ export default function DonHangDetailPage() {
   const orderLabel = order
     ? `#${(order.order_number ?? order.id.slice(0, 8)).toUpperCase()}`
     : "";
+
+  const dormPhotos = order ? extractOrderPhotoUrls(order) : [];
+  const orderNotesRaw = order?.pickup_notes || order?.description || "";
+  const orderNotesText = dormPhotos.length > 0
+    ? stripPhotoMetaFromNotes(orderNotesRaw)
+    : orderNotesRaw.replace(/\n+/g, " · ").trim();
+  const dropoffAddr = order?.dropoff_address || order?.delivery_address || "";
 
   /* ══════════════════════════════════════════════════════════════ */
   return (
@@ -660,7 +685,7 @@ export default function DonHangDetailPage() {
                           <div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Điểm giao hàng</p>
                             <p className="text-sm font-semibold text-gray-900 leading-relaxed">
-                              {showFullRoute ? order.dropoff_address : shortAddr(order.dropoff_address)}
+                              {showFullRoute ? dropoffAddr : shortAddr(dropoffAddr)}
                             </p>
                           </div>
                         </div>
@@ -675,7 +700,7 @@ export default function DonHangDetailPage() {
                         </div>
                       </div>
                     </div>
-                    {(order.pickup_address.length > 42 || order.dropoff_address.length > 42) && (
+                    {(order.pickup_address.length > 42 || dropoffAddr.length > 42) && (
                       <button
                         type="button"
                         onClick={() => setShowFullRoute(!showFullRoute)}
@@ -688,10 +713,40 @@ export default function DonHangDetailPage() {
                         )}
                       </button>
                     )}
-                    {order.description && (
-                      <div className="mt-4 flex gap-2.5 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-xs text-gray-500 leading-relaxed">
-                        <Info size={14} className="text-gray-400 shrink-0 mt-0.5" />
-                        <span>{order.description}</span>
+                    {(orderNotesText || dormPhotos.length > 0) && (
+                      <div className="mt-4 space-y-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                        {orderNotesText && (
+                          <div className="flex gap-2.5 text-xs text-gray-500 leading-relaxed">
+                            <Info size={14} className="shrink-0 mt-0.5 text-gray-400" />
+                            <span>{orderNotesText}</span>
+                          </div>
+                        )}
+                        {dormPhotos.length > 0 && (
+                          <div className={orderNotesText ? "border-t border-gray-200/80 pt-3" : ""}>
+                            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                              <ImageIcon size={13} />
+                              Ảnh mô tả ({dormPhotos.length})
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {dormPhotos.map((url, i) => (
+                                <button
+                                  key={`${url}-${i}`}
+                                  type="button"
+                                  onClick={() => setPhotoLightbox(i)}
+                                  className="group relative h-16 w-16 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition hover:border-[#2563EB] hover:shadow-md sm:h-[72px] sm:w-[72px]"
+                                  aria-label={`Xem ảnh ${i + 1}`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={url}
+                                    alt=""
+                                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </Card>
@@ -712,6 +767,21 @@ export default function DonHangDetailPage() {
                     openCancelFlow={openCancelFlow}
                   />
                 </div>
+
+                {order.status === "completed" && !order.my_review && (
+                  <Link href={`/don-hang/${order.id}/danh-gia`} className="block">
+                    <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-3 flex items-center justify-between hover:border-amber-300 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <Star size={20} className="text-amber-600 shrink-0" fill="#d97706" />
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Đánh giá chuyến đi</p>
+                          <p className="text-xs text-amber-800/80 mt-0.5">Chia sẻ trải nghiệm với nhà xe</p>
+                        </div>
+                      </div>
+                      <span className="text-amber-700 text-lg">→</span>
+                    </Card>
+                  </Link>
+                )}
 
                 {order.status === "completed" && (
                   <Link href="/cho-sinh-vien" className="block">
@@ -773,6 +843,45 @@ export default function DonHangDetailPage() {
                   </button>
                 )}
               </Container>
+            </div>
+          )}
+          {photoLightbox !== null && dormPhotos.length > 0 && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+              onClick={() => setPhotoLightbox(null)}
+              role="presentation"
+            >
+              <button
+                type="button"
+                onClick={() => setPhotoLightbox(null)}
+                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label="Đóng"
+              >
+                <X size={18} />
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={dormPhotos[photoLightbox]}
+                alt=""
+                className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+              {dormPhotos.length > 1 && (
+                <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-2">
+                  {dormPhotos.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPhotoLightbox(i); }}
+                      className={cn(
+                        "h-2 w-2 rounded-full transition-colors",
+                        i === photoLightbox ? "bg-white" : "bg-white/30",
+                      )}
+                      aria-label={`Ảnh ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>

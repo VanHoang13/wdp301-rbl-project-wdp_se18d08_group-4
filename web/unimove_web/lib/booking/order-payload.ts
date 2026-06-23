@@ -1,5 +1,5 @@
 import type { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
-import { tierVehicleSize, ALLEY_LABELS, CARGO_LABELS } from "./constants";
+import { tierVehicleSize, ALLEY_LABELS, CARGO_LABELS, SCHEDULE_SLOT_HOURS } from "./constants";
 
 type FlowState = ReturnType<typeof useBookingFlowStore.getState>;
 
@@ -157,6 +157,44 @@ export function buildOrderPayload(
 
 export function isValidPickupTime(d: Date) {
   return d.getTime() - Date.now() >= 1 * 60 * 60 * 1000;
+}
+
+/** Khung giờ còn chọn được trong ngày `day` (YYYY-MM-DD, giờ local). */
+export function getAvailableScheduleSlots(day: string, now = new Date()): number[] {
+  const [y, m, d] = day.split("-").map(Number);
+  return SCHEDULE_SLOT_HOURS.filter((hour) => {
+    const slot = new Date(y, m - 1, d, hour, 0, 0, 0);
+    return slot.getTime() - now.getTime() >= 1 * 60 * 60 * 1000;
+  });
+}
+
+export function toLocalDateInputValue(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Gợi ý ngày/giờ hợp lệ, snap vào khung giờ có sẵn. */
+export function resolveScheduleSelection(preferred?: Date) {
+  const base = preferred ?? defaultPickupSuggestion();
+  let day = toLocalDateInputValue(base);
+  let available = getAvailableScheduleSlots(day);
+
+  for (let i = 0; i < 14 && available.length === 0; i++) {
+    const [y, m, d] = day.split("-").map(Number);
+    const next = new Date(y, m - 1, d);
+    next.setDate(next.getDate() + 1);
+    day = toLocalDateInputValue(next);
+    available = getAvailableScheduleSlots(day);
+  }
+
+  const preferredHour = base.getHours();
+  const hour = available.includes(preferredHour)
+    ? preferredHour
+    : available.find((h) => h >= preferredHour) ?? available[0] ?? 9;
+
+  return { day, hour };
 }
 
 export function defaultPickupSuggestion() {

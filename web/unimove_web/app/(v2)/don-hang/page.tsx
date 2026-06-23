@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Truck, Plus, MapPin, Search, ChevronRight } from "lucide-react";
+import { Truck, Plus, MapPin, Search, ChevronRight, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -47,14 +47,15 @@ function getStatusTextClass(status: string): string {
 
 function OrderCard({ order }: { order: Order }) {
   const price = order.final_price ?? order.estimated_price ?? order.total_price;
+  const isCompleted = order.status === "completed";
 
   return (
-    <Link href={`/don-hang/${order.id}`} className="block no-underline group">
-      <motion.div
-        whileHover={{ y: -2 }}
-        transition={{ type: "spring", stiffness: 380, damping: 28 }}
-      >
-        <Card className="overflow-hidden border-gray-100 bg-white shadow-sm transition-shadow group-hover:shadow-md group-hover:border-gray-200">
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+    >
+      <Card className="overflow-hidden border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-gray-200">
+        <Link href={`/don-hang/${order.id}`} className="block no-underline group">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
             <span className="text-xs font-mono font-semibold text-gray-400 tracking-wide">
               {formatOrderId(order)}
@@ -78,23 +79,37 @@ function OrderCard({ order }: { order: Order }) {
               </p>
             </div>
           </div>
+        </Link>
 
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-50">
-            <div className="flex items-center gap-2.5 min-w-0">
-              {price != null && price > 0 && (
-                <span className="text-sm font-bold text-gray-900 shrink-0">
-                  {formatVND(price)}
-                </span>
-              )}
-              <span className="text-xs text-gray-400 truncate">{timeAgo(order.created_at)}</span>
-            </div>
-            <span className="inline-flex items-center gap-0.5 text-xs font-bold text-[#2563EB] shrink-0 group-hover:gap-1.5 transition-all">
-              Chi tiết <ChevronRight size={14} />
-            </span>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-50">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {price != null && price > 0 && (
+              <span className="text-sm font-bold text-gray-900 shrink-0">
+                {formatVND(price)}
+              </span>
+            )}
+            <span className="text-xs text-gray-400 truncate">{timeAgo(order.created_at)}</span>
           </div>
-        </Card>
-      </motion.div>
-    </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            {isCompleted && (
+              <Link
+                href={`/don-hang/${order.id}/danh-gia`}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 transition-colors hover:border-amber-300 hover:bg-amber-100 no-underline"
+              >
+                <Star size={12} className="fill-amber-500 text-amber-500" />
+                Đánh giá
+              </Link>
+            )}
+            <Link
+              href={`/don-hang/${order.id}`}
+              className="inline-flex items-center gap-0.5 text-xs font-bold text-[#2563EB] no-underline hover:gap-1.5 transition-all"
+            >
+              Chi tiết <ChevronRight size={14} />
+            </Link>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
   );
 }
 
