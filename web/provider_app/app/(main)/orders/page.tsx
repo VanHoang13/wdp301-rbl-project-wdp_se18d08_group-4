@@ -66,7 +66,7 @@ export default function ProviderOrdersPage() {
   useEffect(() => {
     if (activeTab !== PENDING_TAB_INDEX) return;
 
-    const interval = setInterval(async () => {
+    const silentFetch = async () => {
       try {
         const status = TABS[PENDING_TAB_INDEX].key;
         const params: { status?: string } = {};
@@ -79,9 +79,18 @@ export default function ProviderOrdersPage() {
       } catch {
         // silent — không disturb UX nếu poll fail
       }
-    }, POLL_INTERVAL_MS);
+    };
 
-    return () => clearInterval(interval);
+    const interval = setInterval(silentFetch, POLL_INTERVAL_MS);
+
+    // Force refresh ngay khi tab được focus lại
+    const onVisible = () => { if (document.visibilityState === "visible") silentFetch(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [activeTab]);
 
   const handleAccept = async (order: Order) => {
