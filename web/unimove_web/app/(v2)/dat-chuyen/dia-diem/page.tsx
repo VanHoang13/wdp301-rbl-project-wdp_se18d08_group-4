@@ -9,7 +9,9 @@ import {
   QUOTE_WIZARD_STEPS,
   COMBO_WIZARD_STEPS,
 } from "@/components/booking/BookingWizardLayout";
+import { BookingModeIntro } from "@/components/booking/BookingModeIntro";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 
 const DA_NANG_PHUONG = [
   "Phường Hải Châu", "Phường Hòa Cường", "Phường Thanh Khê", "Phường An Khê",
@@ -115,6 +117,7 @@ function AddressBlock({
 /* ── Page ── */
 export default function DiaDiemPage() {
   const router = useRouter();
+  useBookingModeGuard();
   const { isComboBooking, serviceKind, setPickup, setDestination } = useBookingFlowStore();
 
   const isLaborOnly = serviceKind === "laborOnly";
@@ -145,10 +148,7 @@ export default function DiaDiemPage() {
   const destReady   = destWard.length > 0   && destStreet.trim().length > 0;
   const canContinue = isLaborOnly ? destReady : pickupReady && destReady;
 
-  const title    = isLaborOnly ? "Địa điểm làm việc" : "Trọ cũ → trọ mới";
-  const subtitle = isComboBooking
-    ? "Combo — giá niêm yết. Bước tiếp: mô tả trọ → chọn ngày giờ → chọn gói."
-    : "Bước tiếp: mô tả trọ → chọn giờ → nhà xe báo giá theo khung đó.";
+  const title = isLaborOnly ? "Địa điểm làm việc" : "Trọ cũ → trọ mới";
 
   const steps = isComboBooking ? [...COMBO_WIZARD_STEPS] : [...QUOTE_WIZARD_STEPS];
 
@@ -157,7 +157,11 @@ export default function DiaDiemPage() {
       steps={steps}
       currentStep={1}
       title={title}
-      subtitle={subtitle}
+      intro={
+        !isLaborOnly ? (
+          <BookingModeIntro mode={isComboBooking ? "combo" : "quote"} />
+        ) : undefined
+      }
       segmentProgress={{ current: 1, total: isComboBooking ? 6 : 3 }}
       sidebar={<BookingInsuranceCard />}
       onContinue={() =>

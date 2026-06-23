@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredUser } from "@/lib/auth";
 import ProviderOrdersPage from "./provider-orders";
 
-export default function OrdersPage() {
+function OrdersPageContent() {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
 
@@ -17,4 +17,12 @@ export default function OrdersPage() {
 
   if (!role || role === "customer") return null;
   return <ProviderOrdersPage />;
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrdersPageContent />
+    </Suspense>
+  );
 }

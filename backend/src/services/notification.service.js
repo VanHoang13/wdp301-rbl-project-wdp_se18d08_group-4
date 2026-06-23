@@ -6,7 +6,7 @@ const { supabaseAdmin } = require('./supabase.service');
  * @param {string} type  - notification_type enum value
  * @param {string} title
  * @param {string} body
- * @param {object} opts  - { priority, listingId, actionData, icon }
+ * @param {object} opts  - { priority, listingId, actionData, actionUrl, icon }
  */
 async function createNotification(userId, type, title, body, opts = {}) {
   const { error } = await supabaseAdmin.from('notifications').insert({
@@ -17,12 +17,17 @@ async function createNotification(userId, type, title, body, opts = {}) {
     priority: opts.priority || 'normal',
     listing_id: opts.listingId || null,
     action_data: opts.actionData || null,
+    action_url: opts.actionUrl || null,
     icon: opts.icon || null,
     is_read: false,
     is_sent: true,
     sent_at: new Date().toISOString(),
   });
-  if (error) console.error('[notification] insert error:', error.message);
+  if (error) {
+    console.error('[notification] insert error:', error.message);
+    return { error };
+  }
+  return { error: null };
 }
 
 /** Gửi thông báo cho tất cả admin đang active */

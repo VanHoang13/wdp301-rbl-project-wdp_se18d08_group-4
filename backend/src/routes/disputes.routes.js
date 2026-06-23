@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
+// Multer — tối đa 5 ảnh, mỗi ảnh 5MB, field name: evidence
 const evidenceUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 5 },
@@ -20,13 +21,21 @@ const evidenceUpload = multer({
 
 function handleEvidenceUpload(req, res, next) {
   evidenceUpload(req, res, (err) => {
-    if (err) { err.status = err.status || 400; return next(err); }
+    if (err) {
+      err.status = err.status || 400;
+      return next(err);
+    }
     next();
   });
 }
 
+// POST /api/disputes — tạo khiếu nại (customer hoặc provider)
 router.post('/', requireAuth, handleEvidenceUpload, disputesController.createDispute);
+
+// GET /api/disputes/my — danh sách dispute của tôi
 router.get('/my', requireAuth, disputesController.getMyDisputes);
+
+// GET /api/disputes/:id — chi tiết
 router.get('/:id', requireAuth, disputesController.getDispute);
 
 module.exports = router;

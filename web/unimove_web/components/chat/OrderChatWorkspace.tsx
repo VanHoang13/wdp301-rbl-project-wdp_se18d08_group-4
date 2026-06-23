@@ -498,6 +498,8 @@ export function OrderChatWorkspace({
             mpListingCacheRef.current.set(key, listing);
             setMpListing(listing);
           }
+        }).catch(() => {
+          /* tin có thể đã bị xóa */
         });
       }
       pollTimer = setInterval(() => {

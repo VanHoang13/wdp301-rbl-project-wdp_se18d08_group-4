@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { BookingShell, RouteSummary } from "@/components/booking/BookingShell";
 import { useBookingFlowStore } from "@/lib/stores/useBookingFlowStore";
+import { useBookingModeGuard } from "@/lib/booking/use-booking-mode-guard";
 import { ordersApi, paymentsApi, customerApi } from "@/lib/api";
 import { buildOrderPayload } from "@/lib/booking/order-payload";
 import { uploadDormPhotos } from "@/lib/booking/upload-dorm-photos";
@@ -17,6 +18,7 @@ const TOS_KEY = "unimove_customer_tos_agreed";
 
 export default function ThanhToanPage() {
   const router = useRouter();
+  useBookingModeGuard({ requireCombo: true });
   const store = useBookingFlowStore();
   const {
     isComboBooking,

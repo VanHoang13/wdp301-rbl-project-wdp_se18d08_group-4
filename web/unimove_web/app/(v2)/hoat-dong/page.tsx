@@ -336,7 +336,7 @@ export default function HoatDongPage() {
 
           {reviewOrder && (
             <FadeSlideIn delay={120}>
-              <Link href={`/don-hang/${reviewOrder.id}`} className="no-underline block">
+              <Link href={`/don-hang/${reviewOrder.id}/danh-gia`} className="no-underline block">
                 <div className="rounded-2xl p-4 flex items-center gap-4 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 hover:border-amber-300 transition-colors">
                   <Star size={28} className="text-amber-600 shrink-0" fill="#d97706" />
                   <div className="flex-1">

@@ -2,6 +2,7 @@ const { supabaseAdmin } = require('../services/supabase.service');
 const authService = require('../services/auth.service');
 const customersService = require('../services/customers.service');
 const { normalizePhone } = require('../services/auth.helpers');
+const { createNotification } = require('../services/notification.service');
 
 /**
  * Admin login — Node JWT (user_credentials), không dùng Supabase Auth.
@@ -620,15 +621,37 @@ async function resolveDispute(req, res) {
     });
 
     if (refund_amount && refund_amount > 0) {
-      await supabaseAdmin.from('refunds').insert({
-        order_id: updatedDispute.order_id,
-        refund_amount,
-        refund_reason: `Dispute resolution: ${resolution}`,
-        status: 'approved',
-        requested_by: updatedDispute.raised_by,
-        approved_by: req.user.id,
-        processed_at: new Date().toISOString(),
-      });
+      const paymentsService = require('../services/payments.service');
+
+      // Tìm payment của đơn để link refund đúng
+      const { data: payment } = await supabaseAdmin
+        .from('payments')
+        .select('id')
+        .eq('order_id', updatedDispute.order_id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (payment) {
+        // Tạo refund record rồi gọi completeRefund để cộng ví + notify
+        const { data: refundRecord } = await supabaseAdmin
+          .from('refunds')
+          .insert({
+            payment_id: payment.id,
+            order_id: updatedDispute.order_id,
+            refund_amount,
+            refund_reason: `Giải quyết khiếu nại: ${resolution}`,
+            status: 'pending',
+            requested_by: updatedDispute.raised_by,
+          })
+          .select('id')
+          .single();
+
+        if (refundRecord) {
+          await paymentsService.completeRefund(refundRecord.id, req.user.id);
+        }
+      }
     }
 
     res.json({
@@ -2297,6 +2320,292 @@ async function rejectWithdrawal(req, res) {
   }
 }
 
+const MARKETPLACE_LISTING_STATUSES = ['active', 'reserved', 'hidden', 'closed'];
+
+/** GET /api/admin/marketplace/listings */
+async function getMarketplaceListings(req, res) {
+  try {
+    const {
+      status = 'all',
+      keyword,
+      page = 1,
+      pageSize = 20,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const size = Math.min(50, Math.max(1, parseInt(pageSize, 10) || 20));
+    const offset = (pageNum - 1) * size;
+
+    let query = supabaseAdmin
+      .from('marketplace_listings')
+      .select(
+        `
+        id, title, description, category, condition, area, price, images,
+        status, fee_paid, created_at, updated_at,
+        profiles:owner_id ( id, full_name, email, phone )
+      `,
+        { count: 'exact' },
+      )
+      .order('created_at', { ascending: false })
+      .range(offset, offset + size - 1);
+
+    if (status === 'pending_fee') {
+      query = query.eq('fee_paid', false);
+    } else if (status !== 'all' && MARKETPLACE_LISTING_STATUSES.includes(String(status))) {
+      query = query.eq('status', status);
+    }
+
+    const kw = String(keyword || '').trim();
+    if (kw) {
+      query = query.or(`title.ilike.%${kw}%,description.ilike.%${kw}%`);
+    }
+
+    const { data: listings, error, count } = await query;
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      data: listings || [],
+      meta: {
+        page: pageNum,
+        pageSize: size,
+        total: count || 0,
+        pages: Math.ceil((count || 0) / size),
+      },
+    });
+  } catch (error) {
+    console.error('Get marketplace listings error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi lấy danh sách tin Pass đồ',
+    });
+  }
+}
+
+/** PUT /api/admin/marketplace/listings/:id/status */
+async function updateMarketplaceListingStatus(req, res) {
+  try {
+    const { id } = req.params;
+    const { status, reason } = req.body;
+
+    if (!MARKETPLACE_LISTING_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `status không hợp lệ. Chọn: ${MARKETPLACE_LISTING_STATUSES.join(', ')}`,
+      });
+    }
+
+    const { data: existing, error: findErr } = await supabaseAdmin
+      .from('marketplace_listings')
+      .select('id, title, owner_id, status, fee_paid')
+      .eq('id', id)
+      .single();
+
+    if (findErr || !existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin đăng',
+      });
+    }
+
+    if (status === 'active' && !existing.fee_paid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tin chưa thanh toán phí đăng — không thể hiển thị lại',
+      });
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('marketplace_listings')
+      .update({ status })
+      .eq('id', id)
+      .select(
+        `
+        id, title, status, fee_paid, updated_at,
+        profiles:owner_id ( id, full_name, email )
+      `,
+      )
+      .single();
+
+    if (error) throw error;
+
+    if (existing.owner_id) {
+      const actionLabel =
+        status === 'hidden' ? 'đã bị ẩn' : status === 'closed' ? 'đã bị đóng' : 'đã được hiển thị lại';
+      await createNotification(
+        existing.owner_id,
+        'system_announcement',
+        'Tin Pass đồ được cập nhật',
+        reason
+          ? `Tin "${existing.title}" ${actionLabel}. Lý do: ${reason}`
+          : `Tin "${existing.title}" ${actionLabel} bởi quản trị viên.`,
+        { listingId: id, priority: 'normal' },
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Cập nhật trạng thái tin đăng thành công',
+      data: updated,
+    });
+  } catch (error) {
+    console.error('Update marketplace listing status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi cập nhật tin đăng',
+    });
+  }
+}
+
+/** POST /api/admin/marketplace/listings/:id/approve-fee */
+async function approveMarketplaceListingFee(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const { data: existing, error: findErr } = await supabaseAdmin
+      .from('marketplace_listings')
+      .select('id, title, owner_id, fee_paid, status')
+      .eq('id', id)
+      .single();
+
+    if (findErr || !existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin đăng',
+      });
+    }
+
+    if (existing.fee_paid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tin đã thanh toán phí đăng',
+      });
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('marketplace_listings')
+      .update({ fee_paid: true, status: 'active' })
+      .eq('id', id)
+      .select(
+        `
+        id, title, status, fee_paid, updated_at,
+        profiles:owner_id ( id, full_name, email )
+      `,
+      )
+      .single();
+
+    if (error) throw error;
+
+    if (existing.owner_id) {
+      await createNotification(
+        existing.owner_id,
+        'system_announcement',
+        'Tin Pass đồ đã được kích hoạt',
+        reason
+          ? `Tin "${existing.title}" đã được admin duyệt phí đăng. ${reason}`
+          : `Tin "${existing.title}" đã được admin duyệt và hiển thị trên Chợ sinh viên.`,
+        { listingId: id, priority: 'normal' },
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Duyệt phí đăng tin thành công',
+      data: updated,
+    });
+  } catch (error) {
+    console.error('Approve marketplace listing fee error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi duyệt phí đăng tin',
+    });
+  }
+}
+
+/** DELETE /api/admin/marketplace/listings/:id */
+async function deleteMarketplaceListing(req, res) {
+  try {
+    const { id } = req.params;
+    const trimmedReason = String(req.body?.reason || '').trim();
+
+    if (!trimmedReason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập lý do xóa tin',
+      });
+    }
+
+    const { data: existing, error: findErr } = await supabaseAdmin
+      .from('marketplace_listings')
+      .select('id, title, owner_id')
+      .eq('id', id)
+      .single();
+
+    if (findErr || !existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tin đăng',
+      });
+    }
+
+    if (existing.owner_id) {
+      const notifyBody =
+        `Tin "${existing.title}" đã bị quản trị viên xóa khỏi Chợ sinh viên.\n\nLý do: ${trimmedReason}`;
+      const notifyOpts = {
+        priority: 'high',
+        listingId: existing.id,
+        actionUrl: '/cho-sinh-vien/tin-cua-toi',
+        actionData: {
+          listing_id: existing.id,
+          listing_title: existing.title,
+          delete_reason: trimmedReason,
+        },
+      };
+
+      let notifyResult = await createNotification(
+        existing.owner_id,
+        'marketplace_listing_deleted',
+        'Tin Pass đồ đã bị xóa',
+        notifyBody,
+        notifyOpts,
+      );
+
+      if (notifyResult.error) {
+        notifyResult = await createNotification(
+          existing.owner_id,
+          'system_announcement',
+          'Tin Pass đồ đã bị xóa',
+          notifyBody,
+          notifyOpts,
+        );
+      }
+
+      if (notifyResult.error) {
+        console.error('Notify owner on listing delete failed:', notifyResult.error.message);
+      }
+    }
+
+    const { error } = await supabaseAdmin
+      .from('marketplace_listings')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: 'Xóa tin đăng thành công. Người đăng đã được thông báo.',
+    });
+  } catch (error) {
+    console.error('Delete marketplace listing error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi xóa tin đăng',
+    });
+  }
+}
+
 module.exports = {
   login,
   getProfile,
@@ -2325,6 +2634,11 @@ module.exports = {
   hideReview,
   unhideReview,
   flagReview,
+  // Marketplace (Pass đồ)
+  getMarketplaceListings,
+  updateMarketplaceListingStatus,
+  approveMarketplaceListingFee,
+  deleteMarketplaceListing,
   // Refunds Management
   getRefunds,
   approveRefund,

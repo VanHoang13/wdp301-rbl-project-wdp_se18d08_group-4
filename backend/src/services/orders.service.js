@@ -252,6 +252,10 @@ async function notifyDaNangProvidersNewOrder(order) {
 
 async function createOrder(customerId, payload) {
   const p = await normalizeCreatePayload(customerId, payload);
+  const photoUrls = Array.isArray(p.dorm_image_urls)
+    ? p.dorm_image_urls.filter((u) => typeof u === 'string' && u.trim())
+    : [];
+
   const baseRow = {
     customer_id: customerId,
     vehicle_size: p.vehicle_size,
@@ -287,6 +291,7 @@ async function createOrder(customerId, payload) {
     number_of_helpers: p.number_of_helpers ?? 0,
     status: 'pending',
     order_expires_at: calcOrderExpiresAt(p.scheduled_pickup_time),
+    ...(photoUrls.length > 0 ? { dorm_image_urls: photoUrls } : {}),
   };
 
   let insertRow = { ...baseRow, quote_request: p.quote_request === true };
@@ -294,6 +299,15 @@ async function createOrder(customerId, payload) {
 
   if (error && /quote_request/i.test(error.message)) {
     ({ data, error } = await supabaseAdmin.from('orders').insert(baseRow).select('*').single());
+  }
+
+  if (error && /dorm_image_urls/i.test(error.message) && photoUrls.length > 0) {
+    const { dorm_image_urls: _d, ...withoutPhotos } = insertRow;
+    ({ data, error } = await supabaseAdmin.from('orders').insert(withoutPhotos).select('*').single());
+    if (error && /quote_request/i.test(error.message)) {
+      const { quote_request: _q, ...fallbackRow } = withoutPhotos;
+      ({ data, error } = await supabaseAdmin.from('orders').insert(fallbackRow).select('*').single());
+    }
   }
 
   if (error) throw Object.assign(new Error(error.message), { status: 400 });
