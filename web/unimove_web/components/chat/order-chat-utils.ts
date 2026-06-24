@@ -25,6 +25,12 @@ export interface MarketplaceConversation {
     images?: string[];
     status?: string;
     deal_confirmed?: boolean;
+    transport_booked?: boolean;
+    confirmed_buyer_id?: string;
+    seller_id?: string;
+    chat_enabled?: boolean;
+    deal_status_label?: string | null;
+    area?: string;
   } | null;
 }
 
@@ -73,6 +79,9 @@ export interface ChatMessage {
   is_read?: boolean;
   created_at: string;
   sender?: { full_name?: string; avatar_url?: string };
+  media_url?: string | null;
+  media_type?: string | null;
+  media_name?: string | null;
 }
 
 export interface OrderChatContext {

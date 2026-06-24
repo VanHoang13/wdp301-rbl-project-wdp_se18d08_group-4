@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('./supabase.service');
 const { createNotification } = require('./notification.service');
+const { previewLabel, isImageMime } = require('./chat-attachments.service');
 const { httpError } = require('./auth.helpers');
 
 const CHAT_ELIGIBLE_STATUSES = ['matched', 'accepted', 'picking_up', 'in_progress', 'completed'];
@@ -211,9 +212,19 @@ async function getMessages(orderId, userId) {
 
 // ── POST /api/conversations/:orderId/messages ─────────────────────────────────
 async function sendMessage(orderId, userId, body) {
-  const { content, reply_to_id } = body || {};
+  const {
+    content,
+    reply_to_id,
+    media_url,
+    media_type,
+    media_size,
+    media_name,
+  } = body || {};
 
-  if (!content || !String(content).trim()) {
+  const textContent = content ? String(content).trim() : '';
+  const hasMedia = !!(media_url && media_type);
+
+  if (!textContent && !hasMedia) {
     throw httpError(400, 'Nội dung tin nhắn không được để trống', 'validation_error');
   }
 
@@ -263,6 +274,16 @@ async function sendMessage(orderId, userId, body) {
     conv = newConv;
   }
 
+  const messageType = hasMedia
+    ? (isImageMime(media_type) ? 'image' : 'text')
+    : 'text';
+  const storedContent = textContent || previewLabel({
+    text: '',
+    mediaUrl: media_url,
+    mediaType: media_type,
+    mediaName: media_name,
+  });
+
   // Insert message
   const { data: msg, error: msgErr } = await supabaseAdmin
     .from('messages')
@@ -270,17 +291,25 @@ async function sendMessage(orderId, userId, body) {
       conversation_id: conv.id,
       sender_id: userId,
       sender_role: senderRole,
-      message_type: 'text',
-      content: String(content).trim(),
+      message_type: messageType,
+      content: storedContent,
+      media_url: hasMedia ? media_url : null,
+      media_type: hasMedia ? media_type : null,
+      media_size: hasMedia ? (media_size ?? null) : null,
       reply_to_id: reply_to_id || null,
     }])
-    .select('id, message_type, content, created_at')
+    .select('id, message_type, content, media_url, media_type, created_at')
     .single();
 
   if (msgErr) throw httpError(500, msgErr.message, 'db_error');
 
   // Update conversation metadata
-  const preview = msg.content.length > 80 ? msg.content.substring(0, 80) + '…' : msg.content;
+  const preview = previewLabel({
+    text: storedContent,
+    mediaUrl: msg.media_url,
+    mediaType: msg.media_type,
+    mediaName: media_name,
+  });
   const currentUnread = isCustomer
     ? (conv.provider_unread_count || 0)
     : (conv.customer_unread_count || 0);
@@ -310,6 +339,8 @@ async function sendMessage(orderId, userId, body) {
     id: msg.id,
     message_type: msg.message_type,
     content: msg.content,
+    media_url: msg.media_url ?? null,
+    media_type: msg.media_type ?? null,
     created_at: msg.created_at,
     is_mine: true,
   };
