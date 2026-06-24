@@ -34,10 +34,10 @@ const NAV_LINKS = [
 ];
 
 const STATS = [
-  { value: "10+", label: "Sinh viên tin dùng" },
-  { value: "20+",   label: "Nhà xe đã xác minh" },
-  { value: "4.9★",   label: "Điểm đánh giá TB"   },
-  { value: "< 30'",  label: "Nhận báo giá"        },
+  { value: "90+",  label: "Người sử dụng" },
+  { value: "1",    label: "Tài xế trên nền tảng" },
+  { value: "4.9★", label: "Điểm đánh giá TB" },
+  { value: "< 30'", label: "Nhận báo giá" },
 ];
 
 const FEATURES = [
@@ -314,7 +314,8 @@ export default function LandingPage() {
                   {[1,2,3,4,5].map(s => <Star key={s} size={14} fill={Y} style={{ color: Y }} />)}
                 </div>
                 <p className="text-sm font-medium" style={{ color: G }}>
-                  <strong style={{ color: D }}>10+ sinh viên</strong> đã tin dùng UniMove
+                  <strong style={{ color: D }}>90+ người dùng</strong> và{" "}
+                  <strong style={{ color: D }}>1 tài xế</strong> đang dùng UniMove
                 </p>
               </div>
             </motion.div>
@@ -484,9 +485,9 @@ export default function LandingPage() {
               className="grid grid-cols-2 gap-4">
               {[
                 { icon: DollarSign, value: "90%",     label: "Doanh thu giữ lại",   sub: "Sau mỗi chuyến hoàn thành" },
-                { icon: Truck,      value: "20+",    label: "Nhà xe đang hoạt động", sub: "Trên toàn quốc"          },
+                { icon: Truck,      value: "1",      label: "Tài xế đang hoạt động", sub: "Trên nền tảng UniMove"   },
                 { icon: Clock,      value: "7/7",     label: "Ngày hoạt động",       sub: "Không nghỉ lễ"            },
-                { icon: Star,       value: "4.9★",    label: "Điểm tài xế TB",       sub: "Từ 10+ đánh giá"       },
+                { icon: Star,       value: "4.9★",    label: "Điểm tài xế TB",       sub: "Từ đánh giá thực tế"     },
               ].map(({ icon: Icon, value, label, sub }) => (
                 <div key={label} className="rounded-2xl p-5 text-center"
                   style={{ backgroundColor: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>

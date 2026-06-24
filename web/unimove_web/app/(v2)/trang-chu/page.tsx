@@ -203,6 +203,16 @@ export default function TrangChuPage() {
             {greetText}, {nameText}! 👋
           </h1>
           <p className="mt-1 text-base text-gray-500">So sánh báo giá nhà xe · Đặt cọc an toàn qua UniMove</p>
+          <div className="mt-4 flex gap-3">
+            <div className="flex-1 rounded-2xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] to-white px-4 py-3 shadow-sm">
+              <p className="text-2xl font-extrabold text-[#0047FF]">90+</p>
+              <p className="text-xs font-medium text-gray-500">Người sử dụng</p>
+            </div>
+            <div className="flex-1 rounded-2xl border border-amber-100 bg-gradient-to-br from-[#FFFBEB] to-white px-4 py-3 shadow-sm">
+              <p className="text-2xl font-extrabold text-[#CA8A04]">1</p>
+              <p className="text-xs font-medium text-gray-500">Tài xế trên nền tảng</p>
+            </div>
+          </div>
         </FadeSlideIn>
 
         {/* Mobile search */}
@@ -230,6 +240,16 @@ export default function TrangChuPage() {
               <p className="mt-3 text-sm leading-relaxed text-blue-100">
                 Dịch vụ chuyển nhà chuyên nghiệp cho sinh viên và người đi làm. Đặt cọc an toàn qua PayOS, so sánh báo giá từ nhiều nhà xe.
               </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <div className="rounded-2xl bg-white/15 px-4 py-2.5 backdrop-blur-sm border border-white/20">
+                  <p className="text-2xl font-extrabold leading-none">90+</p>
+                  <p className="mt-1 text-xs text-blue-100">Người sử dụng</p>
+                </div>
+                <div className="rounded-2xl bg-white/15 px-4 py-2.5 backdrop-blur-sm border border-white/20">
+                  <p className="text-2xl font-extrabold leading-none">1</p>
+                  <p className="mt-1 text-xs text-blue-100">Tài xế trên nền tảng</p>
+                </div>
+              </div>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   href="/dat-chuyen?mode=combo"
