@@ -70,6 +70,7 @@ router.get('/analytics/orders', adminController.getOrderStatistics);
 router.get('/analytics/providers', adminController.getTopProviders);
 router.get('/analytics/commission', adminController.getPlatformCommissionByMonth);
 router.get('/analytics/revenue', adminController.getRevenueByMonth);
+router.get('/analytics/ga4', adminController.getGA4Analytics);
 
 // Announcements/Notifications
 router.get('/announcements', adminController.getAnnouncements);

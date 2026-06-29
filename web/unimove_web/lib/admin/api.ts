@@ -294,6 +294,8 @@ export const adminApi = {
   getRevenueByMonth: (params?: { months?: number }) =>
     apiClient.get('/admin/analytics/revenue', params),
 
+  getGA4Analytics: () => apiClient.get('/admin/analytics/ga4'),
+
   // Announcements/Notifications
   getAnnouncements: (params?: { page?: number; pageSize?: number }) =>
     apiClient.get('/admin/announcements', params),

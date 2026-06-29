@@ -14,6 +14,7 @@ import {
   BarChart3,
   Bell,
   History,
+  Activity,
   RotateCcw,
   Wallet,
   Settings,
@@ -102,6 +103,11 @@ function buildNavItems(pendingVerifications?: number): NavItem[] {
       label: "Thống kê",
       href: "/admin/analytics",
       icon: BarChart3,
+    },
+    {
+      label: "Hành vi GA4",
+      href: "/admin/user-behavior",
+      icon: Activity,
     },
     {
       label: "Tài chính",
