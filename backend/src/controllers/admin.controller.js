@@ -1588,6 +1588,21 @@ async function getRevenueByMonth(req, res) {
   }
 }
 
+/** GET /api/admin/analytics/ga4 — Google Analytics 4 (nguồn traffic, trang, sự kiện) */
+async function getGA4Analytics(req, res) {
+  try {
+    const ga4Service = require('../services/ga4.service');
+    const data = await ga4Service.getGA4Dashboard();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Get GA4 analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi server khi lấy dữ liệu GA4',
+    });
+  }
+}
+
 /**
  * Notifications/Announcements APIs  
  */
@@ -2658,6 +2673,7 @@ module.exports = {
   getTopProviders,
   getPlatformCommissionByMonth,
   getRevenueByMonth,
+  getGA4Analytics,
   // Notifications/Announcements
   getAnnouncements,
   createAnnouncement,
