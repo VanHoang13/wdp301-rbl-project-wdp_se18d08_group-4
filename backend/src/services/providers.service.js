@@ -414,13 +414,13 @@ async function uploadProviderDocuments(providerId, filesMap) {
     if (!url) throw httpError(500, 'Không tạo được URL ảnh', 'storage_error');
 
     const docType = FIELD_TO_DOC_TYPE[field] || field;
-    const { error: dbError } = await supabaseAdmin.from('provider_documents').insert({
+    const { error: dbError } = await supabaseAdmin.from('provider_documents').upsert({
       provider_id: providerId,
       document_type: docType,
       document_url: url,
       is_verified: false,
       notes: field,
-    });
+    }, { onConflict: 'provider_id,document_type' });
 
     if (dbError) throw httpError(500, dbError.message, 'db_error');
 

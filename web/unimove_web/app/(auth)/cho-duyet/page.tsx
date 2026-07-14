@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Clock, CheckCircle, AlertTriangle, RefreshCw, FileText,
-  Truck, Star, ArrowRight,
+  Truck, Star, ArrowRight, ArrowLeft,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { getStoredUser, isAuthenticated, storeAuth, type AuthUser } from "@/lib/auth";
@@ -194,14 +194,31 @@ export default function ChoDuyetPage() {
 }
 
 function Header() {
+  const router = useRouter();
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
       <div className="max-w-2xl mx-auto px-6 h-14 flex items-center justify-between">
+        {/* ← TRANG CHỦ */}
+        <button
+          onClick={() => router.push("/tai-xe/tong-quan")}
+          className="flex items-center gap-2.5 group"
+        >
+          <span className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors shrink-0">
+            <ArrowLeft size={16} className="text-[#3D4A6B]" />
+          </span>
+          <span className="text-[13px] font-bold tracking-widest uppercase text-[#3D4A6B] group-hover:text-[#1A56DB] transition-colors">
+            Trang chủ
+          </span>
+        </button>
+
+        {/* Logo giữa */}
         <div className="flex items-center gap-0.5 text-[15px] font-extrabold leading-none">
           <span className="bg-[#FFCC00] text-white rounded-lg px-2 py-0.5">Uni</span>
           <span style={{ color: "#2563EB" }}>Move</span>
         </div>
-        <span className="text-xs font-semibold px-3 py-1 rounded-full text-white" style={{ backgroundColor: BRAND }}>
+
+        {/* Badge phải */}
+        <span className="text-xs font-semibold px-3 py-1 rounded-full text-white" style={{ backgroundColor: "#1A56DB" }}>
           Đăng ký tài xế
         </span>
       </div>

@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ordersApi } from "@/lib/api";
-import { getStoredUser, type AuthUser } from "@/lib/auth";
+import { ordersApi, authApi } from "@/lib/api";
+import { getStoredUser, storeAuth, type AuthUser } from "@/lib/auth";
 import { formatVND, getOrderStatusLabel, getOrderStatusColor, timeAgo } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -63,10 +63,16 @@ export default function ProviderDashboardPage() {
     const u = getStoredUser();
     setUser(u);
     setHydrated(true);
-    if (u && !u.is_verified) {
-      const hasSubmitted = u.verification_status === 'pending' || u.verification_status === 'rejected';
-      router.replace(hasSubmitted ? "/cho-duyet" : "/dang-ky-tai-xe");
-    }
+    // Luôn fetch fresh để lấy trạng thái is_verified mới nhất từ server
+    authApi.getMe().then(r => {
+      if (r.success && r.data) {
+        const fresh = { ...u, ...(r.data as AuthUser) };
+        const token = localStorage.getItem("unimove_token") ?? "";
+        if (token) storeAuth(fresh, token);
+        setUser(fresh);
+        setHydrated(true);
+      }
+    }).catch(() => {});
   }, [router]);
 
   const totalEarnings = completed.reduce((s, o) => s + (o.estimated_price ?? 0), 0);

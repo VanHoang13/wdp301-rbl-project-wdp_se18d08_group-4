@@ -78,7 +78,7 @@ export default function DangKyTaiXePage() {
   const docRefs = [docRef0, docRef1, docRef2, docRef3];
 
   useEffect(() => {
-    if (!isAuthenticated()) { router.replace("/login"); return; }
+    if (!isAuthenticated()) { router.replace("/dang-nhap"); return; }
     const u = getStoredUser();
     setUser(u);
     if (u?.phone)        setPhone(u.phone);
