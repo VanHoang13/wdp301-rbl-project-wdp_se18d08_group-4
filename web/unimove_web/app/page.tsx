@@ -35,7 +35,7 @@ const NAV_LINKS = [
 
 const STATS = [
   { value: "90+",  label: "Người sử dụng" },
-  { value: "1",    label: "Tài xế trên nền tảng" },
+  { value: "2+",    label: "Tài xế trên nền tảng" },
   { value: "4.9★", label: "Điểm đánh giá TB" },
   { value: "< 30'", label: "Nhận báo giá" },
 ];
