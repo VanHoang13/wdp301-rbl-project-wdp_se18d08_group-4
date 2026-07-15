@@ -209,7 +209,7 @@ export default function TrangChuPage() {
               <p className="text-xs font-medium text-gray-500">Người sử dụng</p>
             </div>
             <div className="flex-1 rounded-2xl border border-amber-100 bg-gradient-to-br from-[#FFFBEB] to-white px-4 py-3 shadow-sm">
-              <p className="text-2xl font-extrabold text-[#CA8A04]">1</p>
+              <p className="text-2xl font-extrabold text-[#CA8A04]">2+</p>
               <p className="text-xs font-medium text-gray-500">Tài xế trên nền tảng</p>
             </div>
           </div>
@@ -246,7 +246,7 @@ export default function TrangChuPage() {
                   <p className="mt-1 text-xs text-blue-100">Người sử dụng</p>
                 </div>
                 <div className="rounded-2xl bg-white/15 px-4 py-2.5 backdrop-blur-sm border border-white/20">
-                  <p className="text-2xl font-extrabold leading-none">1</p>
+                  <p className="text-2xl font-extrabold leading-none">2+</p>
                   <p className="mt-1 text-xs text-blue-100">Tài xế trên nền tảng</p>
                 </div>
               </div>
