@@ -21,6 +21,13 @@ router.post(
   providersController.uploadDocuments,
 );
 
+router.post(
+  '/me/request-verification',
+  requireAuth,
+  requireRole('provider'),
+  providersController.requestVerification,
+);
+
 router.get('/:id', requireAuth, providersController.getById);
 
 module.exports = router;
